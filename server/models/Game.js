@@ -29,7 +29,12 @@ const GameSchema = new mongoose.Schema({
     locked: { type: Boolean, default: false },
     screenshots: { type: Number, default: 0 },
     gameUrl: { type: String },
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    wasteItems: [{
+        name: { type: String, required: true },
+        correct: { type: String, required: true },
+        emoji: { type: String }
+    }],
 }, { timestamps: true });
 
 module.exports = mongoose.model('Game', GameSchema);

@@ -4,8 +4,22 @@ import Modal from 'react-modal';
 import {
     Home, MapPin, Gamepad2, Wallet, Settings,
     Recycle, Leaf, Target, Clock, Trophy, Star, Award, Globe,
-    ArrowRight, CheckCircle, Play, Droplets, TreePine, Wind, Upload
+    ArrowRight, CheckCircle, Play, Droplets, TreePine, Wind, Upload,
+    BookOpen, Link as LinkIcon
 } from 'lucide-react';
+
+// Add social media icons from react-icons
+import { 
+    FaTwitter as Twitter,
+    FaDiscord as Discord,
+    FaYoutube as Youtube,
+    FaInstagram as Instagram,
+    FaFacebook as Facebook,
+    FaReddit as Reddit,
+    FaLinkedin as LinkedIn,
+    FaTiktok as TikTok
+} from 'react-icons/fa';
+
 import api from '../../api/api';
 
 // Bind modal to app element for accessibility
@@ -28,12 +42,26 @@ export default function RFXCampaignPage() {
     const [uploading, setUploading] = useState(false);
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
     const containerRef = useRef(null);
+    const [currentDay, setCurrentDay] = useState(1);
+    const [dayTimeLeft, setDayTimeLeft] = useState({ hours: 23, minutes: 59, seconds: 59 });
 
     const iconMap = {
         Ocean: Droplets,
         Forest: TreePine,
         Air: Wind,
         Community: Recycle,
+    };
+
+    const platformIcons = {
+        twitter: Twitter,
+        discord: Discord,
+        youtube: Youtube,
+        instagram: Instagram,
+        facebook: Facebook,
+        reddit: Reddit,
+        linkedin: LinkedIn,
+        tiktok: TikTok,
+        default: LinkIcon
     };
 
     const getColorClasses = (category) => {
@@ -86,11 +114,6 @@ export default function RFXCampaignPage() {
         }
     }, [location.pathname]);
 
-    // Debug modal state
-    useEffect(() => {
-        console.log('Modal isOpen:', modalIsOpen, 'Selected campaign:', selectedCampaign, 'Tasks:', tasks);
-    }, [modalIsOpen, selectedCampaign, tasks]);
-
     // Fetch user data, rank, network stats, and campaigns
     useEffect(() => {
         const token = localStorage.getItem('authToken');
@@ -128,7 +151,6 @@ export default function RFXCampaignPage() {
             } catch (error) {
                 console.error('Fetch data error:', error);
                 setError(error || 'Failed to fetch data');
-                // Note: The response interceptor handles 401 by redirecting to /login
             } finally {
                 setLoading(false);
             }
@@ -137,18 +159,44 @@ export default function RFXCampaignPage() {
         fetchData();
     }, [navigate]);
 
+    // Daily countdown timer
+    useEffect(() => {
+        const timer = setInterval(() => {
+            setDayTimeLeft(prev => {
+                if (prev.seconds > 0) return { ...prev, seconds: prev.seconds - 1 };
+                if (prev.minutes > 0) return { ...prev, minutes: prev.minutes - 1, seconds: 59 };
+                if (prev.hours > 0) return { hours: prev.hours - 1, minutes: 59, seconds: 59 };
+
+                // When day ends, reset timer and move to next day
+                setCurrentDay(prev => prev + 1);
+                return { hours: 23, minutes: 59, seconds: 59 };
+            });
+        }, 1000);
+        return () => clearInterval(timer);
+    }, []);
+
+    // Filter tasks by current day
+    const dailyTasks = tasks.filter(task => task.day === currentDay);
+
     // Fetch campaign details for tasks
     const fetchCampaignDetails = async (campaignId) => {
         try {
             const response = await api.get(`/campaigns/${campaignId}`);
-            console.log('Campaign details:', response);
-            // Map task statuses to align with frontend expectations
             const mappedTasks = response.tasks.map(task => ({
                 ...task,
                 status: task.status === 'in-progress' ? 'pending' : task.status,
             }));
             setTasks(mappedTasks || []);
             setSelectedCampaign(prev => ({ ...prev, ...response }));
+
+            // Calculate current day based on start date
+            if (response.startDate) {
+                const startDate = new Date(response.startDate);
+                const today = new Date();
+                const diffTime = today - startDate;
+                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                setCurrentDay(Math.min(diffDays, response.duration));
+            }
         } catch (error) {
             console.error('Fetch campaign details error:', error);
             setError(error || 'Failed to fetch campaign details');
@@ -181,7 +229,6 @@ export default function RFXCampaignPage() {
     };
 
     // Handle joining a campaign
-    // In your RFXCampaignPage.jsx
     const handleJoinCampaign = async (campaignId) => {
         setLoading(true);
         try {
@@ -233,7 +280,7 @@ export default function RFXCampaignPage() {
         }
     };
 
-    // Countdown timer
+    // Countdown timer for global campaign
     useEffect(() => {
         const timer = setInterval(() => {
             setTimeLeft(prev => {
@@ -673,10 +720,20 @@ export default function RFXCampaignPage() {
                         </div>
 
                         <div>
-                            <h3 className="text-xl font-bold text-white mb-4">Campaign Tasks</h3>
-                            {tasks.length > 0 ? (
+                            <h3 className="text-xl font-bold text-white mb-4">Daily Tasks</h3>
+                            {dailyTasks.length > 0 ? (
                                 <div className="space-y-4 max-h-96 overflow-y-auto">
-                                    {tasks.map((task, index) => (
+                                    <div className="bg-gray-800 p-3 rounded-xl mb-4 text-center">
+                                        <div className="text-sm text-gray-400 mb-1">Day {currentDay} of {selectedCampaign.duration}</div>
+                                        <div className="text-lg font-bold text-white">
+                                            {String(dayTimeLeft.hours).padStart(2, '0')}:
+                                            {String(dayTimeLeft.minutes).padStart(2, '0')}:
+                                            {String(dayTimeLeft.seconds).padStart(2, '0')}
+                                        </div>
+                                        <div className="text-xs text-gray-400">Time remaining to complete today's tasks</div>
+                                    </div>
+
+                                    {dailyTasks.map((task, index) => (
                                         <div key={task.id} className="bg-gray-800/50 rounded-xl p-4">
                                             <div className="flex items-start justify-between mb-3">
                                                 <div className="flex items-start space-x-3">
@@ -689,6 +746,25 @@ export default function RFXCampaignPage() {
                                                     <div className="flex-1">
                                                         <h4 className="text-white font-semibold">{task.title}</h4>
                                                         <p className="text-gray-400 text-sm">{task.description}</p>
+
+                                                        {/* Task-specific content */}
+                                                        {(task.type === 'video-watch' || task.type === 'article-read') && task.contentUrl && (
+                                                            <div className="mt-2">
+                                                                <a
+                                                                    href={task.contentUrl}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="text-blue-400 text-sm flex items-center"
+                                                                >
+                                                                    {task.type === 'video-watch' ? (
+                                                                        <><Play className="w-3 h-3 mr-1" /> Watch Video</>
+                                                                    ) : (
+                                                                        <><BookOpen className="w-3 h-3 mr-1" /> Read Article</>
+                                                                    )}
+                                                                </a>
+                                                            </div>
+                                                        )}
+
                                                         {task.requirements && (
                                                             <div className="mt-2">
                                                                 <div className="text-xs text-gray-500 mb-1">Requirements:</div>
@@ -718,41 +794,76 @@ export default function RFXCampaignPage() {
                                                 </div>
                                             ) : (
                                                 <div className="flex items-center space-x-3">
-                                                    <input
-                                                        type="file"
-                                                        id={`file-${task.id}`}
-                                                        className="hidden"
-                                                        accept="image/*"
-                                                        onChange={(e) => {
-                                                            if (e.target.files[0]) {
-                                                                handleProofUpload(task.id, e.target.files[0]);
-                                                            }
-                                                        }}
-                                                    />
-                                                    <label
-                                                        htmlFor={`file-${task.id}`}
-                                                        className="flex items-center space-x-2 px-4 py-2 rounded-lg cursor-pointer transition-all bg-blue-400/20 text-blue-400 border border-blue-400/30 hover:bg-blue-400/30"
-                                                    >
-                                                        <Upload className="w-4 h-4" />
-                                                        <span className="text-sm font-medium">Upload Proof</span>
-                                                    </label>
-                                                    {uploading && (
-                                                        <div className="text-gray-400 text-sm">Uploading...</div>
+                                                    {/* For social follow/join tasks */}
+                                                            {(task.type === 'social-follow' || task.type === 'discord-join') && task.contentUrl && (
+                                                                <a
+                                                                    href={task.contentUrl}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="px-4 py-2 bg-blue-400/20 text-blue-400 border border-blue-400/30 rounded-lg text-sm font-medium hover:bg-blue-400/30 flex items-center space-x-2"
+                                                                >
+                                                                    {task.platform && platformIcons[task.platform.toLowerCase()] ? (
+                                                                        <>
+                                                                            {React.createElement(platformIcons[task.platform.toLowerCase()], { className: "w-4 h-4" })}
+                                                                            <span>{task.type === 'discord-join' ? 'Join Discord' : `Follow on ${task.platform}`}</span>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <LinkIcon className="w-4 h-4" />
+                                                                            <span>{task.type === 'discord-join' ? 'Join Discord' : 'Follow'}</span>
+                                                                        </>
+                                                                    )}
+                                                                </a>
+                                                            )}
+
+                                                    {/* For proof upload tasks */}
+                                                    {(task.type === 'social-post' || task.type === 'proof-upload') && (
+                                                        <>
+                                                            <input
+                                                                type="file"
+                                                                id={`file-${task.id}`}
+                                                                className="hidden"
+                                                                accept="image/*"
+                                                                onChange={(e) => {
+                                                                    if (e.target.files[0]) {
+                                                                        handleProofUpload(task.id, e.target.files[0]);
+                                                                    }
+                                                                }}
+                                                            />
+                                                            <label
+                                                                htmlFor={`file-${task.id}`}
+                                                                className="flex items-center space-x-2 px-4 py-2 rounded-lg cursor-pointer transition-all bg-blue-400/20 text-blue-400 border border-blue-400/30 hover:bg-blue-400/30"
+                                                            >
+                                                                <Upload className="w-4 h-4" />
+                                                                <span className="text-sm font-medium">
+                                                                    {task.type === 'social-post' ? 'Upload Post Proof' : 'Upload Proof'}
+                                                                </span>
+                                                            </label>
+                                                        </>
                                                     )}
-                                                    <button
-                                                        onClick={() => handleCompleteTask(selectedCampaign.id, task.id)}
-                                                        className="px-4 py-2 bg-green-400/20 text-green-400 border border-green-400/30 rounded-lg text-sm font-medium hover:bg-green-400/30"
-                                                        disabled={task.status !== 'pending'}
-                                                    >
-                                                        Complete Task
-                                                    </button>
+
+                                                    {/* Complete button appears after action is taken */}
+                                                    {task.status === 'in-progress' && (
+                                                        <button
+                                                            onClick={() => handleCompleteTask(selectedCampaign.id, task.id)}
+                                                            className="px-4 py-2 bg-green-400/20 text-green-400 border border-green-400/30 rounded-lg text-sm font-medium hover:bg-green-400/30"
+                                                        >
+                                                            Complete Task
+                                                        </button>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
                                     ))}
                                 </div>
                             ) : (
-                                <div className="text-gray-400 text-center">No tasks available for this campaign.</div>
+                                <div className="text-gray-400 text-center py-8">
+                                    {currentDay > selectedCampaign.duration ? (
+                                        "Campaign completed! Thanks for participating."
+                                    ) : (
+                                        "No tasks available for today. Check back tomorrow!"
+                                    )}
+                                </div>
                             )}
                         </div>
                     </div>

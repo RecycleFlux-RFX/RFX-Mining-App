@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Trash2, Recycle, Clock, Zap, Target } from 'lucide-react';
+import axios from 'axios';
 
 const TrashSortGame = () => {
     const [score, setScore] = useState(0);
@@ -10,61 +12,134 @@ const TrashSortGame = () => {
     const [feedback, setFeedback] = useState(null);
     const [questionsAnswered, setQuestionsAnswered] = useState(0);
     const [correctAnswers, setCorrectAnswers] = useState(0);
+    const [gameData, setGameData] = useState(null);
+    const [wasteItems, setWasteItems] = useState([]);
+    const [error, setError] = useState(null);
 
-    const BASE_URL = 'http://localhost:3000/games';
+    const BASE_URL = 'http://localhost:3000';
+    const navigate = useNavigate();
 
-    const wasteItems = [
-        { name: "Plastic Water Bottle", correct: "Plastic", emoji: "🥤" },
-        { name: "Newspaper", correct: "Paper", emoji: "📰" },
-        { name: "Aluminum Can", correct: "Metal", emoji: "🥫" },
-        { name: "Banana Peel", correct: "Organic", emoji: "🍌" },
-        { name: "Pizza Box", correct: "Paper", emoji: "📦" },
-        { name: "Glass Jar", correct: "Metal", emoji: "🫙" },
-        { name: "Apple Core", correct: "Organic", emoji: "🍎" },
-        { name: "Plastic Bag", correct: "Plastic", emoji: "🛍️" },
-        { name: "Coffee Grounds", correct: "Organic", emoji: "☕" },
-        { name: "Cardboard Box", correct: "Paper", emoji: "📦" },
-        { name: "Tin Can", correct: "Metal", emoji: "🥫" },
-        { name: "Yogurt Container", correct: "Plastic", emoji: "🥛" },
-        { name: "Lettuce Leaves", correct: "Organic", emoji: "🥬" },
-        { name: "Magazine", correct: "Paper", emoji: "📖" },
-        { name: "Steel Fork", correct: "Metal", emoji: "🍴" },
-        { name: "Plastic Bottle Cap", correct: "Plastic", emoji: "🔴" },
-        { name: "Orange Peel", correct: "Organic", emoji: "🍊" },
-        { name: "Cereal Box", correct: "Paper", emoji: "📦" },
-        { name: "Soda Can", correct: "Metal", emoji: "🥤" },
-        { name: "Food Scraps", correct: "Organic", emoji: "🍽️" }
-    ];
+    // Fetch game data and user data from backend
+    const fetchGameData = useCallback(async () => {
+        try {
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                setError('Please log in to play the game');
+                navigate('/login');
+                return;
+            }
+
+            // Fetch game data
+            const gameResponse = await fetch(`${BASE_URL}/games`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            if (!gameResponse.ok) {
+                const errorData = await gameResponse.json();
+                throw new Error(errorData.message || 'Failed to fetch game data');
+            }
+
+            const games = await gameResponse.json();
+            const ecoSortGame = games.find(game => game.title === 'EcoSort Master');
+            if (!ecoSortGame) {
+                throw new Error('EcoSort Master game not found');
+            }
+
+            setGameData(ecoSortGame);
+
+            // Define waste items based on game data or fallback to static list
+            const items = ecoSortGame.wasteItems || [
+                { name: "Plastic Water Bottle", correct: "Plastic", emoji: "🥤" },
+                { name: "Newspaper", correct: "Paper", emoji: "📰" },
+                { name: "Aluminum Can", correct: "Metal", emoji: "🥫" },
+                { name: "Banana Peel", correct: "Organic", emoji: "🍌" },
+                { name: "Pizza Box", correct: "Paper", emoji: "📦" },
+                { name: "Glass Jar", correct: "Glass", emoji: "🫙" }, // Corrected category
+                { name: "Apple Core", correct: "Organic", emoji: "🍎" },
+                { name: "Plastic Bag", correct: "Plastic", emoji: "🛍️" },
+                { name: "Coffee Grounds", correct: "Organic", emoji: "☕" },
+                { name: "Cardboard Box", correct: "Paper", emoji: "📦" },
+                { name: "Tin Can", correct: "Metal", emoji: "🥫" },
+                { name: "Yogurt Container", correct: "Plastic", emoji: "🥛" },
+                { name: "Lettuce Leaves", correct: "Organic", emoji: "🥬" },
+                { name: "Magazine", correct: "Paper", emoji: "📖" },
+                { name: "Steel Fork", correct: "Metal", emoji: "🍴" },
+                { name: "Plastic Bottle Cap", correct: "Plastic", emoji: "🔴" },
+                { name: "Orange Peel", correct: "Organic", emoji: "🍊" },
+                { name: "Cereal Box", correct: "Paper", emoji: "📦" },
+                { name: "Soda Can", correct: "Metal", emoji: "🥤" },
+                { name: "Food Scraps", correct: "Organic", emoji: "🍽️" },
+            ];
+            setWasteItems(items);
+
+            // Fetch user data to get wallet ID
+            const userResponse = await fetch(`${BASE_URL}/user/user`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            if (!userResponse.ok) {
+                const errorData = await userResponse.json();
+                throw new Error(errorData.message || 'Failed to fetch user data');
+            }
+
+            const userData = await userResponse.json();
+            localStorage.setItem('walletId', userData.walletAddress);
+        } catch (error) {
+            console.error('Error fetching game data:', error);
+            setError(error.message || 'Failed to load game data');
+            if (error.message.includes('Authentication') || error.message.includes('Invalid token')) {
+                localStorage.removeItem('authToken');
+                navigate('/login');
+            }
+        }
+    }, [navigate]);
+
+    useEffect(() => {
+        fetchGameData();
+    }, [fetchGameData]);
 
     const binColors = {
         Plastic: "bg-blue-500 hover:bg-blue-600",
         Paper: "bg-green-500 hover:bg-green-600",
         Metal: "bg-gray-500 hover:bg-gray-600",
-        Organic: "bg-amber-500 hover:bg-amber-600"
+        Organic: "bg-amber-500 hover:bg-amber-600",
+        Glass: "bg-teal-500 hover:bg-teal-600", // Added for Glass
     };
 
     const getRandomItem = useCallback(() => {
         return wasteItems[Math.floor(Math.random() * wasteItems.length)];
-    }, []);
+    }, [wasteItems]);
 
     const startGame = async () => {
         try {
             const token = localStorage.getItem('authToken');
-            const gameid = "6880f8d80776f0154e27ce02"
-            const response = await fetch(`${BASE_URL}/start`, {
+            if (!token || !gameData) {
+                throw new Error('Authentication or game data missing');
+            }
+
+            const response = await fetch(`${BASE_URL}/games/start`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
+                    Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({
-                    gameId: gameid, // Make sure this matches your game IDs
-                    title: 'EcoSort Master' // This should match exactly
-                })
+                    gameId: gameData.id,
+                    title: gameData.title,
+                }),
             });
 
             if (!response.ok) {
-                throw new Error('Failed to start game');
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Failed to start game');
             }
 
             // Reset game state
@@ -76,26 +151,43 @@ const TrashSortGame = () => {
             setCurrentItem(getRandomItem());
             setGameState('playing');
             setFeedback(null);
+            setError(null);
         } catch (error) {
             console.error('Error starting game:', error);
-            setFeedback({ type: 'error', message: 'Failed to start game' });
+            setError(error.message || 'Failed to start game');
+            if (error.message.includes('Authentication') || error.message.includes('Invalid token')) {
+                localStorage.removeItem('authToken');
+                navigate('/login');
+            }
         }
     };
 
     const submitScore = async () => {
         try {
             const token = localStorage.getItem('authToken');
-            await axios.post(
-                `${BASE_URL}/submit-score`,
+            const walletId = localStorage.getItem('walletId');
+            if (!token || !walletId || !gameData) {
+                throw new Error('Authentication or wallet data missing');
+            }
+
+            const response = await axios.post(
+                `${BASE_URL}/games/complete`,
                 {
-                    gameId: 1,
+                    gameId: gameData.id,
                     score,
-                    gameSpecific: { streak, correctAnswers, questionsAnswered },
+                    achievements: streak >= 5 ? ['High Streak'] : [], // Example achievement
                 },
-                { headers: { Authorization: `Bearer ${token}` } }
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                    },
+                }
             );
+
+            console.log('Score submitted:', response.data);
         } catch (error) {
             console.error('Error submitting score:', error);
+            setError('Failed to submit score');
         }
     };
 
@@ -109,16 +201,16 @@ const TrashSortGame = () => {
         const isCorrect = selectedBin === currentItem.correct;
         const timeBonus = timeLeft > 3 ? 2 : 0;
 
-        setQuestionsAnswered(prev => prev + 1);
+        setQuestionsAnswered((prev) => prev + 1);
 
         if (isCorrect) {
-            setCorrectAnswers(prev => prev + 1);
+            setCorrectAnswers((prev) => prev + 1);
             const newStreak = streak + 1;
             setStreak(newStreak);
             const basePoints = 10;
             const streakMultiplier = Math.max(1, newStreak);
-            const points = (basePoints * streakMultiplier) + timeBonus;
-            setScore(prev => prev + points);
+            const points = basePoints * streakMultiplier + timeBonus;
+            setScore((prev) => prev + points);
             setFeedback({
                 type: 'correct',
                 message: `Correct! +${points} points`,
@@ -127,7 +219,7 @@ const TrashSortGame = () => {
             });
         } else {
             setStreak(0);
-            setScore(prev => Math.max(0, prev - 5));
+            setScore((prev) => Math.max(0, prev - 5));
             setFeedback({
                 type: 'wrong',
                 message: `Wrong! The correct answer was ${currentItem.correct}`,
@@ -147,7 +239,7 @@ const TrashSortGame = () => {
 
     const handleTimeOut = useCallback(() => {
         setStreak(0);
-        setQuestionsAnswered(prev => prev + 1);
+        setQuestionsAnswered((prev) => prev + 1);
         setFeedback({
             type: 'timeout',
             message: `Time's up! The correct answer was ${currentItem.correct}`,
@@ -167,7 +259,7 @@ const TrashSortGame = () => {
     useEffect(() => {
         if (gameState === 'playing' && timeLeft > 0 && !feedback) {
             const timer = setTimeout(() => {
-                setTimeLeft(prev => prev - 1);
+                setTimeLeft((prev) => prev - 1);
             }, 1000);
             return () => clearTimeout(timer);
         } else if (timeLeft === 0 && !feedback && gameState === 'playing') {
@@ -183,8 +275,22 @@ const TrashSortGame = () => {
         return questionsAnswered > 0 ? Math.round((correctAnswers / questionsAnswered) * 100) : 0;
     };
 
-
-
+    if (error) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-red-400 via-pink-500 to-purple-500 flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center">
+                    <h1 className="text-2xl font-bold text-red-600 mb-4">Error</h1>
+                    <p className="text-gray-600 mb-6">{error}</p>
+                    <button
+                        onClick={() => navigate('/games')}
+                        className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-full text-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
+                    >
+                        Back to Games
+                    </button>
+                </div>
+            </div>
+        );
+    }
 
     if (gameState === 'menu') {
         return (
@@ -192,8 +298,8 @@ const TrashSortGame = () => {
                 <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center">
                     <div className="mb-6">
                         <Recycle className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
-                        <h1 className="text-4xl font-bold text-gray-800 mb-2">Trash Sort Challenge</h1>
-                        <p className="text-gray-600">Test your recycling knowledge!</p>
+                        <h1 className="text-4xl font-bold text-gray-800 mb-2">{gameData?.title || 'Trash Sort Challenge'}</h1>
+                        <p className="text-gray-600">{gameData?.description || 'Test your recycling knowledge!'}</p>
                     </div>
 
                     <div className="mb-8 space-y-3 text-left">
@@ -307,8 +413,8 @@ const TrashSortGame = () => {
 
                     {feedback && (
                         <div className={`mb-6 p-4 rounded-xl ${feedback.type === 'correct' ? 'bg-green-100 text-green-700' :
-                                feedback.type === 'wrong' ? 'bg-red-100 text-red-700' :
-                                    'bg-yellow-100 text-yellow-700'
+                            feedback.type === 'wrong' ? 'bg-red-100 text-red-700' :
+                                'bg-yellow-100 text-yellow-700'
                             }`}>
                             <div className="font-semibold">{feedback.message}</div>
                             {feedback.timeBonus && (

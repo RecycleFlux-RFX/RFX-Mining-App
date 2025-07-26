@@ -15,175 +15,18 @@ export default function RFXGamesPage() {
     const [activeTab, setActiveTab] = useState('games');
     const [selectedGame, setSelectedGame] = useState(null);
     const [playerStats, setPlayerStats] = useState({
-        level: 12,
-        xp: 2847,
-        totalXp: 3000,
-        gamesPlayed: 156,
-        tokensEarned: 0.15478
+        level: 1,
+        xp: 0,
+        totalXp: 1000,
+        gamesPlayed: 0,
+        tokensEarned: 0
     });
+    const [games, setGames] = useState([]);
     const [error, setError] = useState(null);
-    const [gameProgress, setGameProgress] = useState([]); // Store user's game progress
+    const [gameProgress, setGameProgress] = useState([]);
+    const [loading, setLoading] = useState(true);
 
     const BASE_URL = 'http://localhost:3000';
-
-    const games = [
-        {
-            id: 1,
-            title: "EcoSort Master",
-            subtitle: "Trash Sorting Challenge",
-            description: "Sort waste into correct recycling categories as fast as possible. Test your knowledge of recycling rules while earning rewards!",
-            category: "Puzzle",
-            icon: Trash2,
-            bgColor: "from-green-400 to-green-600",
-            cardColor: "green",
-            difficulty: "Easy",
-            players: 24891,
-            avgTime: "3 min",
-            reward: "₿ 0.00150",
-            xpReward: 25,
-            featured: true,
-            new: false,
-            trending: true,
-            rating: 4.8,
-            plays: 125000,
-            achievements: 8,
-            powerUps: ["Double Points", "Time Freeze", "Auto Sort"],
-            gameMode: ["Classic", "Time Attack", "Endless"],
-            description_long: "Master the art of waste sorting in this fast-paced puzzle game. Learn real recycling rules while competing with players worldwide. Each correct sort earns points and helps save the virtual environment!",
-            screenshots: 4,
-            locked: false
-        },
-        {
-            id: 2,
-            title: "Ocean Defender",
-            subtitle: "Underwater Cleanup",
-            description: "Navigate underwater worlds and clean up ocean pollution. Battle against time and sea creatures to restore marine ecosystems.",
-            category: "Action",
-            icon: Droplets,
-            bgColor: "from-blue-400 to-cyan-600",
-            cardColor: "blue",
-            difficulty: "Medium",
-            players: 18734,
-            avgTime: "8 min",
-            reward: "₿ 0.00300",
-            xpReward: 45,
-            featured: false,
-            new: true,
-            trending: false,
-            rating: 4.6,
-            plays: 89000,
-            achievements: 12,
-            powerUps: ["Turbo Speed", "Pollution Magnet", "Shield Boost"],
-            gameMode: ["Story", "Survival", "Co-op"],
-            description_long: "Dive deep into polluted oceans and become the ultimate ocean defender. Use special tools to clean up plastic waste, rescue marine life, and restore coral reefs in this immersive underwater adventure.",
-            screenshots: 6,
-            locked: false
-        },
-        {
-            id: 3,
-            title: "Carbon Footprint Quest",
-            subtitle: "Lifestyle Simulator",
-            description: "Make daily choices that impact your carbon footprint. Learn sustainable living while building your eco-friendly virtual life.",
-            category: "Simulation",
-            icon: Globe,
-            bgColor: "from-purple-400 to-pink-600",
-            cardColor: "purple",
-            difficulty: "Medium",
-            players: 15672,
-            avgTime: "12 min",
-            reward: "₿ 0.00250",
-            xpReward: 35,
-            featured: false,
-            new: false,
-            trending: true,
-            rating: 4.7,
-            plays: 67000,
-            achievements: 15,
-            powerUps: ["Green Energy", "Smart Home", "Eco Transport"],
-            gameMode: ["Career", "Challenge", "Free Play"],
-            description_long: "Experience the consequences of everyday choices in this life simulation game. Build an eco-friendly lifestyle, manage resources, and see how your decisions impact the planet's health over time.",
-            screenshots: 5,
-            locked: false
-        },
-        {
-            id: 4,
-            title: "Forest Guardian",
-            subtitle: "Tree Planting Adventure",
-            description: "Plant and nurture forests while defending them from threats. Grow your forest empire and earn rewards for every tree saved.",
-            category: "Strategy",
-            icon: TreePine,
-            bgColor: "from-green-500 to-emerald-600",
-            cardColor: "emerald",
-            difficulty: "Hard",
-            players: 12453,
-            avgTime: "15 min",
-            reward: "₿ 0.00450",
-            xpReward: 60,
-            featured: true,
-            new: false,
-            trending: false,
-            rating: 4.9,
-            plays: 45000,
-            achievements: 20,
-            powerUps: ["Fast Growth", "Disease Immunity", "Fire Protection"],
-            gameMode: ["Campaign", "Sandbox", "Multiplayer"],
-            description_long: "Become a forest guardian and protect nature from destruction. Plant trees, manage ecosystems, and defend against wildfires and deforestation in this strategic tower defense game.",
-            screenshots: 7,
-            locked: false
-        },
-        {
-            id: 5,
-            title: "Green Energy Tycoon",
-            subtitle: "Renewable Power Empire",
-            description: "Build and manage renewable energy facilities. Create a sustainable power grid while maximizing profits and minimizing environmental impact.",
-            category: "Strategy",
-            icon: Zap,
-            bgColor: "from-yellow-400 to-orange-500",
-            cardColor: "yellow",
-            difficulty: "Hard",
-            players: 9876,
-            avgTime: "20 min",
-            reward: "₿ 0.00600",
-            xpReward: 80,
-            featured: false,
-            new: false,
-            trending: false,
-            rating: 4.5,
-            plays: 32000,
-            achievements: 25,
-            powerUps: ["Efficiency Boost", "Weather Control", "Tech Upgrade"],
-            gameMode: ["Tycoon", "Scenario", "Competitive"],
-            description_long: "Build your renewable energy empire from the ground up. Research new technologies, manage resources, and compete with other players to create the most efficient green energy network.",
-            screenshots: 8,
-            locked: false
-        },
-        {
-            id: 6,
-            title: "Eco Puzzle Challenge",
-            subtitle: "Environmental Brain Teasers",
-            description: "Solve environmental puzzles and learn about sustainability. Each puzzle teaches real-world eco facts while challenging your mind.",
-            category: "Puzzle",
-            icon: Brain,
-            bgColor: "from-indigo-400 to-purple-600",
-            cardColor: "indigo",
-            difficulty: "Easy",
-            players: 21345,
-            avgTime: "5 min",
-            reward: "₿ 0.00100",
-            xpReward: 20,
-            featured: false,
-            new: false,
-            trending: false,
-            rating: 4.4,
-            plays: 156000,
-            achievements: 10,
-            powerUps: ["Hint System", "Skip Puzzle", "Double XP"],
-            gameMode: ["Daily Challenge", "Progressive", "Time Trial"],
-            description_long: "Exercise your brain with eco-themed puzzles that teach environmental science. From climate change scenarios to biodiversity challenges, each puzzle is both fun and educational.",
-            screenshots: 3,
-            locked: false
-        }
-    ];
 
     const navItems = [
         { icon: Home, label: 'Home', id: 'home', path: '/' },
@@ -196,11 +39,36 @@ export default function RFXGamesPage() {
     const categories = ["All", "Puzzle", "Action", "Simulation", "Strategy"];
     const [selectedCategory, setSelectedCategory] = useState("All");
 
-    const filteredGames = selectedCategory === "All"
-        ? games
-        : games.filter(game => game.category === selectedCategory);
+    // Map backend game data to frontend format
+    const mapGameData = (game) => {
+        const iconMap = {
+            'EcoSort Master': Trash2,
+            'Ocean Defender': Droplets,
+            'Carbon Footprint Quest': Globe,
+            'Forest Guardian': TreePine,
+            'Green Energy Tycoon': Zap,
+            'Eco Puzzle Challenge': Brain
+        };
 
-    const featuredGames = games.filter(game => game.featured);
+        const bgColorMap = {
+            'EcoSort Master': 'from-green-400 to-green-600',
+            'Ocean Defender': 'from-blue-400 to-cyan-600',
+            'Carbon Footprint Quest': 'from-purple-400 to-pink-600',
+            'Forest Guardian': 'from-green-500 to-emerald-600',
+            'Green Energy Tycoon': 'from-yellow-400 to-orange-500',
+            'Eco Puzzle Challenge': 'from-indigo-400 to-purple-600'
+        };
+
+        return {
+            ...game,
+            icon: iconMap[game.title] || Gamepad2,
+            bgColor: bgColorMap[game.title] || 'from-gray-400 to-gray-600',
+            cardColor: game.category.toLowerCase(),
+            locked: game.locked,
+            canPlay: !game.lastPlayed ||
+                new Date(game.lastPlayed).toDateString() !== new Date().toDateString()
+        };
+    };
 
     useEffect(() => {
         const currentNavItem = navItems.find((item) => item.path === location.pathname);
@@ -215,122 +83,52 @@ export default function RFXGamesPage() {
             console.log('No auth token found, redirecting to login');
             setError('Please log in to access games');
             navigate('/login');
+            return;
         }
-    }, [navigate]);
 
-    useEffect(() => {
-        // In RFXGamesPage.jsx, modify fetchGameProgress
-        const fetchGameProgress = async () => {
-            try {
-                const token = localStorage.getItem('authToken');
-                if (!token) {
-                    throw new Error('No auth token found');
-                }
-
-                const response = await fetch(`${BASE_URL}/games/progress`, {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${token}`,
-                    },
-                });
-
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    if (response.status === 401 || response.status === 403) {
-                        localStorage.removeItem('authToken');
-                        navigate('/login');
-                        setError('Session expired. Please log in again.');
-                        return;
-                    }
-                    throw new Error(errorData.message || 'Failed to fetch game progress');
-                }
-
-                const data = await response.json();
-                setPlayerStats(data.playerStats || {
-                    level: 1,
-                    xp: 0,
-                    totalXp: 1000,
-                    gamesPlayed: 0,
-                    tokensEarned: 0
-                });
-                setGameProgress(data.games || []);
-            } catch (error) {
-                console.error('Error fetching game progress:', error.message);
-                setError(error.message || 'Failed to load game progress');
-                setGameProgress([]);
-                setPlayerStats({
-                    level: 1,
-                    xp: 0,
-                    totalXp: 1000,
-                    gamesPlayed: 0,
-                    tokensEarned: 0
-                });
-            }
-        };
-
-        if (localStorage.getItem('authToken')) {
-            fetchGameProgress();
-        }
-    }, [navigate]);
-
-    useEffect(() => {
         const fetchData = async () => {
-            const token = localStorage.getItem('authToken');
-            if (!token) {
-                console.log('No auth token found, redirecting to login');
-                setError('Please log in to access games');
-                navigate('/login');
-                return;
-            }
-
-            console.log('Fetching user data, network stats, and referral link...');
             try {
-                const headers = {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                };
+                setLoading(true);
 
-                const [userResponse, statsResponse, referralResponse] = await Promise.all([
-                    fetch(`${BASE_URL}/user/user`, {
-                        method: 'GET',
-                        headers,
+                // Fetch games and progress in parallel
+                const [gamesRes, progressRes] = await Promise.all([
+                    fetch(`${BASE_URL}/games`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
                     }),
-                    fetch(`${BASE_URL}/user/network-stats`, {
-                        method: 'GET',
-                        headers,
-                    }),
-                    fetch(`${BASE_URL}/user/referral-link`, {
-                        method: 'GET',
-                        headers,
-                    }),
+                    fetch(`${BASE_URL}/games/progress`, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    })
                 ]);
 
-                if (!userResponse.ok) {
-                    const errorData = await userResponse.json();
-                    throw new Error(errorData.message || 'Failed to fetch user data');
-                }
-                if (!statsResponse.ok) {
-                    const errorData = await statsResponse.json();
-                    throw new Error(errorData.message || 'Failed to fetch network stats');
-                }
-                if (!referralResponse.ok) {
-                    const errorData = await referralResponse.json();
-                    throw new Error(errorData.message || 'Failed to fetch referral link');
+                if (!gamesRes.ok || !progressRes.ok) {
+                    throw new Error('Failed to fetch game data');
                 }
 
-                const userDataResult = await userResponse.json();
-                const statsDataResult = await statsResponse.json();
-                const referralDataResult = await referralResponse.json();
+                const gamesData = await gamesRes.json();
+                const progressData = await progressRes.json();
 
-                console.log('User data gotten:', userDataResult);
-                console.log('Network stats gotten:', statsDataResult);
-                console.log('Referral link gotten:', referralDataResult.referralLink);
+                // Map games with progress data
+                const mappedGames = gamesData.map(game => {
+                    const progress = progressData.games.find(g => g.id === game._id) || {};
+                    return mapGameData({
+                        ...game,
+                        ...progress
+                    });
+                });
+
+                setGames(mappedGames);
+                setPlayerStats(progressData.playerStats);
+                setGameProgress(progressData.games);
+                setLoading(false);
             } catch (error) {
-                console.error('Error fetching data:', error.message);
-                setError(error.message || 'Failed to fetch data. Please try again.');
-                if (error.message.includes('Authentication') || error.message.includes('Invalid token')) {
-                    console.log('Authentication error, redirecting to login');
+                console.error('Error fetching data:', error);
+                setError(error.message);
+                setLoading(false);
+                if (error.message.includes('Authentication')) {
                     localStorage.removeItem('authToken');
                     navigate('/login');
                 }
@@ -339,6 +137,12 @@ export default function RFXGamesPage() {
 
         fetchData();
     }, [navigate]);
+
+    const filteredGames = selectedCategory === "All"
+        ? games
+        : games.filter(game => game.category === selectedCategory);
+
+    const featuredGames = games.filter(game => game.featured);
 
     const startGameSession = async (game) => {
         try {
@@ -351,12 +155,12 @@ export default function RFXGamesPage() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
+                    'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({
                     gameId: game.id,
-                    title: game.title,
-                }),
+                    title: game.title
+                })
             });
 
             if (!response.ok) {
@@ -364,19 +168,31 @@ export default function RFXGamesPage() {
                 throw new Error(errorData.message || 'Failed to start game');
             }
 
-            const data = await response.json();
-            console.log('Game started:', data);
-
-            navigate(`/game/${game.id}`);
+            // Navigate to the game page
+            if (game.title === 'EcoSort Master') {
+                navigate('/games/re');
+            } else if (game.title === 'Ocean Defender') {
+                navigate('/games/recycle-rush');
+            } else {
+                navigate(`/game/${game.id}`);
+            }
         } catch (error) {
-            console.error('Error starting game:', error.message);
-            setError(error.message || 'Failed to start game');
+            console.error('Error starting game:', error);
+            setError(error.message);
             if (error.message.includes('User not found') || error.message.includes('Invalid token')) {
                 localStorage.removeItem('authToken');
                 navigate('/login');
             }
         }
     };
+
+    if (loading) {
+        return (
+            <div className="w-full min-h-screen bg-gradient-to-br from-black via-gray-900 to-black flex items-center justify-center">
+                <div className="text-white text-xl">Loading games...</div>
+            </div>
+        );
+    }
 
     return (
         <div className="w-full min-h-screen bg-gradient-to-br from-black via-gray-900 to-black overflow-hidden relative">

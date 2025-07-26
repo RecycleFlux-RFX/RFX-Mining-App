@@ -2,8 +2,8 @@ const mongoose = require('mongoose');
 
 const ReferralSchema = new mongoose.Schema({
     referrerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    refereeId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    referralCode: { type: String, required: true },
+    refereeId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Remove required: true
+    referralCode: { type: String, required: true, unique: true }, // Add unique: true
     earnedCommission: { type: Number, default: 0 },
     status: {
         type: String,
@@ -12,5 +12,3 @@ const ReferralSchema = new mongoose.Schema({
     },
     completedAt: { type: Date }
 }, { timestamps: true });
-
-module.exports = mongoose.model('Referral', ReferralSchema);

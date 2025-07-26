@@ -10,6 +10,14 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
+const getCurrentDay = (startDate, duration) => {
+    const now = new Date();
+    const start = new Date(startDate);
+    const diffTime = now - start;
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+    return Math.min(diffDays, duration);
+};
+
 // Configure multer for file uploads
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -287,5 +295,60 @@ router.post('/complete-task', auth, async (req, res) => {
         res.status(500).json({ message: 'Server error', details: error.message });
     }
 });
+
+// Update the GET /campaigns/:campaignId route
+router.get('/:campaignId', auth, async (req, res) => {
+    try {
+        const campaign = await Campaign.findById(req.params.campaignId);
+        if (!campaign) {
+            return res.status(404).json({ message: 'Campaign not found' });
+        }
+
+        const user = await User.findById(req.user.userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const currentDay = getCurrentDay(campaign.startDate, campaign.duration);
+        
+        // Map tasks for the current day
+        const tasks = campaign.tasksList
+            .filter(task => task.day === currentDay)
+            .map(task => ({
+                id: task._id,
+                day: task.day,
+                title: task.title,
+                description: task.description,
+                type: task.type,
+                contentUrl: task.contentUrl,
+                platform: task.platform,
+                reward: typeof task.reward === 'number' ? task.reward.toFixed(5) : '0.00000',
+                requirements: task.requirements || [],
+                status: task.completedBy?.find(cb => cb.userId.toString() === req.user.userId)?.status || task.status || 'pending',
+                proof: task.proof || '',
+                completed: !!task.completedBy?.find(cb => cb.userId.toString() === req.user.userId && task.status === 'completed'),
+            }));
+
+        res.json({
+            id: campaign._id,
+            title: campaign.title,
+            description: campaign.description,
+            category: campaign.category,
+            reward: typeof campaign.reward === 'number' ? campaign.reward.toFixed(5) : '0.00000',
+            participants: campaign.participants || 0,
+            tasks,
+            currentDay,
+            totalDays: campaign.duration,
+            duration: campaign.duration || '7 days',
+            difficulty: campaign.difficulty || 'Medium',
+            progress: campaign.progress || 0,
+            startDate: campaign.startDate,
+        });
+    } catch (error) {
+        console.error('Error fetching campaign details:', error);
+        res.status(500).json({ message: 'Server error', details: error.message });
+    }
+});
+
 
 module.exports = router;

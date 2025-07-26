@@ -1,12 +1,11 @@
-// routes/user.js
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const User = require('../models/User');
 const NetworkStats = require('../models/NetworkStats');
-const Referral = require('../models/Referral');
 const Wallet = require('../models/Wallet');
 const Transaction = require('../models/Transaction');
+const { v4: uuidv4 } = require('uuid');
 
 // Get User Data
 router.get('/user', auth, async (req, res) => {
@@ -50,19 +49,18 @@ router.get('/referral-link', auth, async (req, res) => {
             return res.status(401).json({ message: 'Invalid user ID' });
         }
 
-        const referral = await Referral.findOne({ referrerId: req.user.userId });
-        let referralCode = referral ? referral.referralCode : generateReferralCode();
-
-        if (!referral) {
-            const newReferral = new Referral({
-                referrerId: req.user.userId,
-                referralCode,
-                refereeId: req.user.userId, // Placeholder, update when referee joins
-            });
-            await newReferral.save();
+        let user = await User.findById(req.user.userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
         }
 
-        res.json({ referralLink: `https://yourapp.com/referral/${referralCode}` });
+        if (!user.referralCode) {
+            const referralCode = uuidv4().substring(0, 8).toUpperCase();
+            user.referralCode = referralCode;
+            await user.save();
+        }
+
+        res.json({ referralLink: `https://yourapp.com/referral/${user.referralCode}` });
     } catch (error) {
         console.error('Error fetching referral link:', error);
         res.status(500).json({ message: 'Server error', details: error.message });
@@ -88,13 +86,11 @@ router.get('/wallet/rank', auth, async (req, res) => {
 
 router.post('/claim-reward', auth, async (req, res) => {
     try {
-        // 1. Find user's wallet
         const wallet = await Wallet.findOne({ userId: req.user.userId });
         if (!wallet) {
             return res.status(404).json({ message: 'Wallet not found' });
         }
 
-        // 2. Check if reward was already claimed today
         const todayStart = new Date();
         todayStart.setHours(0, 0, 0, 0);
 
@@ -111,37 +107,31 @@ router.post('/claim-reward', auth, async (req, res) => {
         if (existingClaim) {
             return res.status(400).json({
                 message: 'Daily reward already claimed today',
-                nextClaim: new Date(todayEnd.getTime() + 1) // Next available claim time
+                nextClaim: new Date(todayEnd.getTime() + 1)
             });
         }
 
-        // 3. Calculate reward amount (could be dynamic based on user level, etc.)
-        const rewardAmount = calculateDailyReward(req.user.userId); // Implement this function
-
-        // 4. Update wallet balance
+        const rewardAmount = calculateDailyReward(req.user.userId);
         wallet.balance += rewardAmount;
         await wallet.save();
 
-        // 5. Create transaction record
         const transaction = await Transaction.create({
             userId: req.user.userId,
             walletId: wallet._id,
-            type: 'earn', // Valid enum value
-            category: 'Daily Reward', // Specific category
+            type: 'earn',
+            category: 'Daily Reward',
             amount: rewardAmount,
             activity: 'Daily Reward Claim',
             description: 'Claimed daily reward',
-            status: 'completed' // Valid enum value
+            status: 'completed'
         });
 
-        // 6. Return success response
         res.json({
             success: true,
             amount: rewardAmount,
             newBalance: wallet.balance,
             transactionId: transaction._id
         });
-
     } catch (error) {
         console.error('Daily reward claim error:', error);
         res.status(500).json({
@@ -151,16 +141,8 @@ router.post('/claim-reward', auth, async (req, res) => {
     }
 });
 
-// Helper function to calculate dynamic rewards
 function calculateDailyReward(userId) {
-    // Implement your reward logic here
-    // Example: base reward + streak bonus
-    return 0.0001; // Default base reward
-}
-
-// Helper function to generate referral code
-function generateReferralCode() {
-    return Math.random().toString(36).substring(2, 10).toUpperCase();
+    return 0.0001;
 }
 
 module.exports = router;

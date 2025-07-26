@@ -30,8 +30,16 @@ const CampaignSchema = new mongoose.Schema({
         default: 'active'
     },
     tasksList: [{
+        day: { type: Number, required: true }, // Day number (1, 2, 3...)
         title: { type: String, required: true },
         description: { type: String, required: true },
+        type: {
+            type: String,
+            enum: ['social-follow', 'social-post', 'video-watch', 'article-read', 'discord-join', 'proof-upload'],
+            required: true
+        },
+        contentUrl: { type: String }, // For videos/articles
+        platform: { type: String }, // For social tasks
         reward: { type: Number, required: true, default: 0 },
         requirements: [{ type: String }],
         status: {

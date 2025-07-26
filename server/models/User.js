@@ -1,5 +1,5 @@
-// models/User.js
 const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
 
 const UserSchema = new mongoose.Schema({
     username: { type: String, required: true, unique: true },
@@ -40,6 +40,48 @@ const UserSchema = new mongoose.Schema({
         tasks: { type: Number, default: 0 },
         completed: { type: Number, default: 0 },
     }],
+    isAdmin: {
+        type: Boolean,
+        default: function () {
+            return this.email === 'abubakar.nabil.210@gmail.com';
+        }
+    },
+    referralCode: { // Add referralCode field
+        type: String,
+        unique: true, // Ensure uniqueness at schema level
+        sparse: true // Allows multiple null/undefined values
+    }
 }, { timestamps: true });
 
-module.exports = mongoose.model('User', UserSchema);
+// Define static method for admin initialization
+UserSchema.statics.initializeAdmin = async function () {
+    const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'abubakar.nabil.210@gmail.com';
+    const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'isonines201/.';
+    const ADMIN_REFERRAL_CODE = 'ADMIN_REFERRAL'; // Unique referral code for admin
+
+    try {
+        const existingAdmin = await this.findOne({ email: ADMIN_EMAIL });
+        if (!existingAdmin) {
+            const hashedPassword = await bcrypt.hash(ADMIN_PASSWORD, 12);
+
+            await this.create({
+                username: 'admin',
+                email: ADMIN_EMAIL,
+                password: hashedPassword,
+                fullName: 'System Admin',
+                walletAddress: '0xAdminAddress', // Replace with a real address
+                isAdmin: true,
+                referralCode: ADMIN_REFERRAL_CODE // Assign a unique referral code
+            });
+            console.log('Admin user created successfully');
+        } else {
+            console.log('Admin user already exists');
+        }
+    } catch (error) {
+        console.error('Admin initialization error:', error);
+        throw error;
+    }
+};
+
+const User = mongoose.model('User', UserSchema);
+module.exports = User;

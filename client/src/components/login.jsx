@@ -24,7 +24,36 @@ export default function Login() {
         setError(null);
 
         try {
-            const response = await fetch('http://localhost:3000/auth/login', {
+            // Check if this is an admin login attempt
+            const isAdminLogin = formData.username === 'abubakar.nabil.210@gmail.com';
+
+            if (isAdminLogin) {
+                // Admin login flow
+                const response = await fetch('http://localhost:3000/auth/admin/check', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: formData.username,
+                    }),
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.message || 'Admin verification failed');
+                }
+
+                // Redirect to admin verification page, passing email and password
+                navigate('/admin/verify', {
+                    state: { email: formData.username, password: formData.password },
+                });
+                return;
+            }
+
+            // Regular user login flow
+            const loginResponse = await fetch('http://localhost:3000/auth/login', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -35,28 +64,22 @@ export default function Login() {
                 }),
             });
 
-            const data = await response.json();
+            const loginData = await loginResponse.json();
 
-            if (!response.ok) {
-                throw new Error(data.message || 'Login failed');
+            if (!loginResponse.ok) {
+                throw new Error(loginData.message || 'Login failed');
             }
 
-            if (!data.token || !data.user) {
-                throw new Error('Invalid response format from server');
+            // Store token and user data
+            localStorage.setItem('token', loginData.token);
+            localStorage.setItem('user', JSON.stringify(loginData.user));
+            if (loginData.user.isAdmin) {
+                localStorage.setItem('isAdmin', 'true');
             }
 
-            // Store token in localStorage
-            localStorage.setItem('authToken', data.token);
+            // Redirect based on user role
+            navigate(loginData.user.isAdmin ? '/admin/dashboard' : '/dashboard');
 
-            // If "remember me" is checked, store username for future sessions
-            if (rememberMe) {
-                localStorage.setItem('rememberedUsername', formData.username);
-            } else {
-                localStorage.removeItem('rememberedUsername');
-            }
-
-            // Redirect to dashboard
-            navigate('/');
         } catch (err) {
             console.error('Login error:', err);
             setError(err.message || 'Failed to connect to the server. Please try again.');
@@ -75,7 +98,6 @@ export default function Login() {
                 throw new Error('Failed to initiate Google Sign-In');
             }
             const data = await response.json();
-            // Handle Google OAuth redirect
             if (data.redirectUrl) {
                 window.location.href = data.redirectUrl;
             }
@@ -91,7 +113,6 @@ export default function Login() {
         <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 flex items-center justify-center p-4">
             <div className="w-full max-w-md bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl overflow-hidden">
                 <div className="p-6 sm:p-8 flex flex-col justify-center">
-                    {/* Header */}
                     <div className="mb-8">
                         <div className="flex items-center space-x-3 mb-6">
                             <div className="w-8 h-8 bg-gradient-to-r from-cyan-600 to-teal-600 rounded-lg flex items-center justify-center">
@@ -99,43 +120,35 @@ export default function Login() {
                             </div>
                             <span className="text-lg font-semibold text-slate-800">Free Airdrop</span>
                         </div>
-
                         <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">
                             Welcome back
                         </h1>
                         <p className="text-slate-600">
-                            Enter your username and password to access your dashboard
+                            Enter your username or email to access your dashboard
                         </p>
                     </div>
-
-                    {/* Error Message */}
                     {error && (
                         <div className="flex items-center space-x-2 p-4 bg-red-50 rounded-xl text-red-600 mb-6">
                             <AlertCircle className="w-5 h-5" />
                             <span className="text-sm">{error}</span>
                         </div>
                     )}
-
-                    {/* Form */}
                     <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
-                        {/* Username */}
                         <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700">Username</label>
+                            <label className="text-sm font-medium text-slate-700">Username or Email</label>
                             <div className="relative">
                                 <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
                                 <input
                                     type="text"
                                     value={formData.username}
                                     onChange={(e) => handleInputChange('username', e.target.value)}
-                                    placeholder="Enter your username"
+                                    placeholder="Enter your username or email"
                                     className="w-full pl-10 pr-4 py-3 sm:py-4 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all text-slate-900 placeholder-slate-400"
                                     required
-                                    aria-label="Username"
+                                    aria-label="Username or Email"
                                 />
                             </div>
                         </div>
-
-                        {/* Password */}
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-700">Password</label>
                             <div className="relative">
@@ -159,8 +172,6 @@ export default function Login() {
                                 </button>
                             </div>
                         </div>
-
-                        {/* Remember Me / Forgot Password */}
                         <div className="flex items-center justify-between">
                             <label className="flex items-center space-x-2 cursor-pointer">
                                 <input
@@ -179,14 +190,12 @@ export default function Login() {
                                 Forgot password?
                             </Link>
                         </div>
-
-                        {/* Submit Button */}
                         <button
                             type="submit"
                             disabled={isLoading}
                             className={`w-full py-3 sm:py-4 px-4 rounded-xl font-semibold text-white transition-all ${isLoading
-                                    ? 'bg-gray-400 cursor-not-allowed'
-                                    : 'bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700 active:scale-95 shadow-lg'
+                                ? 'bg-gray-400 cursor-not-allowed'
+                                : 'bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700 active:scale-95 shadow-lg'
                                 }`}
                         >
                             {isLoading ? (
@@ -199,8 +208,6 @@ export default function Login() {
                             )}
                         </button>
                     </form>
-
-                    {/* Google Sign In */}
                     <button
                         onClick={handleGoogleSignIn}
                         disabled={isLoading}
@@ -226,8 +233,6 @@ export default function Login() {
                         </svg>
                         <span>Sign in with Google</span>
                     </button>
-
-                    {/* Switch to Signup */}
                     <div className="text-center pt-4">
                         <span className="text-slate-600">Don't have an account? </span>
                         <Link
@@ -237,8 +242,6 @@ export default function Login() {
                             Sign up
                         </Link>
                     </div>
-
-                    {/* Footer */}
                     <div className="mt-8 pt-6 border-t border-slate-200">
                         <p className="text-xs text-slate-500 text-center">
                             © {new Date().getFullYear()} Free Airdrop. All rights reserved.

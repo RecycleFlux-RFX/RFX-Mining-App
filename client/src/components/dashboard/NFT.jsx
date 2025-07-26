@@ -72,6 +72,7 @@ export default function RFXVerseInterface() {
         const fetchData = async () => {
             const token = localStorage.getItem('authToken');
             if (!token) {
+                setError({ type: 'error', message: 'Please log in to view data' });
                 navigate('/login');
                 return;
             }
@@ -88,17 +89,21 @@ export default function RFXVerseInterface() {
                     fetch(`${BASE_URL}/referral-link`, { method: 'GET', headers }),
                 ]);
 
+                const errors = [];
                 if (!userResponse.ok) {
                     const errorData = await userResponse.json();
-                    throw new Error(errorData.message || 'Failed to fetch user data');
+                    errors.push(errorData.message || 'Failed to fetch user data');
                 }
                 if (!statsResponse.ok) {
                     const errorData = await statsResponse.json();
-                    throw new Error(errorData.message || 'Failed to fetch network stats');
+                    errors.push(errorData.message || 'Failed to fetch network stats');
                 }
                 if (!referralResponse.ok) {
                     const errorData = await referralResponse.json();
-                    throw new Error(errorData.message || 'Failed to fetch referral link');
+                    errors.push(errorData.message || 'Failed to fetch referral link');
+                }
+                if (errors.length > 0) {
+                    throw new Error(errors.join('; '));
                 }
 
                 const [userDataResult, statsDataResult, referralDataResult] = await Promise.all([
@@ -204,7 +209,7 @@ export default function RFXVerseInterface() {
         } else {
             setError({
                 type: 'error',
-                message: 'Referral link not available'
+                message: 'Referral link not available. Please try again.'
             });
         }
     };
