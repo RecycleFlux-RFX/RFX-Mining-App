@@ -3,30 +3,43 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
     Home, MapPin, Gamepad2, Wallet, Settings,
     Play, Trophy, Star, Clock, Users, Zap,
-    Target, Recycle, Trash2, TreePine, Droplets,
+    Trash2, Droplets, Globe, TreePine, Brain,
     Award, Crown, TrendingUp, Flame, Puzzle,
-    Sword, Shield, Brain, Timer, Gift,
-    ArrowRight, Medal, Globe, Lock
+    Timer, Gift, Medal, Lock
 } from 'lucide-react';
+
+// Map category to icon for rendering with safe defaults
+const categoryIcons = {
+    Puzzle: Puzzle,
+    Action: Zap,
+    Simulation: Globe,
+    Strategy: Brain,
+    Default: Puzzle
+};
+
+const BASE_URL = 'http://localhost:3000';
 
 export default function RFXGamesPage() {
     const location = useLocation();
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('games');
     const [selectedGame, setSelectedGame] = useState(null);
+    const [games, setGames] = useState([]);
+    const [loading, setLoading] = useState({
+        games: true,
+        stats: true
+    });
     const [playerStats, setPlayerStats] = useState({
-        level: 1,
+        level: 0,
         xp: 0,
-        totalXp: 1000,
+        totalXp: 0,
         gamesPlayed: 0,
         tokensEarned: 0
     });
-    const [games, setGames] = useState([]);
     const [error, setError] = useState(null);
-    const [gameProgress, setGameProgress] = useState([]);
-    const [loading, setLoading] = useState(true);
 
-    const BASE_URL = 'http://localhost:3000';
+    const categories = ["All", "Puzzle", "Action", "Simulation", "Strategy"];
+    const [selectedCategory, setSelectedCategory] = useState("All");
 
     const navItems = [
         { icon: Home, label: 'Home', id: 'home', path: '/' },
@@ -36,40 +49,112 @@ export default function RFXGamesPage() {
         { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' }
     ];
 
-    const categories = ["All", "Puzzle", "Action", "Simulation", "Strategy"];
-    const [selectedCategory, setSelectedCategory] = useState("All");
+    // Fetch with authentication
+    const fetchWithAuth = async (url, options = {}) => {
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            console.error('No auth token found');
+            navigate('/login');
+            throw new Error('No authentication token found');
+        }
 
-    // Map backend game data to frontend format
-    const mapGameData = (game) => {
-        const iconMap = {
-            'EcoSort Master': Trash2,
-            'Ocean Defender': Droplets,
-            'Carbon Footprint Quest': Globe,
-            'Forest Guardian': TreePine,
-            'Green Energy Tycoon': Zap,
-            'Eco Puzzle Challenge': Brain
+        const headers = {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            ...options.headers,
         };
 
-        const bgColorMap = {
-            'EcoSort Master': 'from-green-400 to-green-600',
-            'Ocean Defender': 'from-blue-400 to-cyan-600',
-            'Carbon Footprint Quest': 'from-purple-400 to-pink-600',
-            'Forest Guardian': 'from-green-500 to-emerald-600',
-            'Green Energy Tycoon': 'from-yellow-400 to-orange-500',
-            'Eco Puzzle Challenge': 'from-indigo-400 to-purple-600'
-        };
+        try {
+            const response = await fetch(url, { ...options, headers });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const errorMessage = errorData.message || `Request failed with status ${response.status}`;
+                if (response.status === 401) {
+                    console.error('Unauthorized request:', errorMessage);
+                    localStorage.removeItem('authToken');
+                    navigate('/login');
+                }
+                throw new Error(errorMessage);
+            }
 
-        return {
-            ...game,
-            icon: iconMap[game.title] || Gamepad2,
-            bgColor: bgColorMap[game.title] || 'from-gray-400 to-gray-600',
-            cardColor: game.category.toLowerCase(),
-            locked: game.locked,
-            canPlay: !game.lastPlayed ||
-                new Date(game.lastPlayed).toDateString() !== new Date().toDateString()
-        };
+            return await response.json();
+        } catch (error) {
+            console.error(`API request failed for ${url}:`, error.message);
+            setError({
+                type: 'error',
+                message: error.message || 'Failed to complete request',
+            });
+            throw error;
+        }
     };
 
+    // Fetch games
+    useEffect(() => {
+        const fetchGames = async () => {
+            setLoading(prev => ({ ...prev, games: true }));
+            try {
+                const response = await fetchWithAuth(`${BASE_URL}/games`);
+                if (response && Array.isArray(response)) {
+                    // Ensure all games have required fields with defaults
+                    const validatedGames = response.map(game => ({
+                        ...game,
+                        id: game._id || game.id,
+                        bgColor: game.bgColor || 'from-purple-500 to-blue-500',
+                        canPlay: game.canPlay !== undefined ? game.canPlay : true,
+                        locked: game.locked || false,
+                        plays: game.plays || 0,
+                        rating: game.rating || 0,
+                        reward: game.reward || '₿ 0.00000',
+                        xpReward: game.xpReward || 0
+                    }));
+                    setGames(validatedGames);
+                } else {
+                    throw new Error('Invalid games data received');
+                }
+            } catch (err) {
+                console.error('Error fetching games:', err);
+                setError({
+                    type: 'error',
+                    message: err.message || 'Failed to load games. Please try again later.',
+                });
+            } finally {
+                setLoading(prev => ({ ...prev, games: false }));
+            }
+        };
+        fetchGames();
+    }, [navigate]);
+
+    // Fetch player stats
+    useEffect(() => {
+        const fetchPlayerStats = async () => {
+            setLoading(prev => ({ ...prev, stats: true }));
+            try {
+                const response = await fetchWithAuth(`${BASE_URL}/games/progress`);
+                if (response && response.playerStats) {
+                    setPlayerStats({
+                        level: response.playerStats.level || 0,
+                        xp: response.playerStats.xp || 0,
+                        totalXp: response.playerStats.totalXp || 1000,
+                        gamesPlayed: response.playerStats.gamesPlayed || 0,
+                        tokensEarned: response.playerStats.tokensEarned || 0
+                    });
+                } else {
+                    throw new Error('Invalid player stats data received');
+                }
+            } catch (err) {
+                console.error('Error fetching player stats:', err);
+                setError({
+                    type: 'error',
+                    message: err.message || 'Failed to load player stats.',
+                });
+            } finally {
+                setLoading(prev => ({ ...prev, stats: false }));
+            }
+        };
+        fetchPlayerStats();
+    }, [navigate]);
+
+    // Update active tab based on location
     useEffect(() => {
         const currentNavItem = navItems.find((item) => item.path === location.pathname);
         if (currentNavItem) {
@@ -77,116 +162,61 @@ export default function RFXGamesPage() {
         }
     }, [location.pathname]);
 
-    useEffect(() => {
-        const token = localStorage.getItem('authToken');
-        if (!token) {
-            console.log('No auth token found, redirecting to login');
-            setError('Please log in to access games');
-            navigate('/login');
-            return;
+    // Start game session
+    const startGameSession = async (game) => {
+        if (game.locked || !game.canPlay) return;
+
+        try {
+            await fetchWithAuth(`${BASE_URL}/games/start`, {
+                method: 'POST',
+                body: JSON.stringify({ gameId: game.id, title: game.title }),
+            });
+            navigate(game.path);
+        } catch (err) {
+            console.error('Error starting game:', err);
+            setError({
+                type: 'error',
+                message: err.message || 'Failed to start game session. Please try again.',
+            });
         }
+    };
 
-        const fetchData = async () => {
-            try {
-                setLoading(true);
-
-                // Fetch games and progress in parallel
-                const [gamesRes, progressRes] = await Promise.all([
-                    fetch(`${BASE_URL}/games`, {
-                        headers: {
-                            'Authorization': `Bearer ${token}`
-                        }
-                    }),
-                    fetch(`${BASE_URL}/games/progress`, {
-                        headers: {
-                            'Authorization': `Bearer ${token}`
-                        }
-                    })
-                ]);
-
-                if (!gamesRes.ok || !progressRes.ok) {
-                    throw new Error('Failed to fetch game data');
-                }
-
-                const gamesData = await gamesRes.json();
-                const progressData = await progressRes.json();
-
-                // Map games with progress data
-                const mappedGames = gamesData.map(game => {
-                    const progress = progressData.games.find(g => g.id === game._id) || {};
-                    return mapGameData({
-                        ...game,
-                        ...progress
-                    });
-                });
-
-                setGames(mappedGames);
-                setPlayerStats(progressData.playerStats);
-                setGameProgress(progressData.games);
-                setLoading(false);
-            } catch (error) {
-                console.error('Error fetching data:', error);
-                setError(error.message);
-                setLoading(false);
-                if (error.message.includes('Authentication')) {
-                    localStorage.removeItem('authToken');
-                    navigate('/login');
-                }
-            }
-        };
-
-        fetchData();
-    }, [navigate]);
-
+    // Safe filtering of games
     const filteredGames = selectedCategory === "All"
         ? games
         : games.filter(game => game.category === selectedCategory);
 
     const featuredGames = games.filter(game => game.featured);
 
-    const startGameSession = async (game) => {
+    // Helper function to safely get gradient classes
+    const getGradientClasses = (bgColor = 'from-purple-500 to-blue-500') => {
+        if (!bgColor) return 'from-purple-500 to-blue-500';
+
         try {
-            const token = localStorage.getItem('authToken');
-            if (!token) {
-                throw new Error('No auth token found');
-            }
-
-            const response = await fetch(`${BASE_URL}/games/start`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({
-                    gameId: game.id,
-                    title: game.title
-                })
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to start game');
-            }
-
-            // Navigate to the game page
-            if (game.title === 'EcoSort Master') {
-                navigate('/games/re');
-            } else if (game.title === 'Ocean Defender') {
-                navigate('/games/recycle-rush');
-            } else {
-                navigate(`/game/${game.id}`);
-            }
-        } catch (error) {
-            console.error('Error starting game:', error);
-            setError(error.message);
-            if (error.message.includes('User not found') || error.message.includes('Invalid token')) {
-                localStorage.removeItem('authToken');
-                navigate('/login');
-            }
+            return bgColor
+                .replace('to-', 'to-')
+                .replace('from-', 'from-')
+                .replace('400', '400/20')
+                .replace('500', '500/20')
+                .replace('600', '600/20');
+        } catch (e) {
+            return 'from-purple-500/20 to-blue-500/20';
         }
     };
 
-    if (loading) {
+    // Error color for consistency with RFXVerseInterface
+    const getErrorColor = () => {
+        if (!error) return '';
+        switch (error.type) {
+            case 'success': return 'bg-green-500/50';
+            case 'error': return 'bg-red-500/50';
+            case 'info': return 'bg-blue-500/50';
+            default: return 'bg-gray-500/50';
+        }
+    };
+
+    // Loading state
+    if (loading.games || loading.stats) {
         return (
             <div className="w-full min-h-screen bg-gradient-to-br from-black via-gray-900 to-black flex items-center justify-center">
                 <div className="text-white text-xl">Loading games...</div>
@@ -201,7 +231,6 @@ export default function RFXGamesPage() {
                 <div className="absolute inset-0 bg-gradient-to-t from-green-500/10 via-transparent to-transparent"></div>
                 <div className="absolute top-0 left-1/3 w-96 h-96 bg-purple-500/20 rounded-full blur-3xl animate-pulse"></div>
                 <div className="absolute bottom-0 right-1/3 w-96 h-96 bg-blue-400/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
-
                 {[...Array(25)].map((_, i) => (
                     <div
                         key={i}
@@ -217,6 +246,19 @@ export default function RFXGamesPage() {
             </div>
 
             <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 pb-24">
+                {/* Error Message */}
+                {error && (
+                    <div className={`mb-4 p-4 rounded-xl text-white ${getErrorColor()} flex justify-between items-center`}>
+                        <span>{error.message}</span>
+                        <button
+                            onClick={() => setError(null)}
+                            className="text-white hover:text-gray-300 ml-4"
+                        >
+                            ✕
+                        </button>
+                    </div>
+                )}
+
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row items-center justify-between mb-8 pt-4 space-y-4 sm:space-y-0">
                     <div className="flex items-center space-x-3">
@@ -241,24 +283,17 @@ export default function RFXGamesPage() {
                         </div>
                         <div className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-gray-800 to-gray-700 rounded-full">
                             <Trophy className="w-4 h-4 text-green-400" />
-                            <span className="text-gray-300 text-sm font-mono">₿ {playerStats.tokensEarned}</span>
+                            <span className="text-gray-300 text-sm font-mono">₿ {playerStats.tokensEarned.toFixed(5)}</span>
                         </div>
                     </div>
                 </div>
-
-                {/* Error Message */}
-                {error && (
-                    <div className="mb-4 p-4 bg-red-400/20 text-red-400 rounded-xl text-center">
-                        {error}
-                    </div>
-                )}
 
                 {/* Player Stats */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                     {[
                         { label: 'Level', value: playerStats.level, icon: Crown, color: 'yellow', suffix: '' },
                         { label: 'Games Played', value: playerStats.gamesPlayed, icon: Gamepad2, color: 'purple', suffix: '' },
-                        { label: 'Total Earned', value: playerStats.tokensEarned, icon: Award, color: 'green', suffix: ' BTC' },
+                        { label: 'Total Earned', value: playerStats.tokensEarned.toFixed(5), icon: Award, color: 'green', suffix: ' BTC' },
                         { label: 'XP Progress', value: `${playerStats.xp}/${playerStats.totalXp}`, icon: TrendingUp, color: 'blue', suffix: '' }
                     ].map((stat, index) => (
                         <div key={index} className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-4 border border-gray-700">
@@ -292,19 +327,22 @@ export default function RFXGamesPage() {
 
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             {featuredGames.map((game) => {
-                                const gameProgressData = gameProgress.find(g => g.id === game.id);
-                                const canPlay = !gameProgressData || new Date(gameProgressData.lastPlayed).toDateString() !== new Date().toDateString();
+                                const GameIcon = categoryIcons[game.category] || categoryIcons.Default;
                                 return (
-                                    <div key={game.id} className="relative group">
-                                        <div className={`absolute inset-0 bg-gradient-to-r ${game.bgColor.replace('to-', 'to-').replace('from-', 'from-').replace('400', '400/20').replace('500', '500/20').replace('600', '600/20')} rounded-3xl blur-xl group-hover:blur-2xl transition-all`}></div>
-                                        <div className="relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-6 border border-gray-700 overflow-hidden">
+                                    <div
+                                        key={game.id}
+                                        className="relative group"
+                                        onClick={() => !game.locked && setSelectedGame(game)}
+                                    >
+                                        <div className={`absolute inset-0 bg-gradient-to-r ${getGradientClasses(game.bgColor)} rounded-3xl blur-xl group-hover:blur-2xl transition-all`}></div>
+                                        <div className="relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-6 border border-gray-700 overflow-hidden cursor-pointer">
                                             <div className="absolute top-0 right-0 w-64 h-64 bg-purple-400/10 rounded-full blur-3xl transform translate-x-32 -translate-y-32"></div>
 
                                             <div className="relative z-10">
                                                 <div className="flex items-start justify-between mb-4">
                                                     <div className="flex items-center space-x-3">
                                                         <div className={`w-14 h-14 bg-gradient-to-br ${game.bgColor} rounded-2xl flex items-center justify-center transform group-hover:rotate-12 transition-transform`}>
-                                                            <game.icon className="w-8 h-8 text-black" />
+                                                            <GameIcon className="w-8 h-8 text-black" />
                                                         </div>
                                                         <div>
                                                             <h3 className="text-xl font-bold text-white">{game.title}</h3>
@@ -335,16 +373,19 @@ export default function RFXGamesPage() {
                                                 </div>
 
                                                 <button
-                                                    onClick={() => !game.locked && canPlay && startGameSession(game)}
-                                                    className={`w-full bg-gradient-to-r ${game.bgColor} text-black font-bold py-4 rounded-2xl text-lg transition-all transform hover:scale-105 flex items-center justify-center space-x-2 ${game.locked || !canPlay ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                    disabled={game.locked || !canPlay}
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        startGameSession(game);
+                                                    }}
+                                                    className={`w-full bg-gradient-to-r ${game.bgColor} text-black font-bold py-4 rounded-2xl text-lg transition-all transform hover:scale-105 flex items-center justify-center space-x-2 ${game.locked || !game.canPlay ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                    disabled={game.locked || !game.canPlay}
                                                 >
                                                     {game.locked ? (
                                                         <>
                                                             <Lock className="w-5 h-5" />
                                                             <span>COMING SOON</span>
                                                         </>
-                                                    ) : !canPlay ? (
+                                                    ) : !game.canPlay ? (
                                                         <>
                                                             <Lock className="w-5 h-5" />
                                                             <span>DAILY LIMIT REACHED</span>
@@ -384,13 +425,16 @@ export default function RFXGamesPage() {
                 {/* Games Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredGames.map((game) => {
-                        const gameProgressData = gameProgress.find(g => g.id === game.id);
-                        const canPlay = !gameProgressData || new Date(gameProgressData.lastPlayed).toDateString() !== new Date().toDateString();
+                        const GameIcon = categoryIcons[game.category] || categoryIcons.Default;
                         return (
-                            <div key={game.id} className="group relative">
-                                <div className={`absolute inset-0 bg-gradient-to-r ${game.bgColor.replace('to-', 'to-').replace('from-', 'from-').replace('400', '400/10').replace('500', '500/10').replace('600', '600/10')} rounded-2xl blur-lg group-hover:blur-xl transition-all`}></div>
+                            <div
+                                key={game.id}
+                                className="group relative"
+                                onClick={() => !game.locked && setSelectedGame(game)}
+                            >
+                                <div className={`absolute inset-0 bg-gradient-to-r ${getGradientClasses(game.bgColor)} rounded-2xl blur-lg group-hover:blur-xl transition-all`}></div>
 
-                                <div className="relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 border border-gray-700 transition-all hover:border-gray-600">
+                                <div className="relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 border border-gray-700 transition-all hover:border-gray-600 cursor-pointer">
                                     {game.locked && (
                                         <div className="absolute inset-0 bg-black/60 rounded-2xl flex items-center justify-center z-10">
                                             <div className="flex flex-col items-center space-y-2">
@@ -423,7 +467,7 @@ export default function RFXGamesPage() {
 
                                     <div className="flex items-start space-x-4 mb-4">
                                         <div className={`w-12 h-12 bg-gradient-to-br ${game.bgColor} rounded-xl flex items-center justify-center transform group-hover:rotate-12 transition-transform`}>
-                                            <game.icon className="w-6 h-6 text-black" />
+                                            <GameIcon className="w-6 h-6 text-black" />
                                         </div>
                                         <div className="flex-1">
                                             <h3 className="text-white font-bold text-lg mb-1">{game.title}</h3>
@@ -455,16 +499,19 @@ export default function RFXGamesPage() {
 
                                     <div className="flex space-x-2">
                                         <button
-                                            onClick={() => !game.locked && canPlay && startGameSession(game)}
-                                            className={`flex-1 bg-gradient-to-r ${game.bgColor} text-black font-bold py-3 rounded-xl transition-all transform hover:scale-105 flex items-center justify-center space-x-2 ${game.locked || !canPlay ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                            disabled={game.locked || !canPlay}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                startGameSession(game);
+                                            }}
+                                            className={`flex-1 bg-gradient-to-r ${game.bgColor} text-black font-bold py-3 rounded-xl transition-all transform hover:scale-105 flex items-center justify-center space-x-2 ${game.locked || !game.canPlay ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                            disabled={game.locked || !game.canPlay}
                                         >
                                             {game.locked ? (
                                                 <>
                                                     <Lock className="w-4 h-4" />
                                                     <span>COMING SOON</span>
                                                 </>
-                                            ) : !canPlay ? (
+                                            ) : !game.canPlay ? (
                                                 <>
                                                     <Lock className="w-4 h-4" />
                                                     <span>DAILY LIMIT REACHED</span>
@@ -476,7 +523,10 @@ export default function RFXGamesPage() {
                                                 </>
                                             )}
                                         </button>
-                                        <button className="px-4 py-3 bg-gray-700 text-gray-300 rounded-xl hover:bg-gray-600 transition-all">
+                                        <button
+                                            className="px-4 py-3 bg-gray-700 text-gray-300 rounded-xl hover:bg-gray-600 transition-all"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
                                             <Trophy className="w-4 h-4" />
                                         </button>
                                     </div>
@@ -507,8 +557,8 @@ export default function RFXGamesPage() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {[
                             { title: "Eco Novice", desc: "Play 3 puzzle games", progress: 2, total: 3, reward: "₿ 0.001" },
-                            { title: "Forest Protector", desc: "Score 1000+ in Forest Guardian", progress: 0, total: 1, reward: "₿ 0.002" },
-                            { title: "Trivia Master", desc: "Answer 10 questions in Trivia on Recycling", progress: 3, total: 10, reward: "₿ 0.003" }
+                            { title: "Ocean Savior", desc: "Score 1000+ in Ocean Defender", progress: 0, total: 1, reward: "₿ 0.002" },
+                            { title: "Green Streak", desc: "Win 5 games in a row", progress: 3, total: 5, reward: "₿ 0.003" }
                         ].map((challenge, index) => (
                             <div key={index} className="bg-gray-800/50 rounded-xl p-4 backdrop-blur-sm">
                                 <div className="flex items-center justify-between mb-2">
@@ -539,7 +589,7 @@ export default function RFXGamesPage() {
                         <div className="flex items-start justify-between mb-6">
                             <div className="flex items-center space-x-4">
                                 <div className={`w-16 h-16 bg-gradient-to-br ${selectedGame.bgColor} rounded-2xl flex items-center justify-center`}>
-                                    <selectedGame.icon className="w-10 h-10 text-black" />
+                                    {(categoryIcons[selectedGame.category] || categoryIcons.Default)({ className: "w-10 h-10 text-black" })}
                                 </div>
                                 <div>
                                     <h2 className="text-2xl font-bold text-white">{selectedGame.title}</h2>
@@ -588,7 +638,7 @@ export default function RFXGamesPage() {
                             <div>
                                 <h4 className="text-white font-semibold mb-3">Game Modes</h4>
                                 <div className="space-y-2">
-                                    {selectedGame.gameMode.map((mode, index) => (
+                                    {selectedGame.gameMode?.map((mode, index) => (
                                         <div key={index} className="flex items-center space-x-2 text-gray-300 text-sm">
                                             <div className="w-2 h-2 bg-green-400 rounded-full"></div>
                                             <span>{mode}</span>
@@ -599,7 +649,7 @@ export default function RFXGamesPage() {
                             <div>
                                 <h4 className="text-white font-semibold mb-3">Power-ups</h4>
                                 <div className="space-y-2">
-                                    {selectedGame.powerUps.map((powerUp, index) => (
+                                    {selectedGame.powerUps?.map((powerUp, index) => (
                                         <div key={index} className="flex items-center space-x-2 text-gray-300 text-sm">
                                             <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
                                             <span>{powerUp}</span>
@@ -612,10 +662,25 @@ export default function RFXGamesPage() {
                         <div className="flex space-x-4">
                             <button
                                 onClick={() => startGameSession(selectedGame)}
-                                className={`flex-1 bg-gradient-to-r ${selectedGame.bgColor} text-black font-bold py-4 rounded-2xl text-lg transition-all transform hover:scale-105 flex items-center justify-center space-x-2`}
+                                className={`flex-1 bg-gradient-to-r ${selectedGame.bgColor} text-black font-bold py-4 rounded-2xl text-lg transition-all transform hover:scale-105 flex items-center justify-center space-x-2 ${selectedGame.locked || !selectedGame.canPlay ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                disabled={selectedGame.locked || !selectedGame.canPlay}
                             >
-                                <Play className="w-5 h-5" />
-                                <span>START PLAYING</span>
+                                {selectedGame.locked ? (
+                                    <>
+                                        <Lock className="w-5 h-5" />
+                                        <span>COMING SOON</span>
+                                    </>
+                                ) : !selectedGame.canPlay ? (
+                                    <>
+                                        <Lock className="w-5 h-5" />
+                                        <span>DAILY LIMIT REACHED</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Play className="w-5 h-5" />
+                                        <span>START PLAYING</span>
+                                    </>
+                                )}
                             </button>
                             <button className="px-6 py-4 bg-gray-700 text-gray-300 rounded-2xl hover:bg-gray-600 transition-all flex items-center space-x-2">
                                 <Medal className="w-5 h-5" />
@@ -626,6 +691,7 @@ export default function RFXGamesPage() {
                 </div>
             )}
 
+            {/* Bottom Navigation */}
             <div className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-t border-gray-800 px-4 py-3 z-20">
                 <div className="max-w-lg mx-auto">
                     <div className="flex justify-around items-center">
@@ -652,26 +718,26 @@ export default function RFXGamesPage() {
             </div>
 
             <style jsx>{`
-        @keyframes float {
-          0%, 100% { transform: translateY(0px); }
-          50% { transform: translateY(-20px); }
-        }
-        
-        .animate-float {
-          animation: float 8s ease-in-out infinite;
-        }
-        
-        .delay-1000 {
-          animation-delay: 1s;
-        }
-        
-        .line-clamp-2 {
-          display: -webkit-box;
-          -webkit-line-clamp: 2;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-      `}</style>
+                @keyframes float {
+                    0%, 100% { transform: translateY(0px); }
+                    50% { transform: translateY(-20px); }
+                }
+                
+                .animate-float {
+                    animation: float 8s ease-in-out infinite;
+                }
+                
+                .delay-1000 {
+                    animation-delay: 1s;
+                }
+                
+                .line-clamp-2 {
+                    display: -webkit-box;
+                    -webkit-line-clamp: 2;
+                    -webkit-box-orient: vertical;
+                    overflow: hidden;
+                }
+            `}</style>
         </div>
     );
 }

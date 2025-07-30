@@ -55,6 +55,7 @@ export default function RFXWalletPage() {
 
     // Fetch data from backend
     useEffect(() => {
+        // Update the fetchData function in useEffect
         const fetchData = async () => {
             const token = localStorage.getItem('authToken');
             if (!token) {
@@ -70,49 +71,54 @@ export default function RFXWalletPage() {
             try {
                 const headers = {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
+                    'Authorization': `Bearer ${token}`,
                 };
 
-                const [userResponse, transactionsResponse, rankResponse] = await Promise.all([
-                    fetch(`${BASE_URL}/user/user`, { method: 'GET', headers }),
-                    fetch(`${BASE_URL}/wallet/transactions?period=${selectedPeriod}&search=${encodeURIComponent(searchQuery)}`, {
-                        method: 'GET',
-                        headers,
-                    }),
-                    fetch(`${BASE_URL}/wallet/rank`, { method: 'GET', headers }),
-                ]);
+                // Fetch user data
+                const userResponse = await fetch(`${BASE_URL}/user/user`, {
+                    method: 'GET',
+                    headers
+                });
 
-                // Check response status
                 if (!userResponse.ok) {
-                    const errorData = await userResponse.json();
-                    throw new Error(errorData.message || 'Failed to fetch user data');
+                    throw new Error('Failed to fetch user data');
                 }
-                if (!transactionsResponse.ok) {
-                    const errorData = await transactionsResponse.json();
-                    throw new Error(errorData.message || 'Failed to fetch transactions');
-                }
-                if (!rankResponse.ok) {
-                    const errorData = await rankResponse.json();
-                    throw new Error(errorData.message || 'Failed to fetch rank');
-                }
-
-                // Parse responses
                 const userData = await userResponse.json();
+
+                // Fetch transactions with error handling
+                const transactionsResponse = await fetch(
+                    `${BASE_URL}/wallet/transactions?period=${selectedPeriod}&search=${encodeURIComponent(searchQuery)}`,
+                    { method: 'GET', headers }
+                );
+
+                if (!transactionsResponse.ok) {
+                    throw new Error('Failed to fetch transactions');
+                }
                 const transactionsData = await transactionsResponse.json();
+
+                // Fetch rank
+                const rankResponse = await fetch(`${BASE_URL}/wallet/rank`, {
+                    method: 'GET',
+                    headers
+                });
+
+                if (!rankResponse.ok) {
+                    throw new Error('Failed to fetch rank');
+                }
                 const rankData = await rankResponse.json();
 
-                // Convert timestamp strings to Date objects
-                const formattedTransactions = transactionsData.map((tx) => ({
-                    ...tx,
-                    timestamp: new Date(tx.timestamp), // Convert ISO string to Date
-                }));
-
+                // Format and set data
                 setWalletBalance(userData.earnings || 0);
-                setTransactions(formattedTransactions);
+                setTransactions(transactionsData.map(tx => ({
+                    ...tx,
+                    timestamp: new Date(tx.timestamp)
+                })));
                 setUserRank(rankData.rank);
+
             } catch (error) {
-                console.error('Error fetching data:', error.message);
-                setError(error.message || 'Failed to fetch data. Please try again.');
+                console.error('Error fetching data:', error);
+                setError(error.message || 'Failed to fetch data');
+
                 if (error.message.includes('Authentication') || error.message.includes('Invalid token')) {
                     localStorage.removeItem('authToken');
                     navigate('/login');
@@ -214,12 +220,23 @@ export default function RFXWalletPage() {
     };
 
     // Handle copy wallet address
+    // Update the copyWalletAddress function
     const copyWalletAddress = () => {
         const walletAddress = localStorage.getItem('walletAddress');
-        if (walletAddress) {
-            navigator.clipboard.writeText(walletAddress);
-            alert('Wallet address copied to clipboard!');
+        if (!walletAddress) {
+            setError('Wallet address not found. Please update your wallet address in settings.');
+            return;
         }
+
+        navigator.clipboard.writeText(walletAddress)
+            .then(() => {
+                // Show success feedback
+                alert('Wallet address copied to clipboard!');
+            })
+            .catch(err => {
+                console.error('Failed to copy:', err);
+                setError('Failed to copy wallet address');
+            });
     };
 
     return (

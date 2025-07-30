@@ -64,21 +64,22 @@ export default function Login() {
                 }),
             });
 
+            // In the login component, modify the success handler:
             const loginData = await loginResponse.json();
 
             if (!loginResponse.ok) {
                 throw new Error(loginData.message || 'Login failed');
             }
 
-            // Store token and user data
-            localStorage.setItem('token', loginData.token);
+            // Store token and user data consistently
+            localStorage.setItem('authToken', loginData.token); // Changed from 'token' to 'authToken'
             localStorage.setItem('user', JSON.stringify(loginData.user));
             if (loginData.user.isAdmin) {
                 localStorage.setItem('isAdmin', 'true');
             }
 
             // Redirect based on user role
-            navigate(loginData.user.isAdmin ? '/admin/dashboard' : '/dashboard');
+            navigate(loginData.user.isAdmin ? '/admin/dashboard' : '/');
 
         } catch (err) {
             console.error('Login error:', err);

@@ -1,26 +1,25 @@
 import React, { useState } from 'react';
-import { Eye, EyeOff, Lock, User, Gift, CheckCircle, Wallet, AlertCircle } from 'lucide-react';
+import { Eye, EyeOff, Lock, User, Gift, CheckCircle, AlertCircle, Mail } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { ethers } from 'ethers';
 import api from '../api/api'; // Import the Axios instance
 
 export default function Signup() {
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
-    const [walletConnected, setWalletConnected] = useState(false);
-    const [walletAddress, setWalletAddress] = useState('');
-    const [passkey, setPasskey] = useState(null); // Store backend-generated passkey
-    const [error, setError] = useState(null); // Error messages
+    const [error, setError] = useState(null);
+    const [passkey, setPasskey] = useState(null);
     const [formData, setFormData] = useState({
-        fullName: '',
+        username: '',
+        email: '',
+        fullName: '', // Added fullName field
         password: '',
         confirmPassword: ''
     });
 
     const handleInputChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
-        setError(null); // Clear error on input change
+        setError(null);
     };
 
     const validatePasswordStrength = (password) => {
@@ -32,8 +31,12 @@ export default function Signup() {
     };
 
     const validateForm = () => {
-        if (!walletConnected) {
-            setError('Please connect your MetaMask wallet.');
+        if (!formData.username.trim()) {
+            setError('Username is required.');
+            return false;
+        }
+        if (!formData.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+            setError('Valid email is required.');
             return false;
         }
         if (!formData.fullName.trim()) {
@@ -51,29 +54,6 @@ export default function Signup() {
         return true;
     };
 
-    const connectWallet = async () => {
-        if (typeof window.ethereum !== 'undefined') {
-            try {
-                setIsLoading(true);
-                const provider = new ethers.BrowserProvider(window.ethereum);
-                const accounts = await provider.send('eth_requestAccounts', []);
-                if (accounts.length > 0) {
-                    const address = accounts[0];
-                    setWalletAddress(address);
-                    setWalletConnected(true);
-                }
-            } catch (error) {
-                setError('Failed to connect wallet. Please try again.');
-                console.error('Error connecting wallet:', error);
-            } finally {
-                setIsLoading(false);
-            }
-        } else {
-            setError('MetaMask not detected. Please install MetaMask.');
-            window.open('https://metamask.io/download/', '_blank');
-        }
-    };
-
     const handleSubmit = async (e) => {
         e.preventDefault();
         setIsLoading(true);
@@ -86,27 +66,33 @@ export default function Signup() {
         }
 
         try {
-            const response = await api.post('/auth/signup', {
-                walletAddress,
-                fullName: formData.fullName,
+            console.log('Sending signup request with payload:', {
+                username: formData.username,
+                email: formData.email,
+                fullName: formData.fullName, // Include fullName in payload
                 password: formData.password
             });
+            const response = await api.post('/auth/signup', {
+                username: formData.username,
+                email: formData.email,
+                fullName: formData.fullName, // Include fullName in request
+                password: formData.password
+            });
+            console.log('Signup response:', response.data);
 
-            // Assuming the API returns a token, user data, and passkey
-            const { token, user, passkey: generatedPasskey } = response;
+            const { token, user, passkey: generatedPasskey } = response.data;
 
-            // Store token and passkey in localStorage
             localStorage.setItem('authToken', token);
             localStorage.setItem('rememberedKey', generatedPasskey);
+            localStorage.setItem('user', JSON.stringify(user));
 
-            // Display passkey
             setPasskey(generatedPasskey);
-
-            // Log success
             console.log('Signup successful:', user);
-            // Example: window.location.href = '/dashboard';
+            // Redirect to dashboard after successful signup
+            window.location.href = '/dashboard';
         } catch (err) {
-            setError(err || 'Signup failed. Please try again.');
+            console.error('Signup error:', err.response?.data);
+            setError(err.response?.data?.message || 'Signup failed. Please try again.');
         } finally {
             setIsLoading(false);
         }
@@ -116,24 +102,21 @@ export default function Signup() {
         <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 flex items-center justify-center p-4">
             <div className="w-full max-w-md bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl overflow-hidden">
                 <div className="p-6 sm:p-8 flex flex-col justify-center">
-                    {/* Header */}
                     <div className="mb-8">
                         <div className="flex items-center space-x-3 mb-6">
                             <div className="w-8 h-8 bg-gradient-to-r from-cyan-600 to-teal-600 rounded-lg flex items-center justify-center">
                                 <Gift className="w-5 h-5 text-white" />
                             </div>
-                            <span className="text-lg font-semibold text-slate-800">Free Airdrop</span>
+                            <span className="text-lg font-semibold text-slate-800">RecycleFlux</span>
                         </div>
-
                         <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">
                             Create your account
                         </h1>
                         <p className="text-slate-600">
-                            Connect your wallet and create credentials to get started
+                            Create credentials to join RecycleFlux
                         </p>
                     </div>
 
-                    {/* Error Message */}
                     {error && (
                         <div className="flex items-center space-x-2 p-4 bg-red-50 rounded-xl text-red-600 mb-6">
                             <AlertCircle className="w-5 h-5" />
@@ -141,7 +124,6 @@ export default function Signup() {
                         </div>
                     )}
 
-                    {/* Passkey Display */}
                     {passkey && (
                         <div className="flex items-center space-x-2 p-4 bg-green-50 rounded-xl text-green-600 mb-6">
                             <CheckCircle className="w-5 h-5" />
@@ -152,60 +134,23 @@ export default function Signup() {
                         </div>
                     )}
 
-                    {/* Form */}
                     <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
-                        {/* MetaMask Wallet Connection */}
-                        <div className="space-y-3">
-                            <label className="text-sm font-medium text-slate-700">Connect Wallet</label>
-                            {!walletConnected ? (
-                                <button
-                                    type="button"
-                                    onClick={connectWallet}
-                                    disabled={isLoading}
-                                    className="w-full p-4 border-2 border-dashed border-slate-300 rounded-xl hover:border-cyan-400 hover:bg-cyan-50 transition-all flex items-center justify-center space-x-3 group"
-                                >
-                                    <Wallet className="w-6 h-6 text-slate-400 group-hover:text-cyan-500" />
-                                    <div className="text-center">
-                                        <div className="text-sm font-medium text-slate-700 group-hover:text-cyan-600">
-                                            {isLoading ? 'Connecting...' : 'Connect MetaMask Wallet'}
-                                        </div>
-                                        <div className="text-xs text-slate-500">
-                                            Required to receive airdrop rewards
-                                        </div>
-                                    </div>
-                                </button>
-                            ) : (
-                                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center space-x-3">
-                                    <div className="w-8 h-8 bg-emerald-500 rounded-full flex items-center justify-center">
-                                        <CheckCircle className="w-5 h-5 text-white" />
-                                    </div>
-                                    <div>
-                                        <div className="text-sm font-medium text-emerald-700">Wallet Connected</div>
-                                        <div className="text-xs text-emerald-600 font-mono">
-                                            {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                            {!walletConnected && (
-                                <div className="flex items-start space-x-2 text-xs text-amber-600 bg-amber-50 p-3 rounded-lg">
-                                    <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                                    <span>
-                                        Don't have MetaMask?{' '}
-                                        <button
-                                            type="button"
-                                            onClick={() => window.open('https://metamask.io/download/', '_blank')}
-                                            className="underline hover:text-amber-700"
-                                        >
-                                            Download here
-                                        </button>{' '}
-                                        to get started with crypto wallets.
-                                    </span>
-                                </div>
-                            )}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-slate-700">Username</label>
+                            <div className="relative">
+                                <User className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                <input
+                                    type="text"
+                                    value={formData.username}
+                                    onChange={(e) => handleInputChange('username', e.target.value)}
+                                    placeholder="Enter your username"
+                                    className="w-full pl-10 pr-4 py-3 sm:py-4 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all text-slate-900 placeholder-slate-400"
+                                    required
+                                    aria-label="Username"
+                                />
+                            </div>
                         </div>
 
-                        {/* Full Name */}
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-700">Full Name</label>
                             <div className="relative">
@@ -217,12 +162,27 @@ export default function Signup() {
                                     placeholder="Enter your full name"
                                     className="w-full pl-10 pr-4 py-3 sm:py-4 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all text-slate-900 placeholder-slate-400"
                                     required
-                                    aria-label="Full name"
+                                    aria-label="Full Name"
                                 />
                             </div>
                         </div>
 
-                        {/* Password */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium text-slate-700">Email</label>
+                            <div className="relative">
+                                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                <input
+                                    type="email"
+                                    value={formData.email}
+                                    onChange={(e) => handleInputChange('email', e.target.value)}
+                                    placeholder="Enter your email"
+                                    className="w-full pl-10 pr-4 py-3 sm:py-4 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all text-slate-900 placeholder-slate-400"
+                                    required
+                                    aria-label="Email"
+                                />
+                            </div>
+                        </div>
+
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-700">Create Password</label>
                             <div className="relative">
@@ -250,7 +210,6 @@ export default function Signup() {
                             </p>
                         </div>
 
-                        {/* Confirm Password */}
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-700">Confirm Password</label>
                             <div className="relative">
@@ -275,7 +234,6 @@ export default function Signup() {
                             </div>
                         </div>
 
-                        {/* Terms Agreement */}
                         <div className="flex items-start space-x-2">
                             <input
                                 type="checkbox"
@@ -295,13 +253,12 @@ export default function Signup() {
                             </span>
                         </div>
 
-                        {/* Submit Button */}
                         <button
                             type="submit"
-                            disabled={isLoading || !walletConnected}
-                            className={`w-full py-3 sm:py-4 px-4 rounded-xl font-semibold text-white transition-all ${isLoading || !walletConnected
-                                    ? 'bg-gray-400 cursor-not-allowed'
-                                    : 'bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700 active:scale-95 shadow-lg'
+                            disabled={isLoading}
+                            className={`w-full py-3 sm:py-4 px-4 rounded-xl font-semibold text-white transition-all ${isLoading
+                                ? 'bg-gray-400 cursor-not-allowed'
+                                : 'bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700 active:scale-95 shadow-lg'
                                 }`}
                         >
                             {isLoading ? (
@@ -314,15 +271,6 @@ export default function Signup() {
                             )}
                         </button>
 
-                        {/* Wallet Connection Warning */}
-                        {!walletConnected && (
-                            <div className="flex items-center space-x-2 text-sm text-amber-600 bg-amber-50 p-3 rounded-lg">
-                                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                                <span>Connect your MetaMask wallet to continue with account creation</span>
-                            </div>
-                        )}
-
-                        {/* Switch to Login */}
                         <div className="text-center pt-4">
                             <span className="text-slate-600">Already have an account? </span>
                             <Link
@@ -334,10 +282,9 @@ export default function Signup() {
                         </div>
                     </form>
 
-                    {/* Footer */}
                     <div className="mt-8 pt-6 border-t border-slate-200">
                         <p className="text-xs text-slate-500 text-center">
-                            © {new Date().getFullYear()} Free Airdrop. All rights reserved.
+                            © {new Date().getFullYear()} RecycleFlux. All rights reserved.
                         </p>
                     </div>
                 </div>

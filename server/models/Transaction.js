@@ -1,28 +1,50 @@
 const mongoose = require('mongoose');
 
-const TransactionSchema = new mongoose.Schema({
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    walletId: { type: mongoose.Schema.Types.ObjectId, ref: 'Wallet', required: true },
+const transactionSchema = new mongoose.Schema({
+    userId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+    },
+    amount: {
+        type: Number,
+        required: true,
+        min: 0
+    },
     type: {
         type: String,
-        enum: ['earn', 'spend', 'receive', 'send'],
-        required: true
+        required: true,
+        enum: ['earn', 'send', 'receive']
     },
     category: {
         type: String,
-        enum: ['Game', 'Campaign', 'Real World', 'Daily Reward', 'Referral', 'Competition', 'Transfer'],
-        required: true
+        required: true,
+        enum: ['Game', 'Campaign', 'Real World', 'Bonus', 'Referral', 'Competition', 'Transfer']
     },
-    amount: { type: Number, required: true },
-    activity: { type: String, required: true },
-    description: { type: String },
-    status: {
+    activity: {
         type: String,
-        enum: ['pending', 'completed', 'failed'],
-        default: 'completed'
+        required: true,
+        trim: true,
+        minlength: 3,
+        maxlength: 100
     },
-    metadata: { type: Object },
-    timestamp: { type: Date, default: Date.now }
-}, { timestamps: true });
+    description: {
+        type: String,
+        required: true,
+        trim: true,
+        minlength: 3,
+        maxlength: 500
+    },
+    color: {
+        type: String,
+        required: true,
+        enum: ['purple', 'blue', 'green', 'orange', 'yellow']
+    },
+    timestamp: {
+        type: Date,
+        required: true,
+        default: Date.now
+    }
+});
 
-module.exports = mongoose.model('Transaction', TransactionSchema);
+module.exports = mongoose.model('Transaction', transactionSchema);

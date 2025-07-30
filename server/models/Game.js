@@ -1,40 +1,36 @@
 const mongoose = require('mongoose');
 
-const GameSchema = new mongoose.Schema({
-    title: { type: String, required: true },
-    subtitle: { type: String, required: true },
+const gameSchema = new mongoose.Schema({
+    title: { type: String, required: true, unique: true, trim: true },
+    subtitle: { type: String, required: true, trim: true },
     description: { type: String, required: true },
-    category: {
-        type: String,
-        enum: ['Puzzle', 'Action', 'Simulation', 'Strategy'],
-        required: true
-    },
-    reward: { type: Number, required: true },
-    xpReward: { type: Number, required: true },
-    difficulty: {
-        type: String,
-        enum: ['Easy', 'Medium', 'Hard'],
-        required: true
-    },
-    avgTime: { type: String, required: true },
+    description_long: { type: String, required: true },
+    category: { type: String, required: true, enum: ['Puzzle', 'Action', 'Simulation', 'Strategy'] },
+    difficulty: { type: String, required: true, enum: ['Easy', 'Medium', 'Hard'] },
     players: { type: Number, default: 0 },
-    plays: { type: Number, default: 0 },
-    rating: { type: Number, default: 0 },
-    achievements: { type: Number, default: 0 },
-    gameMode: [{ type: String }],
-    powerUps: [{ type: String }],
+    avgTime: { type: String, required: true },
+    reward: { type: String, required: true },
+    xpReward: { type: Number, required: true },
     featured: { type: Boolean, default: false },
     new: { type: Boolean, default: false },
     trending: { type: Boolean, default: false },
-    locked: { type: Boolean, default: false },
+    rating: { type: Number, default: 0, min: 0, max: 5 },
+    plays: { type: Number, default: 0 },
+    achievements: { type: Number, default: 0 },
+    powerUps: [{ type: String }],
+    gameMode: [{ type: String }],
     screenshots: { type: Number, default: 0 },
-    gameUrl: { type: String },
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    path: { type: String, required: true },
+    locked: { type: Boolean, default: false },
+    bgColor: { type: String, required: true }, // Added
+    cardColor: { type: String, required: true }, // Added
+    canPlay: { type: Boolean, default: true }, // Added
     wasteItems: [{
         name: { type: String, required: true },
-        correct: { type: String, required: true },
-        emoji: { type: String }
+        correct: { type: String, required: true, enum: ['Plastic', 'Paper', 'Metal', 'Organic', 'Glass'] },
+        emoji: { type: String, required: true }
     }],
-}, { timestamps: true });
+    createdAt: { type: Date, default: Date.now }
+});
 
-module.exports = mongoose.model('Game', GameSchema);
+module.exports = mongoose.model('Game', gameSchema);

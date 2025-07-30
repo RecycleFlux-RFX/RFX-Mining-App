@@ -1,23 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-    Home,
-    MapPin,
-    Gamepad2,
-    Wallet,
-    Settings,
-    Trophy,
-    TrendingUp,
-    Recycle,
-    Trash2,
-    Sparkles,
-    Zap,
-    Star,
-    ArrowUp,
-    Users,
-    Coins,
+    Home, MapPin, Gamepad2, Wallet, Settings,
+    Trophy, TrendingUp, Recycle, Trash2,
+    Sparkles, Zap, Star, ArrowUp, Users, Coins
 } from 'lucide-react';
 import { throttle } from 'lodash';
+import { ethers } from 'ethers';
 
 export default function RFXVerseInterface() {
     const location = useLocation();
@@ -37,6 +26,8 @@ export default function RFXVerseInterface() {
     const [isAnimating, setIsAnimating] = useState(false);
     const [error, setError] = useState(null);
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+    const [walletConnected, setWalletConnected] = useState(false);
+    const [isConnecting, setIsConnecting] = useState(false);
     const containerRef = useRef(null);
 
     const BASE_URL = 'http://localhost:3000/user';
@@ -49,7 +40,85 @@ export default function RFXVerseInterface() {
         { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' },
     ];
 
-    // Set active tab based on current path
+    const fetchWithAuth = async (url, options = {}) => {
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            console.error('No auth token found');
+            navigate('/login');
+            throw new Error('No authentication token found');
+        }
+
+        const headers = {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            ...options.headers,
+        };
+
+        try {
+            const response = await fetch(url, { ...options, headers });
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const errorMessage = errorData.message || `Request failed with status ${response.status}`;
+                if (response.status === 401) {
+                    console.error('Unauthorized request:', errorMessage);
+                    localStorage.removeItem('authToken');
+                    navigate('/login');
+                }
+                throw new Error(errorMessage);
+            }
+
+            return await response.json();
+        } catch (error) {
+            console.error(`API request failed for ${url}:`, error.message);
+            setError({
+                type: 'error',
+                message: error.message || 'Failed to complete request',
+            });
+            throw error;
+        }
+    };
+
+    const connectWallet = async () => {
+        if (typeof window.ethereum === 'undefined') {
+            setError({
+                type: 'error',
+                message: 'MetaMask not detected. Please install MetaMask.',
+            });
+            window.open('https://metamask.io/download/', '_blank');
+            return;
+        }
+
+        setIsConnecting(true);
+        try {
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const accounts = await provider.send('eth_requestAccounts', []);
+            if (accounts.length > 0) {
+                const address = accounts[0];
+                setUserData((prev) => ({ ...prev, walletAddress: address }));
+                setWalletConnected(true);
+
+                // Update wallet address in backend
+                await fetchWithAuth(`${BASE_URL}/update-wallet`, {
+                    method: 'PATCH',
+                    body: JSON.stringify({ walletAddress: address }),
+                });
+
+                setError({
+                    type: 'success',
+                    message: 'MetaMask wallet connected successfully!',
+                });
+            }
+        } catch (err) {
+            console.error('Wallet connection error:', err);
+            setError({
+                type: 'error',
+                message: 'Failed to connect MetaMask wallet. Please try again.',
+            });
+        } finally {
+            setIsConnecting(false);
+        }
+    };
+
     useEffect(() => {
         const currentNavItem = navItems.find((item) => item.path === location.pathname);
         if (currentNavItem) {
@@ -57,78 +126,60 @@ export default function RFXVerseInterface() {
         }
     }, [location.pathname]);
 
-    // Redirect to login if no token
     useEffect(() => {
-        const token = localStorage.getItem('authToken');
-        if (!token) {
-            console.log('No auth token found, redirecting to login');
-            setError({ type: 'error', message: 'Please log in to view data' });
-            navigate('/login');
-        }
-    }, [navigate]);
-
-    // Fetch user data
-    useEffect(() => {
-        const fetchData = async () => {
+        const checkAuth = async () => {
             const token = localStorage.getItem('authToken');
             if (!token) {
-                setError({ type: 'error', message: 'Please log in to view data' });
+                console.error('No auth token found during checkAuth');
                 navigate('/login');
                 return;
             }
 
             try {
-                const headers = {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                };
-
-                const [userResponse, statsResponse, referralResponse] = await Promise.all([
-                    fetch(`${BASE_URL}/user`, { method: 'GET', headers }),
-                    fetch(`${BASE_URL}/network-stats`, { method: 'GET', headers }),
-                    fetch(`${BASE_URL}/referral-link`, { method: 'GET', headers }),
-                ]);
-
-                const errors = [];
-                if (!userResponse.ok) {
-                    const errorData = await userResponse.json();
-                    errors.push(errorData.message || 'Failed to fetch user data');
+                const data = await fetchWithAuth(`${BASE_URL}/validate-token`);
+                if (!data.valid) {
+                    throw new Error(data.message || 'Invalid token');
                 }
-                if (!statsResponse.ok) {
-                    const errorData = await statsResponse.json();
-                    errors.push(errorData.message || 'Failed to fetch network stats');
-                }
-                if (!referralResponse.ok) {
-                    const errorData = await referralResponse.json();
-                    errors.push(errorData.message || 'Failed to fetch referral link');
-                }
-                if (errors.length > 0) {
-                    throw new Error(errors.join('; '));
-                }
-
-                const [userDataResult, statsDataResult, referralDataResult] = await Promise.all([
-                    userResponse.json(),
-                    statsResponse.json(),
-                    referralResponse.json(),
-                ]);
-
-                setUserData(userDataResult);
-                setNetworkStats(statsDataResult);
-                setReferralLink(referralDataResult.referralLink);
+                await fetchInitialData();
             } catch (error) {
-                console.error('Error fetching data:', error);
-                setError({ type: 'error', message: error.message || 'Failed to fetch data' });
-                if (error.message.includes('Authentication') || error.message.includes('Invalid token')) {
-                    localStorage.removeItem('authToken');
-                    navigate('/login');
-                }
+                console.error('Authentication check failed:', error.message);
+                localStorage.removeItem('authToken');
+                navigate('/login');
             }
         };
 
-        fetchData();
+        checkAuth();
     }, [navigate]);
 
-    // Throttled mouse move handler
+    const fetchInitialData = async () => {
+        try {
+            const [userResponse, statsResponse, referralResponse] = await Promise.all([
+                fetchWithAuth(`${BASE_URL}/user`),
+                fetchWithAuth(`${BASE_URL}/network-stats`),
+                fetchWithAuth(`${BASE_URL}/referral-link`),
+            ]);
+
+            setUserData({
+                earnings: userResponse.earnings || 0,
+                co2Saved: userResponse.co2Saved || '0.00',
+                walletAddress: userResponse.walletAddress || '',
+                fullName: userResponse.fullName || '',
+            });
+            setWalletConnected(!!userResponse.walletAddress);
+            setNetworkStats({
+                totalRecycled: statsResponse.totalRecycled || '0.00',
+                activeUsers: statsResponse.activeUsers || 0,
+            });
+            setReferralLink(referralResponse.referralLink || '');
+        } catch (error) {
+            console.error('Data fetch error:', error.message);
+            setError({
+                type: 'error',
+                message: error.message || 'Failed to load data',
+            });
+        }
+    };
+
     const handleMouseMove = throttle((e) => {
         if (containerRef.current) {
             const rect = containerRef.current.getBoundingClientRect();
@@ -148,51 +199,37 @@ export default function RFXVerseInterface() {
     }, [handleMouseMove]);
 
     const handleClaim = async () => {
-        console.log('Claiming daily reward...');
         setIsAnimating(true);
         setError(null);
 
         try {
-            const token = localStorage.getItem('authToken');
-            if (!token) {
-                navigate('/login');
-                return;
-            }
-
-            const response = await fetch(`${BASE_URL}/claim-reward`, {
+            const data = await fetchWithAuth(`${BASE_URL}/claim-reward`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({})
+                body: JSON.stringify({}),
             });
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                if (errorData.message === 'Daily reward already claimed today') {
-                    const nextClaimTime = new Date(errorData.nextClaim).toLocaleTimeString();
-                    throw new Error(`Come back after ${nextClaimTime} for your next reward`);
-                }
-                throw new Error(errorData.message || 'Failed to claim reward');
-            }
-
-            const data = await response.json();
-            setUserData(prev => ({
+            setUserData((prev) => ({
                 ...prev,
-                earnings: data.newBalance || data.earnings || prev.earnings
+                earnings: data.newBalance || prev.earnings,
             }));
 
             setError({
                 type: 'success',
-                message: `+${data.amount || '0.0001'} BTC claimed!`
+                message: `+${data.amount || '0.0001'} RFX claimed!`,
             });
         } catch (error) {
-            console.error('Claim error:', error);
-            setError({
-                type: 'error',
-                message: error.message || 'Failed to claim reward'
-            });
+            if (error.message.includes('Daily reward already claimed')) {
+                const nextClaimTime = new Date(error.nextClaim || Date.now()).toLocaleTimeString();
+                setError({
+                    type: 'info',
+                    message: `Come back after ${nextClaimTime} for your next reward`,
+                });
+            } else {
+                setError({
+                    type: 'error',
+                    message: error.message || 'Failed to claim reward',
+                });
+            }
         } finally {
             setTimeout(() => setIsAnimating(false), 1000);
         }
@@ -203,31 +240,24 @@ export default function RFXVerseInterface() {
             navigator.clipboard.writeText(referralLink);
             setError({
                 type: 'success',
-                message: 'Referral link copied!'
+                message: 'Referral link copied!',
             });
             setTimeout(() => setError(null), 2000);
-        } else {
-            setError({
-                type: 'error',
-                message: 'Referral link not available. Please try again.'
-            });
         }
     };
 
     const handleActionClick = (title) => {
         setError({
             type: 'info',
-            message: `${title} feature coming soon!`
+            message: `${title} feature coming soon!`,
         });
-        setTimeout(() => setError(null), 2000);
     };
 
     const handleNewsClick = (title) => {
         setError({
             type: 'info',
-            message: `${title} - read more soon!`
+            message: `${title} - read more soon!`,
         });
-        setTimeout(() => setError(null), 2000);
     };
 
     const getErrorColor = () => {
@@ -288,15 +318,26 @@ export default function RFXVerseInterface() {
                     </div>
 
                     <div className="flex items-center space-x-3">
-                        <div className="hidden sm:flex items-center space-x-2 px-4 py-2 bg-gray-800/50 backdrop-blur-sm rounded-full border border-gray-700">
-                            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                            <span className="text-gray-300 text-sm">{userData.walletAddress ? 'Connected' : 'Not Connected'}</span>
-                        </div>
-                        <div className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-gray-800 to-gray-700 rounded-full">
-                            <span className="text-gray-300 text-sm font-mono">
-                                {userData.walletAddress ? `${userData.walletAddress.slice(0, 6)}...${userData.walletAddress.slice(-4)}` : '0x3a...e1'}
-                            </span>
-                        </div>
+                        {walletConnected ? (
+                            <div className="flex items-center space-x-2 px-4 py-2 bg-gray-800/50 backdrop-blur-sm rounded-full border border-gray-700">
+                                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                                <span className="text-gray-300 text-sm">Connected</span>
+                                <span className="text-gray-300 text-sm font-mono">
+                                    {userData.walletAddress.slice(0, 6)}...{userData.walletAddress.slice(-4)}
+                                </span>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={connectWallet}
+                                disabled={isConnecting}
+                                className={`flex items-center space-x-2 px-4 py-2 rounded-full transition-all ${isConnecting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-green-400 to-green-600 hover:from-green-500 hover:to-green-700'}`}
+                            >
+                                <Wallet className="w-5 h-5 text-black" />
+                                <span className="text-black text-sm font-semibold">
+                                    {isConnecting ? 'Connecting...' : 'Connect MetaMask Wallet'}
+                                </span>
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -326,7 +367,7 @@ export default function RFXVerseInterface() {
 
                                             <div className="flex items-baseline space-x-2 mb-4">
                                                 <span className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-green-400 to-green-300 bg-clip-text text-transparent">
-                                                    ₿ {userData.earnings.toFixed(5)}
+                                                    ₿ {userData.earnings.toFixed(5)} RFX
                                                 </span>
                                                 <div className="flex items-center space-x-1 text-green-400 text-sm">
                                                     <ArrowUp className="w-4 h-4" />

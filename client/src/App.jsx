@@ -19,7 +19,9 @@ import AdminCampaignDashboard from './components/admin/adminCampaignDashboard';
 // Admin Route Protection Component
 const ProtectedAdminRoute = ({ children }) => {
     const isAdmin = localStorage.getItem('isAdmin') === 'true';
-    return isAdmin ? children : <Navigate to="/admin/login" replace />;
+    const isAuthenticated = localStorage.getItem('adminAuthenticated') === 'true';
+
+    return isAdmin && isAuthenticated ? children : <Navigate to="/admin/login" replace />;
 };
 
 // Main App Component

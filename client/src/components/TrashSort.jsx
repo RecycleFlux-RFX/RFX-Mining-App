@@ -12,134 +12,63 @@ const TrashSortGame = () => {
     const [feedback, setFeedback] = useState(null);
     const [questionsAnswered, setQuestionsAnswered] = useState(0);
     const [correctAnswers, setCorrectAnswers] = useState(0);
-    const [gameData, setGameData] = useState(null);
-    const [wasteItems, setWasteItems] = useState([]);
     const [error, setError] = useState(null);
 
     const BASE_URL = 'http://localhost:3000';
     const navigate = useNavigate();
+    const gameId = '1'; // Static ID for EcoSort Master from gamesPage
 
-    // Fetch game data and user data from backend
-    const fetchGameData = useCallback(async () => {
-        try {
-            const token = localStorage.getItem('authToken');
-            if (!token) {
-                setError('Please log in to play the game');
-                navigate('/login');
-                return;
-            }
-
-            // Fetch game data
-            const gameResponse = await fetch(`${BASE_URL}/games`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
-            });
-
-            if (!gameResponse.ok) {
-                const errorData = await gameResponse.json();
-                throw new Error(errorData.message || 'Failed to fetch game data');
-            }
-
-            const games = await gameResponse.json();
-            const ecoSortGame = games.find(game => game.title === 'EcoSort Master');
-            if (!ecoSortGame) {
-                throw new Error('EcoSort Master game not found');
-            }
-
-            setGameData(ecoSortGame);
-
-            // Define waste items based on game data or fallback to static list
-            const items = ecoSortGame.wasteItems || [
-                { name: "Plastic Water Bottle", correct: "Plastic", emoji: "🥤" },
-                { name: "Newspaper", correct: "Paper", emoji: "📰" },
-                { name: "Aluminum Can", correct: "Metal", emoji: "🥫" },
-                { name: "Banana Peel", correct: "Organic", emoji: "🍌" },
-                { name: "Pizza Box", correct: "Paper", emoji: "📦" },
-                { name: "Glass Jar", correct: "Glass", emoji: "🫙" }, // Corrected category
-                { name: "Apple Core", correct: "Organic", emoji: "🍎" },
-                { name: "Plastic Bag", correct: "Plastic", emoji: "🛍️" },
-                { name: "Coffee Grounds", correct: "Organic", emoji: "☕" },
-                { name: "Cardboard Box", correct: "Paper", emoji: "📦" },
-                { name: "Tin Can", correct: "Metal", emoji: "🥫" },
-                { name: "Yogurt Container", correct: "Plastic", emoji: "🥛" },
-                { name: "Lettuce Leaves", correct: "Organic", emoji: "🥬" },
-                { name: "Magazine", correct: "Paper", emoji: "📖" },
-                { name: "Steel Fork", correct: "Metal", emoji: "🍴" },
-                { name: "Plastic Bottle Cap", correct: "Plastic", emoji: "🔴" },
-                { name: "Orange Peel", correct: "Organic", emoji: "🍊" },
-                { name: "Cereal Box", correct: "Paper", emoji: "📦" },
-                { name: "Soda Can", correct: "Metal", emoji: "🥤" },
-                { name: "Food Scraps", correct: "Organic", emoji: "🍽️" },
-            ];
-            setWasteItems(items);
-
-            // Fetch user data to get wallet ID
-            const userResponse = await fetch(`${BASE_URL}/user/user`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
-            });
-
-            if (!userResponse.ok) {
-                const errorData = await userResponse.json();
-                throw new Error(errorData.message || 'Failed to fetch user data');
-            }
-
-            const userData = await userResponse.json();
-            localStorage.setItem('walletId', userData.walletAddress);
-        } catch (error) {
-            console.error('Error fetching game data:', error);
-            setError(error.message || 'Failed to load game data');
-            if (error.message.includes('Authentication') || error.message.includes('Invalid token')) {
-                localStorage.removeItem('authToken');
-                navigate('/login');
-            }
-        }
-    }, [navigate]);
-
-    useEffect(() => {
-        fetchGameData();
-    }, [fetchGameData]);
+    // Static waste items to match gamesPage approach
+    const wasteItems = [
+        { name: "Plastic Water Bottle", correct: "Plastic", emoji: "🥤" },
+        { name: "Newspaper", correct: "Paper", emoji: "📰" },
+        { name: "Aluminum Can", correct: "Metal", emoji: "🥫" },
+        { name: "Banana Peel", correct: "Organic", emoji: "🍌" },
+        { name: "Pizza Box", correct: "Paper", emoji: "📦" },
+        { name: "Glass Jar", correct: "Glass", emoji: "🫙" },
+        { name: "Apple Core", correct: "Organic", emoji: "🍎" },
+        { name: "Plastic Bag", correct: "Plastic", emoji: "🛍️" },
+        { name: "Coffee Grounds", correct: "Organic", emoji: "☕" },
+        { name: "Cardboard Box", correct: "Paper", emoji: "📦" },
+        { name: "Tin Can", correct: "Metal", emoji: "🥫" },
+        { name: "Yogurt Container", correct: "Plastic", emoji: "🥛" },
+        { name: "Lettuce Leaves", correct: "Organic", emoji: "🥬" },
+        { name: "Magazine", correct: "Paper", emoji: "📖" },
+        { name: "Steel Fork", correct: "Metal", emoji: "🍴" },
+        { name: "Plastic Bottle Cap", correct: "Plastic", emoji: "🔴" },
+        { name: "Orange Peel", correct: "Organic", emoji: "🍊" },
+        { name: "Cereal Box", correct: "Paper", emoji: "📦" },
+        { name: "Soda Can", correct: "Metal", emoji: "🥤" },
+        { name: "Food Scraps", correct: "Organic", emoji: "🍽️" },
+    ];
 
     const binColors = {
         Plastic: "bg-blue-500 hover:bg-blue-600",
         Paper: "bg-green-500 hover:bg-green-600",
         Metal: "bg-gray-500 hover:bg-gray-600",
         Organic: "bg-amber-500 hover:bg-amber-600",
-        Glass: "bg-teal-500 hover:bg-teal-600", // Added for Glass
+        Glass: "bg-teal-500 hover:bg-teal-600",
     };
 
     const getRandomItem = useCallback(() => {
         return wasteItems[Math.floor(Math.random() * wasteItems.length)];
-    }, [wasteItems]);
+    }, []);
 
     const startGame = async () => {
         try {
             const token = localStorage.getItem('authToken');
-            if (!token || !gameData) {
-                throw new Error('Authentication or game data missing');
+            if (!token) {
+                throw new Error('Please log in to play the game');
             }
 
-            const response = await fetch(`${BASE_URL}/games/start`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                    gameId: gameData.id,
-                    title: gameData.title,
-                }),
-            });
+            const response = await axios.post(
+                `${BASE_URL}/games/start`,
+                { gameId, title: 'EcoSort Master' },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to start game');
+            if (response.status !== 200) {
+                throw new Error(response.data.message || 'Failed to start game');
             }
 
             // Reset game state
@@ -165,26 +94,21 @@ const TrashSortGame = () => {
     const submitScore = async () => {
         try {
             const token = localStorage.getItem('authToken');
-            const walletId = localStorage.getItem('walletId');
-            if (!token || !walletId || !gameData) {
-                throw new Error('Authentication or wallet data missing');
+            if (!token) {
+                throw new Error('Authentication missing');
             }
+
+            const xpEarned = Math.floor(score / 10); // Example: 10 points = 1 XP
+            const achievements = streak >= 5 ? ['High Streak'] : [];
 
             const response = await axios.post(
                 `${BASE_URL}/games/complete`,
-                {
-                    gameId: gameData.id,
-                    score,
-                    achievements: streak >= 5 ? ['High Streak'] : [], // Example achievement
-                },
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
+                { gameId, score, xpEarned, achievements },
+                { headers: { Authorization: `Bearer ${token}` } }
             );
 
             console.log('Score submitted:', response.data);
+            navigate('/games'); // Navigate back to games page
         } catch (error) {
             console.error('Error submitting score:', error);
             setError('Failed to submit score');
@@ -254,7 +178,7 @@ const TrashSortGame = () => {
                 nextQuestion();
             }
         }, 1500);
-    }, [currentItem, questionsAnswered, nextQuestion]);
+    }, [currentItem, questionsAnswered, nextQuestion, submitScore]);
 
     useEffect(() => {
         if (gameState === 'playing' && timeLeft > 0 && !feedback) {
@@ -267,13 +191,8 @@ const TrashSortGame = () => {
         }
     }, [timeLeft, gameState, feedback, handleTimeOut]);
 
-    const getStreakMultiplier = () => {
-        return Math.max(1, streak);
-    };
-
-    const getAccuracy = () => {
-        return questionsAnswered > 0 ? Math.round((correctAnswers / questionsAnswered) * 100) : 0;
-    };
+    const getStreakMultiplier = () => Math.max(1, streak);
+    const getAccuracy = () => (questionsAnswered > 0 ? Math.round((correctAnswers / questionsAnswered) * 100) : 0);
 
     if (error) {
         return (
@@ -298,8 +217,8 @@ const TrashSortGame = () => {
                 <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center">
                     <div className="mb-6">
                         <Recycle className="w-16 h-16 text-emerald-500 mx-auto mb-4" />
-                        <h1 className="text-4xl font-bold text-gray-800 mb-2">{gameData?.title || 'Trash Sort Challenge'}</h1>
-                        <p className="text-gray-600">{gameData?.description || 'Test your recycling knowledge!'}</p>
+                        <h1 className="text-4xl font-bold text-gray-800 mb-2">EcoSort Master</h1>
+                        <p className="text-gray-600">Sort waste into correct recycling categories!</p>
                     </div>
 
                     <div className="mb-8 space-y-3 text-left">
@@ -363,10 +282,10 @@ const TrashSortGame = () => {
                     </button>
 
                     <button
-                        onClick={() => setGameState('menu')}
+                        onClick={() => navigate('/games')}
                         className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-4 px-8 rounded-full text-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
                     >
-                        Menu
+                        Back to Games
                     </button>
                 </div>
             </div>

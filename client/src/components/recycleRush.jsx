@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
 
 const RecycleRush = () => {
     const [gameState, setGameState] = useState('menu'); // 'menu', 'playing', 'gameOver'
@@ -11,9 +13,13 @@ const RecycleRush = () => {
     const [draggedItem, setDraggedItem] = useState(null);
     const [dragPosition, setDragPosition] = useState({ x: 0, y: 0 });
     const [showInstructions, setShowInstructions] = useState(true);
+    const [error, setError] = useState(null);
 
     const gameAreaRef = useRef(null);
     const itemIdCounter = useRef(0);
+    const navigate = useNavigate();
+    const gameId = '2'; // Static ID for Ocean Defender from gamesPage
+    const BASE_URL = 'http://localhost:3000';
 
     const wasteItems = [
         { name: 'Soda Can', type: 'Metal', emoji: '🥤' },
@@ -46,29 +52,76 @@ const RecycleRush = () => {
         return {
             ...randomItem,
             id: itemIdCounter.current++,
-            x: Math.random() * 80 + 10, // Random x position (10% to 90%)
-            y: 0, // Start at the top
-            speed: Math.random() * 2 + 1, // Adjusted speed
+            x: Math.random() * 80 + 10,
+            y: 0,
+            speed: Math.random() * 2 + 1,
         };
     };
 
-    const startGame = () => {
-        setGameState('playing');
-        setScore(0);
-        setTimeLeft(60);
-        setCombo(0);
-        setFallingItems([]);
-        setFeedback('');
-        setShowInstructions(true);
-        itemIdCounter.current = 0;
+    const startGame = async () => {
+        try {
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                throw new Error('Please log in to play the game');
+            }
+
+            const response = await axios.post(
+                `${BASE_URL}/games/start`,
+                { gameId, title: 'Ocean Defender' },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+            if (response.status !== 200) {
+                throw new Error(response.data.message || 'Failed to start game');
+            }
+
+            setGameState('playing');
+            setScore(0);
+            setTimeLeft(60);
+            setCombo(0);
+            setFallingItems([]);
+            setFeedback('');
+            setShowInstructions(true);
+            itemIdCounter.current = 0;
+            setError(null);
+        } catch (error) {
+            console.error('Error starting game:', error);
+            setError(error.message || 'Failed to start game');
+            if (error.message.includes('Authentication') || error.message.includes('Invalid token')) {
+                localStorage.removeItem('authToken');
+                navigate('/login');
+            }
+        }
+    };
+
+    const submitScore = async () => {
+        try {
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                throw new Error('Authentication missing');
+            }
+
+            const xpEarned = Math.floor(score / 10); // Example: 10 points = 1 XP
+            const achievements = combo >= 5 ? ['High Combo'] : [];
+
+            const response = await axios.post(
+                `${BASE_URL}/games/complete`,
+                { gameId, score, xpEarned, achievements },
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+            setHighScore(response.data.newHighScore || score); // Update high score from backend
+            console.log('Score submitted:', response.data);
+            navigate('/games');
+        } catch (error) {
+            console.error('Error submitting score:', error);
+            setError('Failed to submit score');
+        }
     };
 
     const endGame = () => {
         setGameState('gameOver');
-        if (score > highScore) {
-            setHighScore(score);
-        }
-        setFallingItems([]);
+        submitScore();
     };
 
     const handleCorrectSort = (item) => {
@@ -102,31 +155,25 @@ const RecycleRush = () => {
         setTimeout(() => setFeedback(''), 800);
     };
 
-    // Game loop - spawn items and update positions
     useEffect(() => {
         if (gameState !== 'playing') return;
 
         const gameLoop = setInterval(() => {
             setFallingItems(prev => {
                 let newItems = [...prev];
-
-                // Spawn new item
                 if (Math.random() < 0.05 && newItems.length < 6) {
                     newItems.push(createFallingItem());
                 }
-
-                // Update positions and remove fallen items
                 newItems = newItems.map(item => ({
                     ...item,
                     y: item.y + item.speed,
                 })).filter(item => {
-                    if (item.y > 85) { // Remove when near bottom (85% down)
+                    if (item.y > 85) {
                         handleMissedItem(item);
                         return false;
                     }
                     return true;
                 });
-
                 return newItems;
             });
         }, 50);
@@ -134,7 +181,6 @@ const RecycleRush = () => {
         return () => clearInterval(gameLoop);
     }, [gameState]);
 
-    // Hide instructions after 5 seconds
     useEffect(() => {
         if (gameState === 'playing' && showInstructions) {
             const timer = setTimeout(() => setShowInstructions(false), 5000);
@@ -142,7 +188,6 @@ const RecycleRush = () => {
         }
     }, [gameState, showInstructions]);
 
-    // Timer effect
     useEffect(() => {
         if (gameState === 'playing' && timeLeft > 0) {
             const timer = setTimeout(() => setTimeLeft(prev => prev - 1), 1000);
@@ -152,7 +197,6 @@ const RecycleRush = () => {
         }
     }, [gameState, timeLeft]);
 
-    // Drag handlers
     const handleMouseDown = (e, item) => {
         e.preventDefault();
         setDraggedItem(item);
@@ -235,7 +279,6 @@ const RecycleRush = () => {
         }
     };
 
-    // Add global event listeners
     useEffect(() => {
         const handleGlobalMouseMove = (e) => handleMouseMove(e);
         const handleGlobalMouseUp = (e) => handleMouseUp(e);
@@ -255,11 +298,28 @@ const RecycleRush = () => {
         };
     }, [draggedItem]);
 
+    if (error) {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-red-400 via-pink-500 to-purple-500 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-2xl p-8 text-center max-w-md w-full">
+                    <h1 className="text-2xl font-bold text-red-600 mb-4">Error</h1>
+                    <p className="text-gray-600 mb-6">{error}</p>
+                    <button
+                        onClick={() => navigate('/games')}
+                        className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition-colors"
+                    >
+                        Back to Games
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     if (gameState === 'menu') {
         return (
             <div className="min-h-screen bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center p-4">
                 <div className="bg-white rounded-2xl shadow-2xl p-8 text-center max-w-md w-full">
-                    <h1 className="text-4xl font-bold text-gray-800 mb-4">♻️ Recycle Rush</h1>
+                    <h1 className="text-4xl font-bold text-gray-800 mb-4">♻️ Ocean Defender</h1>
                     <p className="text-gray-600 mb-6">Catch falling waste items and drag them to the correct recycling bins!</p>
                     <div className="grid grid-cols-4 gap-2 mb-6">
                         {bins.map((bin) => (
@@ -292,7 +352,7 @@ const RecycleRush = () => {
                     <div className="mb-6">
                         <p className="text-lg text-gray-600">Final Score</p>
                         <p className="text-4xl font-bold text-purple-600 mb-2">{score}</p>
-                        {score === highScore && score > 0 && (
+                        {score >= highScore && score > 0 && (
                             <p className="text-green-600 font-bold">🎉 New High Score!</p>
                         )}
                     </div>
@@ -304,10 +364,10 @@ const RecycleRush = () => {
                             Play Again
                         </button>
                         <button
-                            onClick={() => setGameState('menu')}
+                            onClick={() => navigate('/games')}
                             className="w-full bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition-colors"
                         >
-                            Main Menu
+                            Back to Games
                         </button>
                     </div>
                 </div>
@@ -317,7 +377,6 @@ const RecycleRush = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-sky-400 to-cyan-500 overflow-hidden">
-            {/* Header */}
             <div className="bg-white shadow-lg p-4 flex justify-between items-center relative z-20">
                 <div className="flex items-center space-x-6">
                     <div>
@@ -338,14 +397,13 @@ const RecycleRush = () => {
                     )}
                 </div>
                 <button
-                    onClick={() => setGameState('menu')}
+                    onClick={() => navigate('/games')}
                     className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg"
                 >
                     Menu
                 </button>
             </div>
 
-            {/* Feedback */}
             {feedback && (
                 <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-30">
                     <p className="text-xl font-bold text-white bg-black bg-opacity-70 rounded-lg px-4 py-2 animate-pulse">
@@ -354,7 +412,6 @@ const RecycleRush = () => {
                 </div>
             )}
 
-            {/* Instructions */}
             {showInstructions && (
                 <div className="fixed top-24 left-4 right-4 text-center z-20">
                     <p className="text-white text-sm font-semibold bg-black bg-opacity-40 rounded-lg px-3 py-1 inline-block">
@@ -363,13 +420,11 @@ const RecycleRush = () => {
                 </div>
             )}
 
-            {/* Game Area */}
             <div
                 ref={gameAreaRef}
                 className="relative h-[70vh] overflow-hidden bg-transparent"
                 style={{ userSelect: 'none' }}
             >
-                {/* Falling Items */}
                 {fallingItems.filter(item => draggedItem?.id !== item.id).map((item) => (
                     <div
                         key={item.id}
@@ -392,7 +447,6 @@ const RecycleRush = () => {
                     </div>
                 ))}
 
-                {/* Dragged Item */}
                 {draggedItem && (
                     <div
                         className="absolute bg-white rounded-xl shadow-2xl p-3 cursor-grabbing border-2 border-gray-300 z-50"
@@ -413,7 +467,6 @@ const RecycleRush = () => {
                 )}
             </div>
 
-            {/* Bottom Bins */}
             <div className="fixed bottom-0 left-0 right-0 bg-gray-800 p-4">
                 <div className="grid grid-cols-4 gap-4 max-w-4xl mx-auto">
                     {bins.map((bin) => (

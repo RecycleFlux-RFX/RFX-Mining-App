@@ -3,30 +3,50 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Lock, AlertCircle } from 'lucide-react';
 
 export default function AdminVerify() {
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
     const location = useLocation();
     const navigate = useNavigate();
-    const { email, password: initialPassword } = location.state || {};
 
-    // Set initial password and auto-submit if provided
+    // Set initial email and password if provided
     useEffect(() => {
-        if (!email) {
+        const { state } = location;
+        if (state?.email) {
+            setEmail(state.email);
+            if (state.password) {
+                setPassword(state.password);
+                handleSubmit(state.password);
+            }
+        } else {
             navigate('/login'); // Redirect to login if no email
         }
-        if (initialPassword) {
-            setPassword(initialPassword);
-            handleAutoSubmit(initialPassword); // Auto-submit if password provided
-        }
-    }, [email, initialPassword]);
+    }, [location, navigate]);
 
-    const handleAutoSubmit = async (pass) => {
+    const handleSubmit = async (pass = password) => {
         setIsLoading(true);
         setError(null);
 
         try {
-            const response = await fetch('http://localhost:3000/auth/admin/verify', {
+            // First check if it's the hardcoded admin
+            if (email === import.meta.env.VITE_ADMIN_EMAIL && pass === import.meta.env.VITE_ADMIN_PASSWORD) {
+                const mockUser = {
+                    id: 'admin',
+                    email: import.meta.env.VITE_ADMIN_EMAIL,
+                    isAdmin: true
+                };
+
+                localStorage.setItem('token', 'admin-token');
+                localStorage.setItem('user', JSON.stringify(mockUser));
+                localStorage.setItem('isAdmin', 'true');
+                localStorage.setItem('adminAuthenticated', 'true');
+                navigate('/admin/dashboard');
+                return;
+            }
+
+            // If not hardcoded admin, check with backend
+            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/admin/verify`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -37,30 +57,33 @@ export default function AdminVerify() {
                 }),
             });
 
-            const data = await response.json();
-
+            // Handle non-OK responses
             if (!response.ok) {
-                throw new Error(data.message || 'Admin verification failed');
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
             }
 
+            const data = await response.json();
+
             // Store token and admin flag
-            localStorage.setItem('token', data.token); // Use 'token' instead of 'authToken'
+            localStorage.setItem('token', data.token);
             localStorage.setItem('user', JSON.stringify(data.user));
             localStorage.setItem('isAdmin', 'true');
+            localStorage.setItem('adminAuthenticated', 'true');
 
-            // Redirect to admin campaigns
-            navigate('/admin/campaigns');
+            // Redirect to admin dashboard
+            navigate('/admin/dashboard');
         } catch (err) {
             console.error('Admin verification error:', err);
-            setError(err.message || 'Failed to verify admin credentials');
+            setError(err.message || 'Failed to verify admin credentials. Please check your password.');
         } finally {
             setIsLoading(false);
         }
     };
 
-    const handleSubmit = async (e) => {
+    const handleFormSubmit = async (e) => {
         e.preventDefault();
-        await handleAutoSubmit(password); // Reuse the same logic
+        await handleSubmit();
     };
 
     return (
@@ -76,7 +99,7 @@ export default function AdminVerify() {
                         </div>
                     )}
 
-                    <form onSubmit={handleSubmit} className="space-y-6">
+                    <form onSubmit={handleFormSubmit} className="space-y-6">
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">
                                 Admin Password for {email}
@@ -89,15 +112,15 @@ export default function AdminVerify() {
                                     onChange={(e) => setPassword(e.target.value)}
                                     className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 text-slate-900"
                                     required
-                                    disabled={isLoading || initialPassword} // Disable if auto-submitting
+                                    disabled={isLoading}
                                 />
                             </div>
                         </div>
 
                         <button
                             type="submit"
-                            disabled={isLoading || initialPassword}
-                            className={`w-full py-3 px-4 rounded-xl font-semibold text-white transition-all ${isLoading || initialPassword
+                            disabled={isLoading}
+                            className={`w-full py-3 px-4 rounded-xl font-semibold text-white transition-all ${isLoading
                                     ? 'bg-gray-400 cursor-not-allowed'
                                     : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'
                                 }`}

@@ -8,31 +8,39 @@ const AdminAuthVerification = () => {
     const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
 
-    // In your AdminAuthVerification component
     const handleSubmit = async (e) => {
         e.preventDefault();
         setIsLoading(true);
         setError(null);
 
         try {
-            // Call backend for password verification instead of frontend check
-            const response = await fetch('/auth/admin-verify', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ password }),
-            });
+            // Check against admin credentials
+            if (email === process.env.ADMIN_EMAIL && password === process.env.ADMIN_PASSWORD) {
+                // Mark admin as authenticated
+                localStorage.setItem('adminAuthenticated', 'true');
+                localStorage.setItem('isAdmin', 'true');
+                navigate('/admin/dashboard');
+            } else {
+                // Call backend for password verification
+                const response = await fetch('/auth/admin-verify', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ password }),
+                });
 
-            const data = await response.json();
+                const data = await response.json();
 
-            if (!response.ok) {
-                throw new Error(data.message || 'Verification failed');
+                if (!response.ok) {
+                    throw new Error(data.message || 'Verification failed');
+                }
+
+                // Mark admin as authenticated
+                localStorage.setItem('adminAuthenticated', 'true');
+                localStorage.setItem('isAdmin', 'true');
+                navigate('/admin/dashboard');
             }
-
-            // Mark admin as authenticated
-            localStorage.setItem('adminAuthenticated', 'true');
-            navigate('/admin/dashboard');
         } catch (err) {
             setError(err.message || 'Verification failed');
         } finally {
