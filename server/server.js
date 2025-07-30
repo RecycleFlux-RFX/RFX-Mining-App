@@ -884,27 +884,59 @@ app.get('/admin/campaigns/:id', authenticateToken, adminAuth, async (req, res) =
     }
 });
 
+// Updated Admin Campaign Creation Endpoint
 app.post('/admin/campaigns', [authenticateToken, adminAuth, upload.single('image')], async (req, res) => {
     try {
         // Parse form data
         const formData = req.body;
+
+        // Validate required fields first
+        if (!formData.title || !formData.description || !formData.category ||
+            !formData.reward || !formData.difficulty || !formData.duration ||
+            !formData.startDate || !formData.status) {
+            return res.status(400).json({ message: 'Missing required fields' });
+        }
+
+        // Validate description length
+        if (formData.description.length < 10) {
+            return res.status(400).json({
+                message: 'Description must be at least 10 characters long'
+            });
+        }
 
         // Parse tasks if they exist
         let tasksList = [];
         if (formData.tasks) {
             try {
                 tasksList = JSON.parse(formData.tasks);
+
+                // Validate each task
+                for (const task of tasksList) {
+                    if (!task.title || task.title.length < 3) {
+                        return res.status(400).json({
+                            message: 'Task title must be at least 3 characters long'
+                        });
+                    }
+                    if (!task.description || task.description.length < 10) {
+                        return res.status(400).json({
+                            message: 'Task description must be at least 10 characters long'
+                        });
+                    }
+                    if (!task.day || task.day < 1) {
+                        return res.status(400).json({
+                            message: 'Task day must be at least 1'
+                        });
+                    }
+                    if (!task.reward || task.reward < 0) {
+                        return res.status(400).json({
+                            message: 'Task reward must be a positive number'
+                        });
+                    }
+                }
             } catch (e) {
                 console.error('Error parsing tasks:', e);
                 return res.status(400).json({ message: 'Invalid tasks format' });
             }
-        }
-
-        // Validate required fields
-        if (!formData.title || !formData.description || !formData.category ||
-            !formData.reward || !formData.difficulty || !formData.duration ||
-            !formData.startDate || !formData.status) {
-            return res.status(400).json({ message: 'Missing required fields' });
         }
 
         // Calculate end date
@@ -915,6 +947,12 @@ app.post('/admin/campaigns', [authenticateToken, adminAuth, upload.single('image
         let imagePath = null;
         if (req.file) {
             imagePath = path.join('uploads', 'campaigns', req.file.filename);
+        }
+
+        // Ensure createdBy is a valid ObjectId or null
+        let createdById = null;
+        if (req.user.userId && mongoose.Types.ObjectId.isValid(req.user.userId)) {
+            createdById = req.user.userId;
         }
 
         const campaign = new Campaign({
@@ -936,7 +974,7 @@ app.post('/admin/campaigns', [authenticateToken, adminAuth, upload.single('image
             participants: 0,
             completedTasks: 0,
             participantsList: [],
-            createdBy: req.user.userId
+            createdBy: createdById // Set to valid ObjectId or null
         });
 
         await campaign.save();
