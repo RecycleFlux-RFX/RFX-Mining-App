@@ -202,7 +202,22 @@ const campaignSchema = new mongoose.Schema({
                 type: Date,
                 default: null
             }
-        }]
+        }],
+        requirements: {
+            proofRequired: {
+                type: Boolean,
+                default: true
+            },
+            proofType: {
+                type: String,
+                enum: ['image', 'video', 'screenshot', 'link'],
+                default: 'image'
+            },
+            description: {
+                type: String,
+                default: 'Please provide proof of completion'
+            }
+        }
     }],
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,

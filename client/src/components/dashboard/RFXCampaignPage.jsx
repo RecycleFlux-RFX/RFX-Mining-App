@@ -29,7 +29,7 @@ export default function RFXCampaignPage() {
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('campaign');
     const [campaigns, setCampaigns] = useState([]);
-    const [userCampaigns, setUserCampaigns] = useState([]); // New state for user's joined campaigns
+    const [userCampaigns, setUserCampaigns] = useState([]);
     const [timeLeft, setTimeLeft] = useState({ hours: 23, minutes: 45, seconds: 12 });
     const [userRank, setUserRank] = useState(null);
     const [userStats, setUserStats] = useState({ earnings: 0, co2Saved: '0.00', walletAddress: '', fullName: '' });
@@ -188,12 +188,83 @@ export default function RFXCampaignPage() {
         }
     };
 
+    const calculateDayProgress = (campaign) => {
+        if (!campaign || !campaign.startDate || !campaign.duration) {
+            console.warn('Invalid campaign data for day calculation:', campaign);
+            return { currentDay: 1, timeLeft: { hours: 23, minutes: 59, seconds: 59 } };
+        }
+
+        const startDate = new Date(campaign.startDate);
+        if (isNaN(startDate.getTime())) {
+            console.warn('Invalid startDate:', campaign.startDate);
+            return { currentDay: 1, timeLeft: { hours: 23, minutes: 59, seconds: 59 } };
+        }
+
+        const duration = parseInt(campaign.duration, 10) || 1;
+        const now = new Date();
+        const diffTime = now - startDate;
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        const currentDay = Math.min(diffDays, duration);
+
+        const nextDay = new Date(startDate);
+        nextDay.setDate(startDate.getDate() + currentDay);
+        const timeUntilNextDay = nextDay - now;
+
+        const hours = Math.floor((timeUntilNextDay % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((timeUntilNextDay % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((timeUntilNextDay % (1000 * 60)) / 1000);
+
+        const result = {
+            currentDay,
+            timeLeft: {
+                hours: Math.max(0, hours),
+                minutes: Math.max(0, minutes),
+                seconds: Math.max(0, seconds)
+            }
+        };
+        console.log('Calculated day progress:', result, 'for campaign:', campaign.title);
+        return result;
+    };
+
     useEffect(() => {
         if (selectedCampaign && tasks.length > 0) {
-            const filteredTasks = tasks.filter(task => task.day === currentDay);
+            console.log('Filtering tasks for day:', currentDay, 'Tasks:', tasks);
+            const filteredTasks = tasks.filter(task => task.day === currentDay || (isNaN(currentDay) && task.day === 1));
+            console.log('Filtered daily tasks:', filteredTasks);
             setDailyTasks(filteredTasks);
+        } else {
+            console.log('No selected campaign or tasks:', { selectedCampaign, tasks });
+            setDailyTasks([]);
         }
     }, [tasks, currentDay, selectedCampaign]);
+
+    useEffect(() => {
+        if (selectedCampaign) {
+            const { currentDay, timeLeft } = calculateDayProgress(selectedCampaign);
+            setCurrentDay(currentDay);
+            setDayTimeLeft(timeLeft);
+
+            const timer = setInterval(() => {
+                setDayTimeLeft(prev => {
+                    if (prev.seconds > 0) return { ...prev, seconds: prev.seconds - 1 };
+                    if (prev.minutes > 0) return { ...prev, minutes: prev.minutes - 1, seconds: 59 };
+                    if (prev.hours > 0) return { ...prev, hours: prev.hours - 1, minutes: 59, seconds: 59 };
+
+                    const duration = parseInt(selectedCampaign.duration, 10) || 1;
+                    const newDay = Math.min(currentDay + 1, duration);
+                    console.log('Advancing to new day:', newDay);
+                    if (newDay !== currentDay) {
+                        setCurrentDay(newDay);
+                        fetchCampaignDetails(selectedCampaign.id);
+                    }
+
+                    return { hours: 23, minutes: 59, seconds: 59 };
+                });
+            }, 1000);
+
+            return () => clearInterval(timer);
+        }
+    }, [selectedCampaign]);
 
     useEffect(() => {
         const navItems = [
@@ -263,10 +334,10 @@ export default function RFXCampaignPage() {
                 }),
             ]);
 
-            // Handle user data - response comes directly, not under .data
-            const userData = userResponse;
+            console.log('User response:', userResponse);
+            console.log('Campaigns response:', campaignsResponse);
 
-            // Map campaigns and merge with user campaign data
+            const userData = userResponse;
             const campaignsData = campaignsResponse.data || campaignsResponse;
             const mappedCampaigns = (campaignsData || []).map((c) => {
                 const userCampaign = userData.campaigns?.find(uc => uc.campaignId.toString() === c._id) || null;
@@ -276,11 +347,12 @@ export default function RFXCampaignPage() {
                     tasks: c.tasksList ? c.tasksList.length : 0,
                     completed: c.completedTasks || 0,
                     participants: c.participants || 0,
-                    progress: c.progress || 0,
+                    progress: c.tasksList ? (c.completedTasks / c.tasksList.length) * 100 : 0,
                     reward: c.reward ? `${c.reward} RFX` : '0 RFX',
                     duration: c.duration ? `${c.duration} days` : 'N/A',
                     userJoined: !!userCampaign,
                     userCompleted: userCampaign ? userCampaign.completed : 0,
+                    startDate: c.startDate ? new Date(c.startDate).toISOString() : new Date().toISOString(),
                 };
             });
 
@@ -318,32 +390,35 @@ export default function RFXCampaignPage() {
 
     const fetchCampaignDetails = async (campaignId) => {
         try {
+            console.log('Fetching campaign details for ID:', campaignId);
             const response = await fetchWithAuth(`${BASE_URL}/campaigns/${campaignId}`);
-            const mappedTasks = (response.tasksList || []).map((task) => ({
-                ...task,
-                id: task._id,
-                status: task.status || 'open',
-                reward: task.reward ? `${task.reward} RFX` : '0 RFX',
-                completed: task.status === 'completed'
-            }));
+            console.log('Campaign details response:', response);
+
+            const mappedTasks = (response.tasksList || []).map((task) => {
+                const userTask = response.participantsList
+                    ?.find(p => p.userId.toString() === localStorage.getItem('userId'))
+                    ?.tasks?.find(t => t.taskId.toString() === task._id) || {};
+                return {
+                    ...task,
+                    id: task._id || `temp-${Math.random()}`,
+                    status: userTask.status || 'open',
+                    reward: task.reward ? `${task.reward} RFX` : '0 RFX',
+                    completed: userTask.status === 'completed',
+                    proof: userTask.proof || null,
+                    day: task.day || 1, // Fallback to day 1 if undefined
+                };
+            });
+
+            console.log('Mapped tasks:', mappedTasks);
             setTasks(mappedTasks);
             setSelectedCampaign({
                 ...response,
                 id: response._id,
                 tasks: mappedTasks.length,
                 reward: response.reward ? `${response.reward} RFX` : '0 RFX',
-                duration: response.duration ? `${response.duration} days` : 'N/A'
+                duration: response.duration ? `${response.duration} days` : '1 day',
+                startDate: response.startDate ? new Date(response.startDate).toISOString() : new Date().toISOString(),
             });
-
-            if (response.startDate) {
-                const startDate = new Date(response.startDate);
-                const today = new Date();
-                const diffTime = today - startDate;
-                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
-                setCurrentDay(Math.min(diffDays, response.duration || 1));
-            } else {
-                setCurrentDay(1);
-            }
         } catch (error) {
             console.error('Fetch campaign error:', {
                 message: error.message,
@@ -414,7 +489,6 @@ export default function RFXCampaignPage() {
                 throw new Error('Campaign not found');
             }
 
-            // Update local state
             setCampaigns((prev) => prev.map((c) =>
                 c.id === campaignId ? {
                     ...c,
@@ -509,19 +583,6 @@ export default function RFXCampaignPage() {
     }, []);
 
     useEffect(() => {
-        const timer = setInterval(() => {
-            setDayTimeLeft((prev) => {
-                if (prev.seconds > 0) return { ...prev, seconds: prev.seconds - 1 };
-                if (prev.minutes > 0) return { ...prev, minutes: prev.minutes - 1, seconds: 59 };
-                if (prev.hours > 0) return { ...prev, hours: prev.hours - 1, minutes: 59, seconds: 59 };
-                setCurrentDay((prev) => prev + 1);
-                return { hours: 23, minutes: 59, seconds: 59 };
-            });
-        }, 1000);
-        return () => clearInterval(timer);
-    }, []);
-
-    useEffect(() => {
         const handleMouse = (e) => {
             if (containerRef.current) {
                 const rect = containerRef.current.getBoundingClientRect();
@@ -565,7 +626,6 @@ export default function RFXCampaignPage() {
 
     return (
         <div className="w-full min-h-screen bg-gradient-to-br from-black via-gray-900 to-black overflow-hidden relative" ref={containerRef}>
-            {/* Cursor Effect */}
             <div
                 className="absolute w-4 h-4 bg-green-400 rounded-full pointer-events-none opacity-50"
                 style={{
@@ -575,8 +635,6 @@ export default function RFXCampaignPage() {
                     transition: 'all 0.1s ease',
                 }}
             ></div>
-
-            {/* Animated Background */}
             <div className="absolute inset-0">
                 <div className="absolute inset-0 bg-gradient-to-t from-green-500/10 via-transparent to-transparent"></div>
                 <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl animate-pulse"></div>
@@ -594,9 +652,7 @@ export default function RFXCampaignPage() {
                     ></div>
                 ))}
             </div>
-
             <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 pb-24">
-                {/* Header */}
                 <div className="flex flex-col sm:flex-row items-center justify-between mb-8 pt-4 space-y-4 sm:space-y-0">
                     <div className="flex items-center space-x-3">
                         <div className="relative">
@@ -612,7 +668,6 @@ export default function RFXCampaignPage() {
                             <p className="text-gray-500 text-sm font-medium">Join campaigns to earn rewards</p>
                         </div>
                     </div>
-
                     <div className="flex items-center space-x-3">
                         {walletConnected ? (
                             <div className="flex items-center space-x-2 px-4 py-2 bg-gray-800/50 backdrop-blur-sm rounded-full border border-gray-700">
@@ -648,14 +703,11 @@ export default function RFXCampaignPage() {
                         </div>
                     </div>
                 </div>
-
                 {error && (
                     <div className={`mb-4 p-4 rounded-xl ${getErrorColor()}`}>
                         <p className="text-white">{error.message}</p>
                     </div>
                 )}
-
-                {/* Stats */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                     {[
                         { label: 'Active Campaigns', value: activeCampaigns.length, icon: Target, color: 'green' },
@@ -675,8 +727,6 @@ export default function RFXCampaignPage() {
                         </div>
                     ))}
                 </div>
-
-                {/* My Campaigns */}
                 {userCampaigns.length > 0 && (
                     <div className="mb-8">
                         <div className="flex items-center justify-between mb-6">
@@ -694,7 +744,6 @@ export default function RFXCampaignPage() {
                                     <div key={campaign.id} className="group relative">
                                         <div className={`absolute inset-0 ${colors.bg} rounded-2xl blur-lg group-hover:blur-xl transition-all`}></div>
                                         <div className="relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 border border-gray-700 transition-all hover:border-gray-600">
-                                            {/* Badges */}
                                             <div className="flex items-center justify-between mb-4">
                                                 <div className="flex items-center space-x-2">
                                                     {campaign.new && (
@@ -720,7 +769,6 @@ export default function RFXCampaignPage() {
                                                     {campaign.difficulty}
                                                 </div>
                                             </div>
-                                            {/* Campaign Info */}
                                             <div className="flex items-start space-x-4 mb-4">
                                                 <div className={`w-12 h-12 bg-gradient-to-br ${colors.gradient} rounded-xl flex items-center justify-center transform group-hover:rotate-12 transition-transform`}>
                                                     <Icon className="w-6 h-6 text-black" />
@@ -730,7 +778,6 @@ export default function RFXCampaignPage() {
                                                     <p className="text-gray-400 text-sm">{campaign.description}</p>
                                                 </div>
                                             </div>
-                                            {/* Progress */}
                                             <div className="mb-4">
                                                 <div className="flex items-center justify-between mb-2">
                                                     <span className="text-gray-400 text-sm">Tasks Progress</span>
@@ -743,7 +790,6 @@ export default function RFXCampaignPage() {
                                                     ></div>
                                                 </div>
                                             </div>
-                                            {/* Stats */}
                                             <div className="grid grid-cols-3 gap-4 mb-4 text-center">
                                                 <div>
                                                     <div className="text-green-400 font-bold">{campaign.reward}</div>
@@ -758,28 +804,24 @@ export default function RFXCampaignPage() {
                                                     <div className="text-gray-400 text-xs">Duration</div>
                                                 </div>
                                             </div>
-                                            {/* Action Button */}
                                             <button
                                                 onClick={() => {
-                                                    setSelectedCampaign(campaign);
-                                                    fetchCampaignDetails(campaign.id);
-                                                    setModalIsOpen(true);
+                                                    if (campaign.userJoined) {
+                                                        setSelectedCampaign(campaign);
+                                                        fetchCampaignDetails(campaign.id);
+                                                        setModalIsOpen(true);
+                                                    } else {
+                                                        handleJoinCampaign(campaign.id);
+                                                    }
                                                 }}
                                                 className={`w-full bg-gradient-to-r ${colors.button} text-black font-bold py-3 rounded-xl transition-all transform hover:scale-105 flex items-center justify-center space-x-2`}
                                                 disabled={loading}
                                             >
                                                 {campaign.userJoined ? (
-                                                    campaign.userCompleted > 0 ? (
-                                                        <>
-                                                            <Play className="w-4 h-4" />
-                                                            <span>{loading ? 'Continuing...' : 'CONTINUE'}</span>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <ArrowRight className="w-4 h-4" />
-                                                            <span>{loading ? 'Joining...' : 'JOIN CAMPAIGN'}</span>
-                                                        </>
-                                                    )
+                                                    <>
+                                                        <ArrowRight className="w-4 h-4" />
+                                                        <span>{loading ? 'Loading...' : 'CONTINUE'}</span>
+                                                    </>
                                                 ) : (
                                                     <>
                                                         <ArrowRight className="w-4 h-4" />
@@ -794,8 +836,6 @@ export default function RFXCampaignPage() {
                         </div>
                     </div>
                 )}
-
-                {/* Featured Campaign */}
                 {campaigns.find((c) => c.featured) && (
                     <div className="mb-8">
                         <div className="flex items-center space-x-2 mb-4">
@@ -846,17 +886,10 @@ export default function RFXCampaignPage() {
                                                     disabled={loading}
                                                 >
                                                     {featured.userJoined ? (
-                                                        featured.userCompleted > 0 ? (
-                                                            <>
-                                                                <Play className="w-5 h-5" />
-                                                                <span>{loading ? 'Continuing...' : 'CONTINUE'}</span>
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <ArrowRight className="w-5 h-5" />
-                                                                <span>{loading ? 'Joining...' : 'JOIN CAMPAIGN'}</span>
-                                                            </>
-                                                        )
+                                                        <>
+                                                            <ArrowRight className="w-5 h-5" />
+                                                            <span>{loading ? 'Loading...' : 'CONTINUE'}</span>
+                                                        </>
                                                     ) : (
                                                         <>
                                                             <ArrowRight className="w-5 h-5" />
@@ -867,7 +900,7 @@ export default function RFXCampaignPage() {
                                             </div>
                                             <div className="relative">
                                                 <div className="bg-gray-800/30 rounded-2xl p-6 backdrop-blur-sm">
-                                                    <div className="flex items-center justify-between mb-4">
+                                                    <div className="flex burgers items-center justify-between mb-4">
                                                         <span className="text-gray-400">Progress</span>
                                                         <span className="text-white font-bold">{Math.round(featured.progress)}%</span>
                                                     </div>
@@ -900,10 +933,7 @@ export default function RFXCampaignPage() {
                         })()}
                     </div>
                 )}
-
-                {/* Campaign Sections */}
                 <div className="space-y-8">
-                    {/* Active Campaigns */}
                     <div>
                         <div className="flex items-center justify-between mb-6">
                             <h2 className="text-xl font-bold text-white">Active Campaigns</h2>
@@ -920,7 +950,6 @@ export default function RFXCampaignPage() {
                                     <div key={campaign.id} className="group relative">
                                         <div className={`absolute inset-0 ${colors.bg} rounded-2xl blur-lg group-hover:blur-xl transition-all`}></div>
                                         <div className="relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 border border-gray-700 transition-all hover:border-gray-600">
-                                            {/* Badges */}
                                             <div className="flex items-center justify-between mb-4">
                                                 <div className="flex items-center space-x-2">
                                                     {campaign.new && (
@@ -946,7 +975,6 @@ export default function RFXCampaignPage() {
                                                     {campaign.difficulty}
                                                 </div>
                                             </div>
-                                            {/* Campaign Info */}
                                             <div className="flex items-start space-x-4 mb-4">
                                                 <div className={`w-12 h-12 bg-gradient-to-br ${colors.gradient} rounded-xl flex items-center justify-center transform group-hover:rotate-12 transition-transform`}>
                                                     <Icon className="w-6 h-6 text-black" />
@@ -956,7 +984,6 @@ export default function RFXCampaignPage() {
                                                     <p className="text-gray-400 text-sm">{campaign.description}</p>
                                                 </div>
                                             </div>
-                                            {/* Progress */}
                                             <div className="mb-4">
                                                 <div className="flex items-center justify-between mb-2">
                                                     <span className="text-gray-400 text-sm">Tasks Progress</span>
@@ -969,7 +996,6 @@ export default function RFXCampaignPage() {
                                                     ></div>
                                                 </div>
                                             </div>
-                                            {/* Stats */}
                                             <div className="grid grid-cols-3 gap-4 mb-4 text-center">
                                                 <div>
                                                     <div className="text-green-400 font-bold">{campaign.reward}</div>
@@ -984,7 +1010,6 @@ export default function RFXCampaignPage() {
                                                     <div className="text-gray-400 text-xs">Duration</div>
                                                 </div>
                                             </div>
-                                            {/* Action Button */}
                                             <button
                                                 onClick={() => {
                                                     if (campaign.userJoined) {
@@ -999,17 +1024,10 @@ export default function RFXCampaignPage() {
                                                 disabled={loading}
                                             >
                                                 {campaign.userJoined ? (
-                                                    campaign.userCompleted > 0 ? (
-                                                        <>
-                                                            <Play className="w-4 h-4" />
-                                                            <span>{loading ? 'Continuing...' : 'CONTINUE'}</span>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <ArrowRight className="w-4 h-4" />
-                                                            <span>{loading ? 'Joining...' : 'JOIN CAMPAIGN'}</span>
-                                                        </>
-                                                    )
+                                                    <>
+                                                        <ArrowRight className="w-4 h-4" />
+                                                        <span>{loading ? 'Loading...' : 'CONTINUE'}</span>
+                                                    </>
                                                 ) : (
                                                     <>
                                                         <ArrowRight className="w-4 h-4" />
@@ -1023,8 +1041,6 @@ export default function RFXCampaignPage() {
                             })}
                         </div>
                     </div>
-
-                    {/* Completed Campaigns */}
                     {completedCampaigns.length > 0 && (
                         <div>
                             <div className="flex items-center justify-between mb-6">
@@ -1076,8 +1092,6 @@ export default function RFXCampaignPage() {
                         </div>
                     )}
                 </div>
-
-                {/* Campaign Details Modal */}
                 <Modal
                     isOpen={modalIsOpen}
                     onRequestClose={() => setModalIsOpen(false)}
@@ -1138,127 +1152,127 @@ export default function RFXCampaignPage() {
                                             </div>
                                             <div className="text-xs text-gray-400">Time remaining to complete today's tasks</div>
                                         </div>
-                                        {dailyTasks.map((task, index) => (
-                                            <div key={task.id} className="bg-gray-800/50 rounded-xl p-4">
-                                                <div className="flex items-start justify-between mb-3">
-                                                    <div className="flex items-start space-x-3">
-                                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${task.completed ? 'bg-green-400 text-black' :
-                                                            task.status === 'pending' ? 'bg-yellow-400 text-black' :
-                                                                'bg-gray-600 text-white'
-                                                            }`}>
-                                                            {task.completed ? <CheckCircle className="w-4 h-4" /> : index + 1}
-                                                        </div>
-                                                        <div className="flex-1">
-                                                            <h4 className="text-white font-semibold">{task.title}</h4>
-                                                            <p className="text-gray-400 text-sm">{task.description}</p>
-                                                            {(task.type === 'video-watch' || task.type === 'article-read') && task.contentUrl && (
-                                                                <div className="mt-2">
-                                                                    <a
-                                                                        href={task.contentUrl}
-                                                                        target="_blank"
-                                                                        rel="noopener noreferrer"
-                                                                        className="text-blue-400 text-sm flex items-center"
+                                        {dailyTasks.map((task, index) => {
+                                            const colors = getColorClasses(selectedCampaign.category);
+                                            return (
+                                                <div key={task.id} className="bg-gray-800/50 rounded-xl p-4">
+                                                    <div className="flex items-start justify-between mb-3">
+                                                        <div className="flex items-start space-x-3">
+                                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${task.completed ? 'bg-green-400 text-black' :
+                                                                task.status === 'pending' ? 'bg-yellow-400 text-black' :
+                                                                    'bg-gray-600 text-white'
+                                                                }`}>
+                                                                {task.completed ? <CheckCircle className="w-4 h-4" /> : index + 1}
+                                                            </div>
+                                                            <div className="flex-1">
+                                                                <h4 className="text-white font-semibold">{task.title}</h4>
+                                                                <p className="text-gray-400 text-sm">{task.description}</p>
+                                                                {(task.type === 'video-watch' || task.type === 'article-read') && task.contentUrl && (
+                                                                    <button
+                                                                        onClick={() => window.open(task.contentUrl, '_blank')}
+                                                                        className="text-blue-400 text-sm flex items-center hover:underline mt-2"
                                                                     >
                                                                         {task.type === 'video-watch' ? (
                                                                             <><Play className="w-3 h-3 mr-1" /> Watch Video</>
                                                                         ) : (
                                                                             <><BookOpen className="w-3 h-3 mr-1" /> Read Article</>
                                                                         )}
-                                                                    </a>
+                                                                    </button>
+                                                                )}
+                                                                {task.requirements && (
+                                                                    <div className="mt-2">
+                                                                        <div className="text-xs text-gray-500 mb-1">Requirements:</div>
+                                                                        <ul className="text-xs text-gray-400 space-y-1">
+                                                                            {task.requirements.map((req, i) => (
+                                                                                <li key={i} className="flex items-center space-x-2">
+                                                                                    <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
+                                                                                    <span>{req}</span>
+                                                                                </li>
+                                                                            ))}
+                                                                        </ul>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-green-400 font-bold">{task.reward}</div>
+                                                    </div>
+                                                    {task.completed ? (
+                                                        <div className="flex items-center space-x-2 text-green-400">
+                                                            <CheckCircle className="w-4 h-4" />
+                                                            <span className="text-sm font-medium">Task Completed</span>
+                                                        </div>
+                                                    ) : task.status === 'pending' ? (
+                                                        <div className="flex items-center space-x-2 text-yellow-400">
+                                                            <span className="text-sm font-medium">Pending Review</span>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center space-x-3">
+                                                            {(task.type === 'social-follow' || task.type === 'discord-join') && task.contentUrl && (
+                                                                <a
+                                                                    href={task.contentUrl}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="px-4 py-2 bg-blue-400/20 text-blue-400 border border-blue-400/30 rounded-lg text-sm font-medium hover:bg-blue-400/30 flex items-center space-x-2"
+                                                                >
+                                                                    {task.platform && platformIcons[task.platform.toLowerCase()] ? (
+                                                                        <>
+                                                                            {React.createElement(platformIcons[task.platform.toLowerCase()], { className: "w-4 h-4" })}
+                                                                            <span>{task.type === 'discord-join' ? 'Join Discord' : `Follow on ${task.platform}`}</span>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <LinkIcon className="w-4 h-4" />
+                                                                            <span>{task.type === 'discord-join' ? 'Join Discord' : 'Follow'}</span>
+                                                                        </>
+                                                                    )}
+                                                                </a>
+                                                            )}
+                                                            {(task.type === 'proof-upload') && (
+                                                                <div className="mt-3">
+                                                                    <div className="text-xs text-gray-500 mb-1">
+                                                                        Upload proof:
+                                                                    </div>
+                                                                    <input
+                                                                        type="file"
+                                                                        id={`file-${task.id}`}
+                                                                        className="hidden"
+                                                                        accept="image/*,video/*"
+                                                                        onChange={(e) => {
+                                                                            if (e.target.files[0]) {
+                                                                                handleProofUpload(task.id, e.target.files[0]);
+                                                                            }
+                                                                        }}
+                                                                    />
+                                                                    <label
+                                                                        htmlFor={`file-${task.id}`}
+                                                                        className="flex items-center space-x-2 px-3 py-2 rounded-lg cursor-pointer transition-all bg-blue-400/20 text-blue-400 border border-blue-400/30 hover:bg-blue-400/30 text-sm"
+                                                                    >
+                                                                        <Upload className="w-4 h-4" />
+                                                                        <span>Upload proof</span>
+                                                                    </label>
                                                                 </div>
                                                             )}
-                                                            {task.requirements && (
-                                                                <div className="mt-2">
-                                                                    <div className="text-xs text-gray-500 mb-1">Requirements:</div>
-                                                                    <ul className="text-xs text-gray-400 space-y-1">
-                                                                        {task.requirements.map((req, i) => (
-                                                                            <li key={i} className="flex items-center space-x-2">
-                                                                                <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-                                                                                <span>{req}</span>
-                                                                            </li>
-                                                                        ))}
-                                                                    </ul>
-                                                                </div>
+                                                            {(task.type === 'video-watch' || task.type === 'article-read' || task.type === 'social-post' || task.type === 'social-follow') && (
+                                                                <button
+                                                                    onClick={() => handleCompleteTask(selectedCampaign.id, task.id)}
+                                                                    className={`px-4 py-2 bg-gradient-to-r ${colors.button} text-black font-medium rounded-lg text-sm hover:scale-105 transition-transform`}
+                                                                    disabled={loading}
+                                                                >
+                                                                    {loading ? 'Completing...' : 'Complete Task'}
+                                                                </button>
                                                             )}
                                                         </div>
-                                                    </div>
-                                                    <div className="text-green-400 font-bold">{task.reward}</div>
+                                                    )}
                                                 </div>
-                                                {task.completed ? (
-                                                    <div className="flex items-center space-x-2 text-green-400">
-                                                        <CheckCircle className="w-4 h-4" />
-                                                        <span className="text-sm font-medium">Task Completed</span>
-                                                    </div>
-                                                ) : task.status === 'pending' ? (
-                                                    <div className="flex items-center space-x-2 text-yellow-400">
-                                                        <span className="text-sm font-medium">Pending Review</span>
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex items-center space-x-3">
-                                                        {(task.type === 'social-follow' || task.type === 'discord-join') && task.contentUrl && (
-                                                            <a
-                                                                href={task.contentUrl}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className="px-4 py-2 bg-blue-400/20 text-blue-400 border border-blue-400/30 rounded-lg text-sm font-medium hover:bg-blue-400/30 flex items-center space-x-2"
-                                                            >
-                                                                {task.platform && platformIcons[task.platform.toLowerCase()] ? (
-                                                                    <>
-                                                                        {React.createElement(platformIcons[task.platform.toLowerCase()], { className: "w-4 h-4" })}
-                                                                        <span>{task.type === 'discord-join' ? 'Join Discord' : `Follow on ${task.platform}`}</span>
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <LinkIcon className="w-4 h-4" />
-                                                                        <span>{task.type === 'discord-join' ? 'Join Discord' : 'Follow'}</span>
-                                                                    </>
-                                                                )}
-                                                            </a>
-                                                        )}
-                                                        {(task.type === 'social-post' || task.type === 'proof-upload') && (
-                                                            <>
-                                                                <input
-                                                                    type="file"
-                                                                    id={`file-${task.id}`}
-                                                                    className="hidden"
-                                                                    accept="image/*,video/*,application/pdf"
-                                                                    onChange={(e) => {
-                                                                        if (e.target.files[0]) {
-                                                                            handleProofUpload(task.id, e.target.files[0]);
-                                                                        }
-                                                                    }}
-                                                                />
-                                                                <label
-                                                                    htmlFor={`file-${task.id}`}
-                                                                    className="flex items-center space-x-2 px-4 py-2 rounded-lg cursor-pointer transition-all bg-blue-400/20 text-blue-400 border border-blue-400/30 hover:bg-blue-400/30"
-                                                                >
-                                                                    <Upload className="w-4 h-4" />
-                                                                    <span className="text-sm font-medium">
-                                                                        {uploading ? 'Uploading...' : task.type === 'social-post' ? 'Upload Post Proof' : 'Upload Proof'}
-                                                                    </span>
-                                                                </label>
-                                                            </>
-                                                        )}
-                                                        {(task.type === 'video-watch' || task.type === 'article-read') && (
-                                                            <button
-                                                                onClick={() => handleCompleteTask(selectedCampaign.id, task.id)}
-                                                                className="px-4 py-2 bg-green-400/20 text-green-400 border border-green-400/30 rounded-lg text-sm font-medium hover:bg-green-400/30"
-                                                                disabled={loading}
-                                                            >
-                                                                {loading ? 'Completing...' : 'Complete Task'}
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 ) : (
                                     <div className="text-gray-400 text-center py-8">
                                         {currentDay > parseInt(selectedCampaign.duration) ? (
                                             "Campaign completed! Thanks for participating."
                                         ) : (
-                                            "No tasks available for today. Check back tomorrow!"
+                                            `No tasks available for day ${currentDay}. Check console for task data or verify campaign configuration.`
                                         )}
                                     </div>
                                 )}
@@ -1268,8 +1282,6 @@ export default function RFXCampaignPage() {
                         <div className="text-gray-400 text-center">Loading campaign details...</div>
                     )}
                 </Modal>
-
-                {/* Bottom Navigation */}
                 <div className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-sm border-t border-gray-800 px-4 py-2 z-50">
                     <div className="max-w-md mx-auto">
                         <div className="flex items-center justify-around">
@@ -1292,7 +1304,6 @@ export default function RFXCampaignPage() {
                         </div>
                     </div>
                 </div>
-
                 <style jsx>{`
                     @keyframes float {
                         0%, 100% { transform: translateY(0px); }

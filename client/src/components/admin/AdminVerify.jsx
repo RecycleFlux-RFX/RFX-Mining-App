@@ -10,7 +10,6 @@ export default function AdminVerify() {
     const location = useLocation();
     const navigate = useNavigate();
 
-    // Set initial email and password if provided
     useEffect(() => {
         const { state } = location;
         if (state?.email) {
@@ -19,33 +18,15 @@ export default function AdminVerify() {
                 setPassword(state.password);
                 handleSubmit(state.password);
             }
-        } else {
-            navigate('/login'); // Redirect to login if no email
         }
-    }, [location, navigate]);
+    }, [location]);
 
     const handleSubmit = async (pass = password) => {
         setIsLoading(true);
         setError(null);
 
         try {
-            // First check if it's the hardcoded admin
-            if (email === import.meta.env.VITE_ADMIN_EMAIL && pass === import.meta.env.VITE_ADMIN_PASSWORD) {
-                const mockUser = {
-                    id: 'admin',
-                    email: import.meta.env.VITE_ADMIN_EMAIL,
-                    isAdmin: true
-                };
-
-                localStorage.setItem('token', 'admin-token');
-                localStorage.setItem('user', JSON.stringify(mockUser));
-                localStorage.setItem('isAdmin', 'true');
-                localStorage.setItem('adminAuthenticated', 'true');
-                navigate('/admin/dashboard');
-                return;
-            }
-
-            // If not hardcoded admin, check with backend
+            console.log('Attempting admin verification with email:', email); // Debugging
             const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/admin/verify`, {
                 method: 'POST',
                 headers: {
@@ -57,25 +38,24 @@ export default function AdminVerify() {
                 }),
             });
 
-            // Handle non-OK responses
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
+                console.error('Verification failed:', errorData); // Debugging
                 throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
             }
 
             const data = await response.json();
+            console.log('Verification successful:', data); // Debugging
 
-            // Store token and admin flag
             localStorage.setItem('token', data.token);
             localStorage.setItem('user', JSON.stringify(data.user));
             localStorage.setItem('isAdmin', 'true');
             localStorage.setItem('adminAuthenticated', 'true');
 
-            // Redirect to admin dashboard
-            navigate('/admin/dashboard');
+            navigate('/admin/campaigns');
         } catch (err) {
             console.error('Admin verification error:', err);
-            setError(err.message || 'Failed to verify admin credentials. Please check your password.');
+            setError(err.message || 'Failed to verify admin credentials. Please check your email and password.');
         } finally {
             setIsLoading(false);
         }
@@ -102,7 +82,20 @@ export default function AdminVerify() {
                     <form onSubmit={handleFormSubmit} className="space-y-6">
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">
-                                Admin Password for {email}
+                                Email
+                            </label>
+                            <input
+                                type="email"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 text-slate-900"
+                                required
+                                disabled={isLoading}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-2">
+                                Password
                             </label>
                             <div className="relative">
                                 <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
@@ -116,7 +109,6 @@ export default function AdminVerify() {
                                 />
                             </div>
                         </div>
-
                         <button
                             type="submit"
                             disabled={isLoading}

@@ -87,11 +87,25 @@ const authenticateToken = (req, res, next) => {
 
 // Admin Authentication Middleware
 const adminAuth = (req, res, next) => {
-    if (!req.user.isAdmin) {
-        return res.status(403).json({ message: 'Admin access required' });
+    try {
+        if (!req.user) {
+            return res.status(401).json({ message: 'Unauthorized: No user data found' });
+        }
+
+        const isSuperAdmin = req.user.email === process.env.ADMIN_EMAIL;
+        const isAdmin = req.user.isAdmin === true;
+
+        if (!isSuperAdmin && !isAdmin) {
+            return res.status(403).json({ message: 'Not an admin account' });
+        }
+
+        next();
+    } catch (error) {
+        console.error('Admin auth error:', error);
+        res.status(500).json({ message: 'Server error during admin authentication' });
     }
-    next();
 };
+
 
 // Routes
 app.post('/auth/signup', async (req, res) => {
@@ -225,58 +239,109 @@ app.get('/auth/google', (req, res) => {
 });
 
 // Add this near your other auth routes
-app.post('/auth/admin/verify', async (req, res) => {
+app.post('/admin/campaigns', [authenticateToken, adminAuth, upload.single('image')], async (req, res) => {
     try {
-        const { email, password } = req.body;
+        // Parse form data
+        const formData = req.body;
 
-        // Check if the credentials match the admin credentials
-        if (email === process.env.ADMIN_EMAIL && password === process.env.ADMIN_PASSWORD) {
-            // Create a token for the admin user
-            const token = jwt.sign(
-                { userId: 'admin', isAdmin: true },
-                process.env.JWT_SECRET,
-                { expiresIn: '7d' }
-            );
+        // Validate required fields
+        if (!formData.title || !formData.description || !formData.category ||
+            !formData.reward || !formData.difficulty || !formData.duration ||
+            !formData.startDate || !formData.status) {
+            return res.status(400).json({ message: 'Missing required fields' });
+        }
 
-            return res.status(200).json({
-                token,
-                user: {
-                    id: 'admin',
-                    email: process.env.ADMIN_EMAIL,
-                    isAdmin: true
-                }
+        // Validate description length
+        if (formData.description.length < 10) {
+            return res.status(400).json({
+                message: 'Description must be at least 10 characters long'
             });
         }
 
-        // If not the hardcoded admin, check database
-        const user = await User.findOne({ email });
-        if (!user || !user.isAdmin) {
-            return res.status(403).json({ message: 'Not an admin account' });
-        }
+        // Parse tasks if they exist
+        let tasksList = [];
+        if (formData.tasks) {
+            try {
+                tasksList = JSON.parse(formData.tasks);
 
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(400).json({ message: 'Invalid credentials' });
-        }
-
-        const token = jwt.sign(
-            { userId: user._id, isAdmin: user.isAdmin },
-            process.env.JWT_SECRET,
-            { expiresIn: '7d' }
-        );
-
-        res.status(200).json({
-            token,
-            user: {
-                id: user._id,
-                username: user.username,
-                email: user.email,
-                isAdmin: user.isAdmin
+                // Validate each task
+                for (const task of tasksList) {
+                    if (!task.title || task.title.length < 3) {
+                        return res.status(400).json({
+                            message: 'Task title must be at least 3 characters long'
+                        });
+                    }
+                    if (!task.description || task.description.length < 10) {
+                        return res.status(400).json({
+                            message: 'Task description must be at least 10 characters long'
+                        });
+                    }
+                    if (!task.day || task.day < 1) {
+                        return res.status(400).json({
+                            message: 'Task day must be at least 1'
+                        });
+                    }
+                    if (!task.reward || task.reward < 0) {
+                        return res.status(400).json({
+                            message: 'Task reward must be a positive number'
+                        });
+                    }
+                    // Ensure completedBy is initialized
+                    task.completedBy = [];
+                }
+            } catch (e) {
+                console.error('Error parsing tasks:', e);
+                return res.status(400).json({ message: 'Invalid tasks format' });
             }
+        }
+
+        // Calculate end date
+        const endDate = new Date(new Date(formData.startDate).getTime() +
+            (parseInt(formData.duration) * 24 * 60 * 60 * 1000));
+
+        // Handle file path
+        let imagePath = null;
+        if (req.file) {
+            imagePath = path.join('uploads', 'campaigns', req.file.filename);
+        }
+
+        const campaign = new Campaign({
+            title: formData.title,
+            description: formData.description,
+            category: formData.category,
+            reward: parseFloat(formData.reward),
+            difficulty: formData.difficulty,
+            duration: parseInt(formData.duration),
+            featured: formData.featured === 'true',
+            new: formData.new === 'true',
+            trending: formData.trending === 'true',
+            ending: formData.ending === 'true',
+            startDate: formData.startDate,
+            endDate: endDate,
+            status: formData.status,
+            tasksList: tasksList,
+            image: imagePath,
+            participants: 0,
+            completedTasks: 0,
+            participantsList: [],
+            createdBy: mongoose.Types.ObjectId(req.user.userId)
+        });
+
+        await campaign.save();
+
+        res.status(201).json({
+            ...campaign.toObject(),
+            image: imagePath ? `/uploads/campaigns/${path.basename(imagePath)}` : null
         });
     } catch (err) {
-        console.error('Admin verification error:', err);
-        res.status(500).json({ message: 'Server error' });
+        if (req.file) {
+            fs.unlink(req.file.path, () => { });
+        }
+        console.error('Error creating campaign:', err);
+        res.status(500).json({
+            message: err.message || 'Failed to create campaign',
+            error: err
+        });
     }
 });
 
@@ -777,6 +842,7 @@ app.post('/campaigns/upload-proof', [authenticateToken, upload.single('proof')],
 app.post('/campaigns/complete-task', authenticateToken, async (req, res) => {
     try {
         const { campaignId, taskId } = req.body;
+        const userId = req.user.userId;
 
         const campaign = await Campaign.findById(campaignId);
         if (!campaign) {
@@ -788,7 +854,10 @@ app.post('/campaigns/complete-task', authenticateToken, async (req, res) => {
             return res.status(404).json({ message: 'Task not found' });
         }
 
-        const user = await User.findById(req.user.userId);
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
 
         // Find and update user task
         const userTask = user.tasks.find(t =>
@@ -804,6 +873,22 @@ app.post('/campaigns/complete-task', authenticateToken, async (req, res) => {
             return res.status(400).json({ message: 'Task already completed' });
         }
 
+        // Calculate penalty for late completion
+        const currentDate = new Date();
+        const startDate = new Date(campaign.startDate);
+        const dayDiff = Math.floor((currentDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+        const daysLate = dayDiff - task.day;
+
+        let penaltyFactor = 1;
+        if (daysLate > 0) {
+            penaltyFactor = Math.max(0.5, 1 - (daysLate * 0.1)); // 10% penalty per day late
+        }
+
+        // Apply penalty to rewards
+        const baseReward = task.reward || 0;
+        const finalReward = baseReward * penaltyFactor;
+
+        // Update user task
         userTask.status = 'completed';
         userTask.completedAt = new Date();
 
@@ -820,7 +905,7 @@ app.post('/campaigns/complete-task', authenticateToken, async (req, res) => {
         campaign.completedTasks += 1;
 
         const participant = campaign.participantsList.find(p =>
-            p.userId.toString() === req.user.userId
+            p.userId.toString() === userId
         );
 
         if (participant) {
@@ -834,21 +919,21 @@ app.post('/campaigns/complete-task', authenticateToken, async (req, res) => {
         }
 
         // Update task's completedBy
-        const completedByEntry = task.completedBy.find(entry => entry.userId.toString() === req.user.userId);
+        const completedByEntry = task.completedBy.find(entry => entry.userId.toString() === userId);
         if (completedByEntry) {
             completedByEntry.status = 'completed';
             completedByEntry.completedAt = new Date();
         }
 
-        // Add reward to user
-        const reward = task.reward || 0;
-        user.earnings += reward;
+        // Add final reward to user
+        user.earnings += finalReward;
 
         await Promise.all([user.save(), campaign.save()]);
 
         res.json({
             message: 'Task completed successfully',
-            reward,
+            reward: finalReward,
+            penalty: daysLate > 0 ? `${(1 - penaltyFactor) * 100}% penalty applied` : 'No penalty',
             balance: user.earnings
         });
     } catch (err) {
@@ -859,10 +944,27 @@ app.post('/campaigns/complete-task', authenticateToken, async (req, res) => {
 // Admin routes
 app.get('/admin/campaigns', authenticateToken, adminAuth, async (req, res) => {
     try {
-        const campaigns = await Campaign.find()
+        let query = {};
+        // If not admin, only show campaigns created by this admin
+        if (req.user.email !== process.env.ADMIN_EMAIL) {
+            query.createdBy = req.user.userId;
+        }
+        
+        const campaigns = await Campaign.find(query)
             .sort({ createdAt: -1 })
             .lean();
-        res.json(campaigns);
+            
+        // Get total counts
+        const totalCampaigns = await Campaign.countDocuments();
+        const myCampaigns = await Campaign.countDocuments({ createdBy: req.user.userId });
+        
+        res.json({
+            campaigns,
+            stats: {
+                totalCampaigns,
+                myCampaigns
+            }
+        });
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
