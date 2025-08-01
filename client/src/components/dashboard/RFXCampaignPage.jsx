@@ -146,6 +146,7 @@ export default function RFXCampaignPage() {
         }
     };
 
+    
     const connectWallet = async () => {
         if (typeof window.ethereum === 'undefined') {
             setError({

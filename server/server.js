@@ -238,6 +238,47 @@ app.get('/auth/google', (req, res) => {
     res.status(501).json({ message: 'Google Sign-In not implemented' });
 });
 
+app.post('/auth/admin/verify', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        if (!email || !password) {
+            return res.status(400).json({ message: 'Email and password are required' });
+        }
+
+        const user = await User.findOne({ email });
+        if (!user || !user.isAdmin) {
+            return res.status(403).json({ message: 'Not an admin account' });
+        }
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ message: 'Invalid credentials' });
+        }
+
+        const token = jwt.sign(
+            { userId: user._id, isAdmin: user.isAdmin },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        res.status(200).json({
+            token,
+            user: {
+                id: user._id,
+                username: user.username,
+                email: user.email,
+                fullName: user.fullName,
+                walletAddress: user.walletAddress,
+                isAdmin: user.isAdmin
+            }
+        });
+    } catch (err) {
+        console.error('Admin verify error:', err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // Add this near your other auth routes
 app.post('/admin/campaigns', [authenticateToken, adminAuth, upload.single('image')], async (req, res) => {
     try {
@@ -478,6 +519,9 @@ app.patch('/user/update-wallet', authenticateToken, async (req, res) => {
     }
 });
 
+
+
+
 // Wallet Routes (existing routes remain the same)
 // Update the wallet/transactions route
 app.get('/wallet/transactions', authenticateToken, async (req, res) => {
@@ -607,697 +651,6 @@ app.get('/wallet/rank', authenticateToken, async (req, res) => {
     } catch (err) {
         console.error('Get rank error:', err);
         res.status(500).json({ message: 'Server error' });
-    }
-});
-
-// Campaign Routes
-// Get all campaigns (public)
-// In server.js, update the /campaigns endpoint
-app.get('/campaigns', async (req, res) => {
-    try {
-        const campaigns = await Campaign.find({ status: 'active' })
-            .select('-tasksList -participantsList')
-            .lean();
-
-        const campaignsWithProgress = campaigns.map(campaign => {
-            const progress = campaign.tasksList && campaign.participants > 0
-                ? (campaign.completedTasks / (campaign.tasksList.length * campaign.participants)) * 100
-                : 0;
-            return {
-                ...campaign,
-                progress: Math.min(progress, 100),
-                id: campaign._id // Ensure id field exists
-            };
-        });
-
-        // Return as { data: campaigns } to match frontend expectation
-        res.json({ data: campaignsWithProgress });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-// Get campaign details (user auth required)
-app.get('/campaigns/:id', authenticateToken, async (req, res) => {
-    try {
-        const campaign = await Campaign.findById(req.params.id)
-            .select('-participantsList')
-            .lean();
-
-        if (!campaign) {
-            return res.status(404).json({ message: 'Campaign not found' });
-        }
-
-        // Check if user has joined this campaign
-        const user = await User.findById(req.user.userId);
-        const hasJoined = user.campaigns.some(c => c.campaignId.toString() === req.params.id);
-
-        // Filter tasks based on current day
-        const currentDate = new Date();
-        const startDate = new Date(campaign.startDate);
-        const dayDiff = Math.floor((currentDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-        const currentDay = Math.min(dayDiff, campaign.duration);
-
-        const dailyTasks = campaign.tasksList
-            .filter(task => task.day === currentDay)
-            .map(task => {
-                const userTask = user.tasks.find(t =>
-                    t.taskId.toString() === task._id.toString() &&
-                    t.campaignId.toString() === req.params.id
-                );
-                return {
-                    ...task,
-                    status: userTask ? userTask.status : 'open',
-                    completed: userTask ? userTask.status === 'completed' : false,
-                    proof: userTask ? userTask.proof : null
-                };
-            });
-
-        res.json({
-            ...campaign,
-            dailyTasks,
-            currentDay,
-            hasJoined
-        });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-// Join a campaign
-// In your backend route for joining campaigns
-app.post('/campaigns/join', authenticateToken, async (req, res) => {
-    try {
-        const campaign = await Campaign.findById(req.body.campaignId);
-        if (!campaign) {
-            return res.status(404).json({ message: 'Campaign not found' });
-        }
-
-        const user = await User.findById(req.user.userId);
-        if (!user.campaigns) {
-            user.campaigns = []; // Initialize campaigns array if undefined
-        }
-
-        // Check if user already joined
-        if (user.campaigns.some(c => c.campaignId.toString() === req.body.campaignId)) {
-            return res.status(400).json({ message: 'Already joined this campaign' });
-        }
-
-        // Add campaign to user
-        user.campaigns.push({
-            campaignId: req.body.campaignId,
-            joinedAt: new Date(),
-            completed: 0
-        });
-
-        // Update campaign participants
-        campaign.participants += 1;
-        campaign.participantsList.push({
-            userId: req.user.userId,
-            username: user.username,
-            email: user.email,
-            joinedAt: new Date(),
-            completed: 0,
-            lastActivity: new Date()
-        });
-
-        await Promise.all([user.save(), campaign.save()]);
-
-        res.json({
-            message: 'Successfully joined campaign',
-            participants: campaign.participants
-        });
-    } catch (err) {
-        console.error('Join campaign error:', err);
-        res.status(500).json({ message: err.message });
-    }
-});
-
-// Upload task proof
-app.post('/campaigns/upload-proof', [authenticateToken, upload.single('proof')], async (req, res) => {
-    try {
-        const { campaignId, taskId } = req.body;
-
-        const campaign = await Campaign.findById(campaignId);
-        if (!campaign) {
-            return res.status(404).json({ message: 'Campaign not found' });
-        }
-
-        const task = campaign.tasksList.id(taskId);
-        if (!task) {
-            return res.status(404).json({ message: 'Task not found' });
-        }
-
-        const user = await User.findById(req.user.userId);
-
-        // Update user task status
-        const userTaskIndex = user.tasks.findIndex(t =>
-            t.taskId.toString() === taskId &&
-            t.campaignId.toString() === campaignId
-        );
-
-        if (userTaskIndex === -1) {
-            user.tasks.push({
-                campaignId,
-                taskId,
-                status: 'pending',
-                proof: req.file.path,
-                submittedAt: new Date()
-            });
-        } else {
-            user.tasks[userTaskIndex].status = 'pending';
-            user.tasks[userTaskIndex].proof = req.file.path;
-            user.tasks[userTaskIndex].submittedAt = new Date();
-        }
-
-        // Update campaign task completions
-        const participantIndex = campaign.participantsList.findIndex(p =>
-            p.userId.toString() === req.user.userId
-        );
-
-        if (participantIndex === -1) {
-            campaign.participantsList.push({
-                userId: req.user.userId,
-                username: user.username,
-                email: user.email,
-                joinedAt: new Date(),
-                completed: 0,
-                lastActivity: new Date(),
-                tasks: [{
-                    taskId,
-                    status: 'pending',
-                    proof: req.file.path,
-                    submittedAt: new Date()
-                }]
-            });
-            campaign.participants += 1;
-        } else {
-            const participant = campaign.participantsList[participantIndex];
-            if (!participant.tasks) {
-                participant.tasks = [];
-            }
-            const taskIndex = participant.tasks.findIndex(t => t.taskId.toString() === taskId);
-            if (taskIndex === -1) {
-                participant.tasks.push({
-                    taskId,
-                    status: 'pending',
-                    proof: req.file.path,
-                    submittedAt: new Date()
-                });
-            } else {
-                participant.tasks[taskIndex].status = 'pending';
-                participant.tasks[taskIndex].proof = req.file.path;
-                participant.tasks[taskIndex].submittedAt = new Date();
-            }
-            participant.lastActivity = new Date();
-        }
-
-        // Update task's completedBy
-        const completedByEntry = task.completedBy.find(entry => entry.userId.toString() === req.user.userId);
-        if (!completedByEntry) {
-            task.completedBy.push({
-                userId: req.user.userId,
-                proofUrl: req.file.path,
-                status: 'pending',
-                submittedAt: new Date()
-            });
-        } else {
-            completedByEntry.proofUrl = req.file.path;
-            completedByEntry.status = 'pending';
-            completedByEntry.submittedAt = new Date();
-        }
-
-        await Promise.all([user.save(), campaign.save()]);
-
-        res.json({
-            message: 'Proof uploaded successfully, pending verification',
-            proofUrl: req.file.path
-        });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-// Complete task (admin verification)
-app.post('/campaigns/complete-task', authenticateToken, async (req, res) => {
-    try {
-        const { campaignId, taskId } = req.body;
-        const userId = req.user.userId;
-
-        const campaign = await Campaign.findById(campaignId);
-        if (!campaign) {
-            return res.status(404).json({ message: 'Campaign not found' });
-        }
-
-        const task = campaign.tasksList.id(taskId);
-        if (!task) {
-            return res.status(404).json({ message: 'Task not found' });
-        }
-
-        const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-
-        // Find and update user task
-        const userTask = user.tasks.find(t =>
-            t.taskId.toString() === taskId &&
-            t.campaignId.toString() === campaignId
-        );
-
-        if (!userTask) {
-            return res.status(400).json({ message: 'Task not started' });
-        }
-
-        if (userTask.status === 'completed') {
-            return res.status(400).json({ message: 'Task already completed' });
-        }
-
-        // Calculate penalty for late completion
-        const currentDate = new Date();
-        const startDate = new Date(campaign.startDate);
-        const dayDiff = Math.floor((currentDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-        const daysLate = dayDiff - task.day;
-
-        let penaltyFactor = 1;
-        if (daysLate > 0) {
-            penaltyFactor = Math.max(0.5, 1 - (daysLate * 0.1)); // 10% penalty per day late
-        }
-
-        // Apply penalty to rewards
-        const baseReward = task.reward || 0;
-        const finalReward = baseReward * penaltyFactor;
-
-        // Update user task
-        userTask.status = 'completed';
-        userTask.completedAt = new Date();
-
-        // Update user campaign progress
-        const userCampaign = user.campaigns.find(c =>
-            c.campaignId.toString() === campaignId
-        );
-
-        if (userCampaign) {
-            userCampaign.completed += 1;
-        }
-
-        // Update campaign stats
-        campaign.completedTasks += 1;
-
-        const participant = campaign.participantsList.find(p =>
-            p.userId.toString() === userId
-        );
-
-        if (participant) {
-            participant.completed += 1;
-            participant.lastActivity = new Date();
-            const participantTask = participant.tasks.find(t => t.taskId.toString() === taskId);
-            if (participantTask) {
-                participantTask.status = 'completed';
-                participantTask.completedAt = new Date();
-            }
-        }
-
-        // Update task's completedBy
-        const completedByEntry = task.completedBy.find(entry => entry.userId.toString() === userId);
-        if (completedByEntry) {
-            completedByEntry.status = 'completed';
-            completedByEntry.completedAt = new Date();
-        }
-
-        // Add final reward to user
-        user.earnings += finalReward;
-
-        await Promise.all([user.save(), campaign.save()]);
-
-        res.json({
-            message: 'Task completed successfully',
-            reward: finalReward,
-            penalty: daysLate > 0 ? `${(1 - penaltyFactor) * 100}% penalty applied` : 'No penalty',
-            balance: user.earnings
-        });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-// Admin routes
-app.get('/admin/campaigns', authenticateToken, adminAuth, async (req, res) => {
-    try {
-        let query = {};
-        // If not admin, only show campaigns created by this admin
-        if (req.user.email !== process.env.ADMIN_EMAIL) {
-            query.createdBy = req.user.userId;
-        }
-        
-        const campaigns = await Campaign.find(query)
-            .sort({ createdAt: -1 })
-            .lean();
-            
-        // Get total counts
-        const totalCampaigns = await Campaign.countDocuments();
-        const myCampaigns = await Campaign.countDocuments({ createdBy: req.user.userId });
-        
-        res.json({
-            campaigns,
-            stats: {
-                totalCampaigns,
-                myCampaigns
-            }
-        });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-app.get('/admin/campaigns/:id', authenticateToken, adminAuth, async (req, res) => {
-    try {
-        const campaign = await Campaign.findById(req.params.id)
-            .populate('participantsList.userId', 'username email avatar')
-            .lean();
-
-        if (!campaign) {
-            return res.status(404).json({ message: 'Campaign not found' });
-        }
-
-        res.json(campaign);
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-// Updated Admin Campaign Creation Endpoint
-app.post('/admin/campaigns', [authenticateToken, adminAuth, upload.single('image')], async (req, res) => {
-    try {
-        // Parse form data
-        const formData = req.body;
-
-        // Validate required fields first
-        if (!formData.title || !formData.description || !formData.category ||
-            !formData.reward || !formData.difficulty || !formData.duration ||
-            !formData.startDate || !formData.status) {
-            return res.status(400).json({ message: 'Missing required fields' });
-        }
-
-        // Validate description length
-        if (formData.description.length < 10) {
-            return res.status(400).json({
-                message: 'Description must be at least 10 characters long'
-            });
-        }
-
-        // Parse tasks if they exist
-        let tasksList = [];
-        if (formData.tasks) {
-            try {
-                tasksList = JSON.parse(formData.tasks);
-
-                // Validate each task
-                for (const task of tasksList) {
-                    if (!task.title || task.title.length < 3) {
-                        return res.status(400).json({
-                            message: 'Task title must be at least 3 characters long'
-                        });
-                    }
-                    if (!task.description || task.description.length < 10) {
-                        return res.status(400).json({
-                            message: 'Task description must be at least 10 characters long'
-                        });
-                    }
-                    if (!task.day || task.day < 1) {
-                        return res.status(400).json({
-                            message: 'Task day must be at least 1'
-                        });
-                    }
-                    if (!task.reward || task.reward < 0) {
-                        return res.status(400).json({
-                            message: 'Task reward must be a positive number'
-                        });
-                    }
-                }
-            } catch (e) {
-                console.error('Error parsing tasks:', e);
-                return res.status(400).json({ message: 'Invalid tasks format' });
-            }
-        }
-
-        // Calculate end date
-        const endDate = new Date(new Date(formData.startDate).getTime() +
-            (parseInt(formData.duration) * 24 * 60 * 60 * 1000));
-
-        // Handle file path
-        let imagePath = null;
-        if (req.file) {
-            imagePath = path.join('uploads', 'campaigns', req.file.filename);
-        }
-
-        // Ensure createdBy is a valid ObjectId or null
-        let createdById = null;
-        if (req.user.userId && mongoose.Types.ObjectId.isValid(req.user.userId)) {
-            createdById = req.user.userId;
-        }
-
-        const campaign = new Campaign({
-            title: formData.title,
-            description: formData.description,
-            category: formData.category,
-            reward: parseFloat(formData.reward),
-            difficulty: formData.difficulty,
-            duration: parseInt(formData.duration),
-            featured: formData.featured === 'true',
-            new: formData.new === 'true',
-            trending: formData.trending === 'true',
-            ending: formData.ending === 'true',
-            startDate: formData.startDate,
-            endDate: endDate,
-            status: formData.status,
-            tasksList: tasksList,
-            image: imagePath,
-            participants: 0,
-            completedTasks: 0,
-            participantsList: [],
-            createdBy: createdById // Set to valid ObjectId or null
-        });
-
-        await campaign.save();
-
-        // Return the path in a way the frontend can use
-        res.status(201).json({
-            ...campaign.toObject(),
-            image: imagePath ? `/uploads/campaigns/${path.basename(imagePath)}` : null
-        });
-    } catch (err) {
-        // If there was an error, clean up any uploaded file
-        if (req.file) {
-            fs.unlink(req.file.path, () => { });
-        }
-        console.error('Error creating campaign:', err);
-        res.status(500).json({
-            message: err.message || 'Failed to create campaign',
-            error: err // Include error details for debugging
-        });
-    }
-});
-
-app.put('/admin/campaigns/:id', [authenticateToken, adminAuth, upload.single('image')], async (req, res) => {
-    try {
-        const campaign = await Campaign.findById(req.params.id);
-        if (!campaign) {
-            return res.status(404).json({ message: 'Campaign not found' });
-        }
-
-        // Parse form data
-        const formData = req.body;
-
-        // Parse tasks if they exist
-        if (formData.tasks) {
-            try {
-                campaign.tasksList = JSON.parse(formData.tasks);
-            } catch (e) {
-                console.error('Error parsing tasks:', e);
-                return res.status(400).json({ message: 'Invalid tasks format' });
-            }
-        }
-
-        // Update basic fields
-        campaign.title = formData.title;
-        campaign.description = formData.description;
-        campaign.category = formData.category;
-        campaign.reward = parseFloat(formData.reward);
-        campaign.difficulty = formData.difficulty;
-        campaign.duration = parseInt(formData.duration);
-        campaign.featured = formData.featured === 'true';
-        campaign.new = formData.new === 'true';
-        campaign.trending = formData.trending === 'true';
-        campaign.ending = formData.ending === 'true';
-        campaign.startDate = formData.startDate;
-        campaign.endDate = new Date(new Date(formData.startDate).getTime() + (parseInt(formData.duration) * 24 * 60 * 60 * 1000));
-        campaign.status = formData.status;
-
-        // Handle image update
-        if (req.file) {
-            // Delete old image if it exists
-            if (campaign.image && fs.existsSync(path.join(__dirname, campaign.image))) {
-                fs.unlinkSync(path.join(__dirname, campaign.image));
-            }
-            campaign.image = path.join('uploads', 'campaigns', req.file.filename);
-        }
-
-        await campaign.save();
-
-        // Return the updated campaign with proper image URL
-        res.json({
-            ...campaign.toObject(),
-            image: campaign.image ? `/uploads/campaigns/${path.basename(campaign.image)}` : null
-        });
-    } catch (err) {
-        console.error('Error updating campaign:', err);
-        res.status(500).json({
-            message: err.message || 'Failed to update campaign',
-            error: err
-        });
-    }
-});
-
-// Updated Campaign Delete Endpoint
-app.delete('/admin/campaigns/:id', authenticateToken, adminAuth, async (req, res) => {
-    try {
-        const campaign = await Campaign.findById(req.params.id);
-        if (!campaign) {
-            return res.status(404).json({ message: 'Campaign not found' });
-        }
-
-        // Delete associated image file if it exists
-        if (campaign.image && fs.existsSync(path.join(__dirname, campaign.image))) {
-            fs.unlinkSync(path.join(__dirname, campaign.image));
-        }
-
-        // Remove campaign from database
-        await Campaign.deleteOne({ _id: req.params.id });
-
-        // Remove campaign from all users who joined it
-        await User.updateMany(
-            { 'campaigns.campaignId': req.params.id },
-            { $pull: { campaigns: { campaignId: req.params.id } } }
-        );
-
-        res.json({ message: 'Campaign deleted successfully' });
-    } catch (err) {
-        console.error('Error deleting campaign:', err);
-        res.status(500).json({
-            message: err.message || 'Failed to delete campaign',
-            error: err
-        });
-    }
-});
-
-app.get('/admin/campaigns/:id/proofs', authenticateToken, adminAuth, async (req, res) => {
-    try {
-        const campaign = await Campaign.findById(req.params.id)
-            .select('tasksList participantsList')
-            .lean();
-
-        if (!campaign) {
-            return res.status(404).json({ message: 'Campaign not found' });
-        }
-
-        const proofsByTask = campaign.tasksList.map(task => {
-            const proofs = task.completedBy.map(entry => ({
-                userId: entry.userId,
-                proofUrl: entry.proofUrl,
-                status: entry.status,
-                submittedAt: entry.submittedAt
-            }));
-
-            return {
-                taskId: task._id,
-                taskTitle: task.title,
-                day: task.day,
-                proofs
-            };
-        }).filter(task => task.proofs.length > 0);
-
-        res.json(proofsByTask);
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-});
-
-app.post('/admin/campaigns/:id/approve-proof', authenticateToken, adminAuth, async (req, res) => {
-    try {
-        const { taskId, userId, approve } = req.body;
-
-        const campaign = await Campaign.findById(req.params.id);
-        if (!campaign) {
-            return res.status(404).json({ message: 'Campaign not found' });
-        }
-
-        const task = campaign.tasksList.id(taskId);
-        if (!task) {
-            return res.status(404).json({ message: 'Task not found' });
-        }
-
-        const participant = campaign.participantsList.find(p =>
-            p.userId.toString() === userId
-        );
-
-        if (!participant) {
-            return res.status(404).json({ message: 'Participant not found' });
-        }
-
-        const userTask = participant.tasks.find(t => t.taskId.toString() === taskId);
-        if (!userTask) {
-            return res.status(404).json({ message: 'Task proof not found' });
-        }
-
-        const completedByEntry = task.completedBy.find(entry => entry.userId.toString() === userId);
-        if (!completedByEntry) {
-            return res.status(404).json({ message: 'Proof not found in task' });
-        }
-
-        userTask.status = approve ? 'completed' : 'rejected';
-        completedByEntry.status = approve ? 'completed' : 'rejected';
-        if (approve) {
-            userTask.completedAt = new Date();
-            completedByEntry.completedAt = new Date();
-        }
-
-        if (approve) {
-            if (userTask.status !== 'completed') {
-                campaign.completedTasks += 1;
-                participant.completed += 1;
-
-                const user = await User.findById(userId);
-                if (user) {
-                    user.earnings += task.reward || 0;
-                    const userTask = user.tasks.find(t =>
-                        t.taskId.toString() === taskId &&
-                        t.campaignId.toString() === req.params.id
-                    );
-                    if (userTask) {
-                        userTask.status = 'completed';
-                        userTask.completedAt = new Date();
-                    }
-                    const userCampaign = user.campaigns.find(c =>
-                        c.campaignId.toString() === req.params.id
-                    );
-                    if (userCampaign) {
-                        userCampaign.completed += 1;
-                    }
-                    await user.save();
-                }
-            }
-        } else {
-            if (userTask.status === 'completed') {
-                campaign.completedTasks = Math.max(0, campaign.completedTasks - 1);
-                participant.completed = Math.max(0, participant.completed - 1);
-            }
-        }
-
-        await campaign.save();
-        res.json({ message: `Proof ${approve ? 'approved' : 'rejected'} successfully` });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
     }
 });
 
@@ -1502,8 +855,778 @@ app.delete('/admin/games/:id', [authenticateToken, adminAuth], async (req, res) 
   }
 });
 
+
+
+
+
+
+
+
+
+// Campaign Routes
+
+// Get all campaigns (public)
+app.get('/campaigns', async (req, res) => {
+    try {
+        const { status, category, featured } = req.query;
+        let query = {};
+
+        if (status) query.status = status;
+        if (category) query.category = category;
+        if (featured) query.featured = featured === 'true';
+
+        const campaigns = await Campaign.find(query)
+            .select('-tasksList -participantsList')
+            .sort({ createdAt: -1 })
+            .lean();
+
+        // Calculate progress for each campaign
+        const campaignsWithProgress = campaigns.map(campaign => {
+            const progress = campaign.tasksList && campaign.participants > 0
+                ? (campaign.completedTasks / (campaign.tasksList.length * campaign.participants)) * 100
+                : 0;
+            return {
+                ...campaign,
+                progress: Math.min(progress, 100),
+                id: campaign._id
+            };
+        });
+
+        res.json({ data: campaignsWithProgress });
+    } catch (err) {
+        console.error('Get campaigns error:', err);
+        res.status(500).json({ message: 'Failed to fetch campaigns' });
+    }
+});
+
+// Get campaign details (public)
+app.get('/campaigns/:id', async (req, res) => {
+    try {
+        const campaign = await Campaign.findById(req.params.id)
+            .select('-participantsList')
+            .lean();
+
+        if (!campaign) {
+            return res.status(404).json({ message: 'Campaign not found' });
+        }
+
+        res.json(campaign);
+    } catch (err) {
+        console.error('Get campaign details error:', err);
+        res.status(500).json({ message: 'Failed to fetch campaign details' });
+    }
+});
+
+// Get campaign details for authenticated user
+app.get('/campaigns/:id/user', authenticateToken, async (req, res) => {
+    try {
+        const campaign = await Campaign.findById(req.params.id)
+            .lean();
+
+        if (!campaign) {
+            return res.status(404).json({ message: 'Campaign not found' });
+        }
+
+        const user = await User.findById(req.user.userId);
+        const hasJoined = user.campaigns.some(c => c.campaignId.toString() === req.params.id);
+
+        // Calculate current day
+        const currentDate = new Date();
+        const startDate = new Date(campaign.startDate);
+        const dayDiff = Math.floor((currentDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+        const currentDay = Math.min(dayDiff, campaign.duration);
+
+        // Calculate time left for current day
+        const nextDay = new Date(startDate);
+        nextDay.setDate(startDate.getDate() + currentDay);
+        const timeUntilNextDay = nextDay - currentDate;
+        const hours = Math.floor((timeUntilNextDay % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((timeUntilNextDay % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((timeUntilNextDay % (1000 * 60)) / 1000);
+
+        // Get user's tasks
+        const userTasks = campaign.tasksList.map(task => {
+            const userTask = user.tasks.find(t =>
+                t.taskId.toString() === task._id.toString() &&
+                t.campaignId.toString() === req.params.id
+            );
+            return {
+                ...task,
+                status: userTask ? userTask.status : 'open',
+                proof: userTask ? userTask.proof : null,
+                completed: userTask ? userTask.status === 'completed' : false
+            };
+        });
+
+        // Filter tasks for current day
+        const dailyTasks = userTasks.filter(task => task.day === currentDay);
+
+        res.json({
+            ...campaign,
+            hasJoined,
+            currentDay,
+            dayTimeLeft: {
+                hours: Math.max(0, hours),
+                minutes: Math.max(0, minutes),
+                seconds: Math.max(0, seconds)
+            },
+            dailyTasks,
+            allTasks: userTasks
+        });
+    } catch (err) {
+        console.error('Get user campaign error:', err);
+        res.status(500).json({ message: 'Failed to fetch campaign details' });
+    }
+});
+
+// Join a campaign
+app.post('/campaigns/:id/join', authenticateToken, async (req, res) => {
+    try {
+        const campaign = await Campaign.findById(req.params.id);
+        if (!campaign) {
+            return res.status(404).json({ message: 'Campaign not found' });
+        }
+
+        const user = await User.findById(req.user.userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Check if user already joined
+        if (user.campaigns.some(c => c.campaignId.toString() === req.params.id)) {
+            return res.status(400).json({ message: 'Already joined this campaign' });
+        }
+
+        // Add campaign to user
+        user.campaigns.push({
+            campaignId: req.params.id,
+            joinedAt: new Date(),
+            completed: 0,
+            lastActivity: new Date()
+        });
+
+        // Update campaign participants
+        campaign.participants += 1;
+        campaign.participantsList.push({
+            userId: req.user.userId,
+            username: user.username,
+            email: user.email,
+            joinedAt: new Date(),
+            completed: 0,
+            lastActivity: new Date(),
+            tasks: []
+        });
+
+        await Promise.all([user.save(), campaign.save()]);
+
+        res.json({
+            message: 'Successfully joined campaign',
+            participants: campaign.participants
+        });
+    } catch (err) {
+        console.error('Join campaign error:', err);
+        res.status(500).json({ message: 'Failed to join campaign' });
+    }
+});
+
+// Upload task proof
+app.post('/campaigns/:id/tasks/:taskId/proof', [authenticateToken, upload.single('proof')], async (req, res) => {
+    try {
+        const { id: campaignId, taskId } = req.params;
+        const proofFile = req.file;
+
+        if (!proofFile) {
+            return res.status(400).json({ message: 'Proof file is required' });
+        }
+
+        const campaign = await Campaign.findById(campaignId);
+        if (!campaign) {
+            return res.status(404).json({ message: 'Campaign not found' });
+        }
+
+        const task = campaign.tasksList.id(taskId);
+        if (!task) {
+            return res.status(404).json({ message: 'Task not found' });
+        }
+
+        const user = await User.findById(req.user.userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Update user's task status
+        let userTask = user.tasks.find(t =>
+            t.taskId.toString() === taskId &&
+            t.campaignId.toString() === campaignId
+        );
+
+        if (!userTask) {
+            userTask = {
+                campaignId,
+                taskId,
+                status: 'pending',
+                proof: proofFile.path,
+                submittedAt: new Date()
+            };
+            user.tasks.push(userTask);
+        } else {
+            userTask.status = 'pending';
+            userTask.proof = proofFile.path;
+            userTask.submittedAt = new Date();
+        }
+
+        // Update campaign participant's task status
+        const participant = campaign.participantsList.find(p =>
+            p.userId.toString() === req.user.userId
+        );
+
+        if (!participant) {
+            return res.status(400).json({ message: 'User has not joined this campaign' });
+        }
+
+        let participantTask = participant.tasks.find(t => t.taskId.toString() === taskId);
+        if (!participantTask) {
+            participantTask = {
+                taskId,
+                status: 'pending',
+                proof: proofFile.path,
+                submittedAt: new Date()
+            };
+            participant.tasks.push(participantTask);
+        } else {
+            participantTask.status = 'pending';
+            participantTask.proof = proofFile.path;
+            participantTask.submittedAt = new Date();
+        }
+
+        // Update task's completedBy
+        let completedByEntry = task.completedBy.find(entry =>
+            entry.userId.toString() === req.user.userId
+        );
+
+        if (!completedByEntry) {
+            completedByEntry = {
+                userId: req.user.userId,
+                proofUrl: proofFile.path,
+                status: 'pending',
+                submittedAt: new Date()
+            };
+            task.completedBy.push(completedByEntry);
+        } else {
+            completedByEntry.proofUrl = proofFile.path;
+            completedByEntry.status = 'pending';
+            completedByEntry.submittedAt = new Date();
+        }
+
+        // Update last activity
+        participant.lastActivity = new Date();
+
+        await Promise.all([user.save(), campaign.save()]);
+
+        res.json({
+            message: 'Proof uploaded successfully, pending verification',
+            proofUrl: `/uploads/campaigns/${path.basename(proofFile.path)}`
+        });
+    } catch (err) {
+        console.error('Upload proof error:', err);
+        res.status(500).json({ message: 'Failed to upload proof' });
+    }
+});
+
+// Complete a task (for tasks that don't require proof)
+app.post('/campaigns/:id/tasks/:taskId/complete', authenticateToken, async (req, res) => {
+    try {
+        const { id: campaignId, taskId } = req.params;
+
+        const campaign = await Campaign.findById(campaignId);
+        if (!campaign) {
+            return res.status(404).json({ message: 'Campaign not found' });
+        }
+
+        const task = campaign.tasksList.id(taskId);
+        if (!task) {
+            return res.status(404).json({ message: 'Task not found' });
+        }
+
+        const user = await User.findById(req.user.userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Check if user has joined the campaign
+        const userCampaign = user.campaigns.find(c =>
+            c.campaignId.toString() === campaignId
+        );
+        if (!userCampaign) {
+            return res.status(400).json({ message: 'Join the campaign first' });
+        }
+
+        // Check if task is already completed
+        const userTask = user.tasks.find(t =>
+            t.taskId.toString() === taskId &&
+            t.campaignId.toString() === campaignId
+        );
+
+        if (userTask && userTask.status === 'completed') {
+            return res.status(400).json({ message: 'Task already completed' });
+        }
+
+        // Calculate penalty for late completion
+        const currentDate = new Date();
+        const startDate = new Date(campaign.startDate);
+        const dayDiff = Math.floor((currentDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
+        const daysLate = dayDiff - task.day;
+
+        let penaltyFactor = 1;
+        if (daysLate > 0) {
+            penaltyFactor = Math.max(0.5, 1 - (daysLate * 0.1)); // 10% penalty per day late
+        }
+
+        // Apply penalty to rewards
+        const baseReward = task.reward || 0;
+        const finalReward = baseReward * penaltyFactor;
+
+        // Update user's task status
+        if (!userTask) {
+            user.tasks.push({
+                campaignId,
+                taskId,
+                status: 'completed',
+                completedAt: new Date()
+            });
+        } else {
+            userTask.status = 'completed';
+            userTask.completedAt = new Date();
+        }
+
+        // Update user campaign progress
+        userCampaign.completed += 1;
+        userCampaign.lastActivity = new Date();
+
+        // Update campaign stats
+        campaign.completedTasks += 1;
+
+        // Update campaign participant
+        const participant = campaign.participantsList.find(p =>
+            p.userId.toString() === req.user.userId
+        );
+        if (participant) {
+            participant.completed += 1;
+            participant.lastActivity = new Date();
+
+            const participantTask = participant.tasks.find(t =>
+                t.taskId.toString() === taskId
+            );
+            if (!participantTask) {
+                participant.tasks.push({
+                    taskId,
+                    status: 'completed',
+                    completedAt: new Date()
+                });
+            } else {
+                participantTask.status = 'completed';
+                participantTask.completedAt = new Date();
+            }
+        }
+
+        // Update task's completedBy
+        const completedByEntry = task.completedBy.find(entry =>
+            entry.userId.toString() === req.user.userId
+        );
+        if (!completedByEntry) {
+            task.completedBy.push({
+                userId: req.user.userId,
+                status: 'completed',
+                completedAt: new Date()
+            });
+        } else {
+            completedByEntry.status = 'completed';
+            completedByEntry.completedAt = new Date();
+        }
+
+        // Add reward to user
+        user.earnings += finalReward;
+
+        // Create transaction
+        const transaction = new Transaction({
+            userId: user._id,
+            amount: finalReward,
+            type: 'earn',
+            category: 'Campaign',
+            activity: `Completed task: ${task.title}`,
+            description: `Earned ${finalReward} RFX for completing task in ${campaign.title}`,
+            color: 'green',
+            timestamp: new Date()
+        });
+
+        await Promise.all([user.save(), campaign.save(), transaction.save()]);
+
+        res.json({
+            message: 'Task completed successfully',
+            reward: finalReward,
+            penalty: daysLate > 0 ? `${(1 - penaltyFactor) * 100}% penalty applied` : 'No penalty',
+            balance: user.earnings
+        });
+    } catch (err) {
+        console.error('Complete task error:', err);
+        res.status(500).json({ message: 'Failed to complete task' });
+    }
+});
+
+// Get user's campaigns
+app.get('/user/campaigns', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.userId)
+            .populate('campaigns.campaignId', 'title description category reward duration startDate endDate status image participants completedTasks')
+            .select('campaigns');
+
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Format the response
+        const userCampaigns = user.campaigns.map(uc => {
+            const campaign = uc.campaignId;
+            return {
+                ...campaign.toObject(),
+                userJoined: true,
+                userCompleted: uc.completed,
+                lastActivity: uc.lastActivity,
+                progress: campaign.tasksList ?
+                    (uc.completed / campaign.tasksList.length) * 100 : 0
+            };
+        });
+
+        res.json(userCampaigns);
+    } catch (err) {
+        console.error('Get user campaigns error:', err);
+        res.status(500).json({ message: 'Failed to fetch user campaigns' });
+    }
+});
+
+
+
+// Admin Campaign Routes
+
+// Get all campaigns for admin dashboard
+app.get('/admin/campaigns', [authenticateToken, adminAuth], async (req, res) => {
+    try {
+        const campaigns = await Campaign.find()
+            .sort({ createdAt: -1 })
+            .lean();
+
+        res.json(campaigns);
+    } catch (err) {
+        console.error('Get admin campaigns error:', err);
+        res.status(500).json({ message: 'Failed to fetch campaigns' });
+    }
+});
+
+// Get single campaign details for admin
+app.get('/admin/campaigns/:id', [authenticateToken, adminAuth], async (req, res) => {
+    try {
+        const campaign = await Campaign.findById(req.params.id)
+            .populate('participantsList.userId', 'username email avatar')
+            .lean();
+
+        if (!campaign) {
+            return res.status(404).json({ message: 'Campaign not found' });
+        }
+
+        res.json(campaign);
+    } catch (err) {
+        console.error('Get admin campaign details error:', err);
+        res.status(500).json({ message: 'Failed to fetch campaign details' });
+    }
+});
+
+// Get proofs for a campaign
+app.get('/admin/campaigns/:id/proofs', [authenticateToken, adminAuth], async (req, res) => {
+    try {
+        const campaign = await Campaign.findById(req.params.id)
+            .select('tasksList participantsList')
+            .populate('participantsList.userId', 'username email avatar')
+            .lean();
+
+        if (!campaign) {
+            return res.status(404).json({ message: 'Campaign not found' });
+        }
+
+        // Format proofs grouped by task
+        const proofs = campaign.tasksList.map(task => {
+            const taskProofs = task.completedBy.map(proof => {
+                const participant = campaign.participantsList.find(p => 
+                    p.userId && p.userId._id.toString() === proof.userId.toString()
+                );
+                return {
+                    taskId: task._id,
+                    taskTitle: task.title,
+                    day: task.day,
+                    userId: proof.userId,
+                    username: participant?.userId?.username || 'Unknown',
+                    email: participant?.userId?.email || '',
+                    avatar: participant?.userId?.avatar || '',
+                    proofUrl: proof.proofUrl,
+                    status: proof.status,
+                    submittedAt: proof.submittedAt
+                };
+            });
+
+            return {
+                taskId: task._id,
+                taskTitle: task.title,
+                day: task.day,
+                proofs: taskProofs
+            };
+        });
+
+        res.json(proofs);
+    } catch (err) {
+        console.error('Get campaign proofs error:', err);
+        res.status(500).json({ message: 'Failed to fetch proofs' });
+    }
+});
+
+// Approve/reject proof
+app.post('/admin/campaigns/:id/approve-proof', [authenticateToken, adminAuth], async (req, res) => {
+    try {
+        const { taskId, userId, approve } = req.body;
+        
+        const campaign = await Campaign.findById(req.params.id);
+        if (!campaign) {
+            return res.status(404).json({ message: 'Campaign not found' });
+        }
+
+        // Find the task
+        const task = campaign.tasksList.id(taskId);
+        if (!task) {
+            return res.status(404).json({ message: 'Task not found' });
+        }
+
+        // Find the proof in task's completedBy
+        const proof = task.completedBy.find(p => 
+            p.userId.toString() === userId
+        );
+        if (!proof) {
+            return res.status(404).json({ message: 'Proof not found' });
+        }
+
+        // Update proof status
+        proof.status = approve ? 'completed' : 'rejected';
+
+        // Find participant in campaign
+        const participant = campaign.participantsList.find(p => 
+            p.userId.toString() === userId
+        );
+        if (participant) {
+            // Find participant's task
+            const participantTask = participant.tasks.find(t => 
+                t.taskId.toString() === taskId
+            );
+            if (participantTask) {
+                participantTask.status = approve ? 'completed' : 'rejected';
+                if (approve) {
+                    participantTask.completedAt = new Date();
+                }
+            }
+        }
+
+        // If approved, update user's task and reward them
+        if (approve) {
+            const user = await User.findById(userId);
+            if (user) {
+                // Find user's campaign
+                const userCampaign = user.campaigns.find(c => 
+                    c.campaignId.toString() === req.params.id
+                );
+                if (userCampaign) {
+                    userCampaign.completed += 1;
+                    userCampaign.lastActivity = new Date();
+                }
+
+                // Find user's task
+                const userTask = user.tasks.find(t => 
+                    t.taskId.toString() === taskId && 
+                    t.campaignId.toString() === req.params.id
+                );
+                if (userTask) {
+                    userTask.status = 'completed';
+                    userTask.completedAt = new Date();
+                }
+
+                // Add reward
+                user.earnings += task.reward || 0;
+
+                // Create transaction
+                const transaction = new Transaction({
+                    userId: user._id,
+                    amount: task.reward || 0,
+                    type: 'earn',
+                    category: 'Campaign',
+                    activity: `Completed task: ${task.title}`,
+                    description: `Earned ${task.reward || 0} RFX for completing task in ${campaign.title}`,
+                    color: 'green',
+                    timestamp: new Date()
+                });
+
+                await transaction.save();
+                await user.save();
+            }
+
+            // Update campaign completed tasks count
+            campaign.completedTasks += 1;
+        }
+
+        await campaign.save();
+
+        res.json({ 
+            message: `Proof ${approve ? 'approved' : 'rejected'} successfully`,
+            status: approve ? 'completed' : 'rejected'
+        });
+    } catch (err) {
+        console.error('Approve proof error:', err);
+        res.status(500).json({ message: 'Failed to update proof status' });
+    }
+});
+
+// Update campaign
+app.put('/admin/campaigns/:id', [authenticateToken, adminAuth, upload.single('image')], async (req, res) => {
+    try {
+        const formData = req.body;
+        const campaign = await Campaign.findById(req.params.id);
+        
+        if (!campaign) {
+            return res.status(404).json({ message: 'Campaign not found' });
+        }
+
+        // Validate required fields
+        if (!formData.title || !formData.description || !formData.category ||
+            !formData.reward || !formData.difficulty || !formData.duration ||
+            !formData.startDate || !formData.status) {
+            return res.status(400).json({ message: 'Missing required fields' });
+        }
+
+        // Parse tasks if they exist
+        let tasksList = [];
+        if (formData.tasks) {
+            try {
+                tasksList = JSON.parse(formData.tasks);
+
+                // Validate each task
+                for (const task of tasksList) {
+                    if (!task.title || task.title.length < 3) {
+                        return res.status(400).json({
+                            message: 'Task title must be at least 3 characters long'
+                        });
+                    }
+                    if (!task.description || task.description.length < 10) {
+                        return res.status(400).json({
+                            message: 'Task description must be at least 10 characters long'
+                        });
+                    }
+                    if (!task.day || task.day < 1) {
+                        return res.status(400).json({
+                            message: 'Task day must be at least 1'
+                        });
+                    }
+                    if (!task.reward || task.reward < 0) {
+                        return res.status(400).json({
+                            message: 'Task reward must be a positive number'
+                        });
+                    }
+                }
+            } catch (e) {
+                console.error('Error parsing tasks:', e);
+                return res.status(400).json({ message: 'Invalid tasks format' });
+            }
+        }
+
+        // Calculate end date
+        const endDate = new Date(new Date(formData.startDate).getTime() + 
+            (parseInt(formData.duration) * 24 * 60 * 60 * 1000));
+
+        // Handle file path
+        let imagePath = campaign.image;
+        if (req.file) {
+            imagePath = path.join('uploads', 'campaigns', req.file.filename);
+            
+            // Delete old image if it exists and a new one is uploaded
+            if (campaign.image) {
+                const oldImagePath = path.join(__dirname, campaign.image);
+                if (fs.existsSync(oldImagePath)) {
+                    fs.unlinkSync(oldImagePath);
+                }
+            }
+        }
+
+        // Update campaign fields
+        campaign.title = formData.title;
+        campaign.description = formData.description;
+        campaign.category = formData.category;
+        campaign.reward = parseFloat(formData.reward);
+        campaign.difficulty = formData.difficulty;
+        campaign.duration = parseInt(formData.duration);
+        campaign.featured = formData.featured === 'true';
+        campaign.new = formData.new === 'true';
+        campaign.trending = formData.trending === 'true';
+        campaign.ending = formData.ending === 'true';
+        campaign.startDate = formData.startDate;
+        campaign.endDate = endDate;
+        campaign.status = formData.status;
+        campaign.tasksList = tasksList;
+        if (imagePath) campaign.image = imagePath;
+
+        await campaign.save();
+
+        res.json({
+            ...campaign.toObject(),
+            image: imagePath ? `/uploads/campaigns/${path.basename(imagePath)}` : null
+        });
+    } catch (err) {
+        if (req.file) {
+            fs.unlink(req.file.path, () => {});
+        }
+        console.error('Update campaign error:', err);
+        res.status(500).json({
+            message: err.message || 'Failed to update campaign',
+            error: err
+        });
+    }
+});
+
+// Delete campaign
+app.delete('/admin/campaigns/:id', [authenticateToken, adminAuth], async (req, res) => {
+    try {
+        const campaign = await Campaign.findByIdAndDelete(req.params.id);
+        
+        if (!campaign) {
+            return res.status(404).json({ message: 'Campaign not found' });
+        }
+
+        // Delete associated image if it exists
+        if (campaign.image) {
+            const imagePath = path.join(__dirname, campaign.image);
+            if (fs.existsSync(imagePath)) {
+                fs.unlinkSync(imagePath);
+            }
+        }
+
+        // Remove campaign from users
+        await User.updateMany(
+            { 'campaigns.campaignId': req.params.id },
+            { $pull: { campaigns: { campaignId: req.params.id } } }
+        );
+
+        res.json({ message: 'Campaign deleted successfully' });
+    } catch (err) {
+        console.error('Delete campaign error:', err);
+        res.status(500).json({ message: 'Failed to delete campaign' });
+    }
+});
+
+
 // Error handling middleware
-app.use((err, req, res, next) => {
+app.use((err, req, res, next) => {  
     console.error('Server error:', err);
     res.status(err.status || 500).json({
         message: err.message || 'Internal Server Error'

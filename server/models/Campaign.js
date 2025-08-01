@@ -70,6 +70,10 @@ const taskSchema = new mongoose.Schema({
             default: null
         }
     }],
+    startedAt: {
+        type: Date,
+        default: null
+    },
     createdAt: {
         type: Date,
         default: Date.now
@@ -246,5 +250,10 @@ campaignSchema.pre('save', function (next) {
 
     next();
 });
+
+campaignSchema.index({ title: 'text', description: 'text' });
+campaignSchema.index({ status: 1 });
+campaignSchema.index({ category: 1 });
+campaignSchema.index({ startDate: 1, endDate: 1 });
 
 module.exports = mongoose.model('Campaign', campaignSchema);

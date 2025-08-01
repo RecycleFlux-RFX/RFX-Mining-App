@@ -163,4 +163,7 @@ const userSchema = new mongoose.Schema({
     }
 });
 
+userSchema.index({ 'campaigns.campaignId': 1 });
+userSchema.index({ 'tasks.campaignId': 1, 'tasks.taskId': 1 });
+
 module.exports = mongoose.model('User', userSchema);
