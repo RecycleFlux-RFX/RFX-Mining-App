@@ -980,54 +980,163 @@ app.get('/campaigns/:id/user', authenticateToken, async (req, res) => {
 });
 
 // Join a campaign
+// Join campaign
 app.post('/campaigns/:id/join', authenticateToken, async (req, res) => {
     try {
-        const campaign = await Campaign.findById(req.params.id);
+        const campaignId = req.params.id;
+        const userId = req.user.userId;
+
+        const campaign = await Campaign.findById(campaignId);
         if (!campaign) {
             return res.status(404).json({ message: 'Campaign not found' });
         }
 
-        const user = await User.findById(req.user.userId);
+        const user = await User.findById(userId);
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Check if user already joined
-        if (user.campaigns.some(c => c.campaignId.toString() === req.params.id)) {
+        // Check if already joined
+        if (user.campaigns.some(c => c.campaignId.toString() === campaignId)) {
             return res.status(400).json({ message: 'Already joined this campaign' });
         }
 
-        // Add campaign to user
+        // Add to user's campaigns
         user.campaigns.push({
-            campaignId: req.params.id,
-            joinedAt: new Date(),
-            completed: 0,
-            lastActivity: new Date()
+            campaignId: campaign._id,
+            joinedAt: new Date()
         });
 
-        // Update campaign participants
+        // Add to campaign participants
         campaign.participants += 1;
         campaign.participantsList.push({
-            userId: req.user.userId,
+            userId: user._id,
             username: user.username,
             email: user.email,
-            joinedAt: new Date(),
-            completed: 0,
-            lastActivity: new Date(),
-            tasks: []
+            joinedAt: new Date()
         });
 
         await Promise.all([user.save(), campaign.save()]);
 
         res.json({
             message: 'Successfully joined campaign',
-            participants: campaign.participants
+            campaignId: campaign._id
         });
     } catch (err) {
         console.error('Join campaign error:', err);
         res.status(500).json({ message: 'Failed to join campaign' });
     }
 });
+
+// Upload proof
+app.post('/campaigns/:campaignId/tasks/:taskId/proof', [authenticateToken, upload.single('proof')], async (req, res) => {
+    try {
+        const { campaignId, taskId } = req.params;
+        const proofFile = req.file;
+        const userId = req.user.userId;
+
+        if (!proofFile) {
+            return res.status(400).json({ message: 'Proof file is required' });
+        }
+
+        const campaign = await Campaign.findById(campaignId);
+        if (!campaign) {
+            return res.status(404).json({ message: 'Campaign not found' });
+        }
+
+        const task = campaign.tasksList.id(taskId);
+        if (!task) {
+            return res.status(404).json({ message: 'Task not found' });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Construct the proof URL
+        const proofUrl = `/uploads/campaigns/${proofFile.filename}`;
+        console.log('Proof URL:', proofUrl); // Debug log to verify URL
+
+        // Update user's task status
+        let userTask = user.tasks.find(t =>
+            t.taskId.toString() === taskId &&
+            t.campaignId.toString() === campaignId
+        );
+
+        if (!userTask) {
+            user.tasks.push({
+                campaignId,
+                taskId,
+                status: 'pending',
+                proof: proofUrl,
+                submittedAt: new Date()
+            });
+        } else {
+            userTask.status = 'pending';
+            userTask.proof = proofUrl;
+            userTask.submittedAt = new Date();
+        }
+
+        // Update campaign participant's task status
+        const participant = campaign.participantsList.find(p =>
+            p.userId.toString() === userId
+        );
+
+        if (!participant) {
+            return res.status(400).json({ message: 'User has not joined this campaign' });
+        }
+
+        let participantTask = participant.tasks.find(t => t.taskId.toString() === taskId);
+        if (!participantTask) {
+            participant.tasks.push({
+                taskId,
+                status: 'pending',
+                proof: proofUrl,
+                submittedAt: new Date()
+            });
+        } else {
+            participantTask.status = 'pending';
+            participantTask.proof = proofUrl;
+            participantTask.submittedAt = new Date();
+        }
+
+        // Update task's completedBy
+        let completedByEntry = task.completedBy.find(entry =>
+            entry.userId.toString() === userId
+        );
+
+        if (!completedByEntry) {
+            task.completedBy.push({
+                userId: userId,
+                proofUrl: proofUrl,
+                status: 'pending',
+                submittedAt: new Date()
+            });
+        } else {
+            completedByEntry.proofUrl = proofUrl;
+            completedByEntry.status = 'pending';
+            completedByEntry.submittedAt = new Date();
+        }
+
+        // Update last activity
+        participant.lastActivity = new Date();
+
+        await Promise.all([user.save(), campaign.save()]);
+
+        res.json({
+            message: 'Proof uploaded successfully, pending verification',
+            proofUrl: proofUrl // Return relative URL
+        });
+    } catch (err) {
+        console.error('Upload proof error:', err);
+        if (req.file) {
+            fs.unlink(req.file.path, () => { });
+        }
+        res.status(500).json({ message: 'Failed to upload proof' });
+    }
+});
+
 
 // Upload task proof
 app.post('/campaigns/:id/tasks/:taskId/proof', [authenticateToken, upload.single('proof')], async (req, res) => {
@@ -1624,6 +1733,19 @@ app.delete('/admin/campaigns/:id', [authenticateToken, adminAuth], async (req, r
     }
 });
 
+// Get campaigns created by a specific user
+app.get('/admin/campaigns/created-by/:userId', [authenticateToken, adminAuth], async (req, res) => {
+    try {
+        const campaigns = await Campaign.find({ createdBy: req.params.userId })
+            .sort({ createdAt: -1 })
+            .lean();
+
+        res.json(campaigns);
+    } catch (err) {
+        console.error('Get user-created campaigns error:', err);
+        res.status(500).json({ message: 'Failed to fetch campaigns' });
+    }
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {  

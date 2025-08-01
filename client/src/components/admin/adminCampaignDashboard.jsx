@@ -4,14 +4,13 @@ import {
     Plus, Trash2, Edit, Check, X, Upload,
     BarChart2, Users, List, Settings, Search,
     Filter, Eye, Calendar, Clock, Award,
-    TrendingUp, Star, Zap, ChevronDown
+    TrendingUp, Star, Zap, ChevronDown, Sun, Moon
 } from 'react-feather';
 import api from '../../api/api';
 import Modal from 'react-modal';
 import { Tab, Tabs, TabList, TabPanel } from 'react-tabs';
 import 'react-tabs/style/react-tabs.css';
 import { format, addDays } from 'date-fns';
-import axios from 'axios';
 
 Modal.setAppElement('#root');
 
@@ -29,6 +28,20 @@ const AdminCampaignDashboard = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterStatus, setFilterStatus] = useState('all');
     const [filterCategory, setFilterCategory] = useState('all');
+    const [showMyCampaigns, setShowMyCampaigns] = useState(false);
+    const [darkMode, setDarkMode] = useState(() => {
+        // Check for saved preference or system preference
+        const savedMode = localStorage.getItem('darkMode');
+        if (savedMode !== null) return savedMode === 'true';
+        return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    });
+
+    // Toggle dark mode and save preference
+    const toggleDarkMode = () => {
+        const newMode = !darkMode;
+        setDarkMode(newMode);
+        localStorage.setItem('darkMode', newMode.toString());
+    };
 
     // Form states with improved initial values
     const initialFormData = {
@@ -93,13 +106,15 @@ const AdminCampaignDashboard = () => {
                         Authorization: `Bearer ${token}`,
                         'Content-Type': 'application/json',
                     },
+                    params: {
+                        createdByMe: showMyCampaigns,
+                    },
                 });
-                console.log('API Response:', response.data); // Debug the response
                 setCampaigns(Array.isArray(response.data) ? response.data : []);
             } catch (error) {
                 console.error('Error fetching campaigns:', error);
                 setError(error.response?.data?.message || error.message);
-                setCampaigns([]); // Fallback to empty array
+                setCampaigns([]);
                 alert('Failed to fetch campaigns: ' + (error.response?.data?.message || error.message));
             } finally {
                 setLoading(false);
@@ -107,7 +122,7 @@ const AdminCampaignDashboard = () => {
         };
 
         fetchCampaigns();
-    }, []);
+    }, [showMyCampaigns]);
 
     // Fetch campaign details when selected
     useEffect(() => {
@@ -178,7 +193,6 @@ const AdminCampaignDashboard = () => {
             if (formData.image) {
                 formPayload.append('image', formData.image);
             } else if (selectedCampaign?.image) {
-                // If editing and no new image, keep the existing one
                 formPayload.append('image', '');
             }
 
@@ -449,38 +463,99 @@ const AdminCampaignDashboard = () => {
     // Get category config
     const getCategoryConfig = (category) => {
         const configs = {
-            Ocean: { color: 'bg-blue-500', icon: '🌊', gradient: 'from-blue-500 to-cyan-500' },
-            Forest: { color: 'bg-green-500', icon: '🌲', gradient: 'from-green-500 to-emerald-500' },
-            Air: { color: 'bg-cyan-500', icon: '💨', gradient: 'from-cyan-500 to-sky-500' },
-            Community: { color: 'bg-purple-500', icon: '👥', gradient: 'from-purple-500 to-violet-500' }
+            Ocean: {
+                color: darkMode ? 'bg-blue-600' : 'bg-blue-500',
+                icon: '🌊',
+                gradient: darkMode ? 'from-blue-600 to-cyan-600' : 'from-blue-500 to-cyan-500',
+                textColor: darkMode ? 'text-blue-100' : 'text-white'
+            },
+            Forest: {
+                color: darkMode ? 'bg-green-600' : 'bg-green-500',
+                icon: '🌲',
+                gradient: darkMode ? 'from-green-600 to-emerald-600' : 'from-green-500 to-emerald-500',
+                textColor: darkMode ? 'text-green-100' : 'text-white'
+            },
+            Air: {
+                color: darkMode ? 'bg-cyan-600' : 'bg-cyan-500',
+                icon: '💨',
+                gradient: darkMode ? 'from-cyan-600 to-sky-600' : 'from-cyan-500 to-sky-500',
+                textColor: darkMode ? 'text-cyan-100' : 'text-white'
+            },
+            Community: {
+                color: darkMode ? 'bg-purple-600' : 'bg-purple-500',
+                icon: '👥',
+                gradient: darkMode ? 'from-purple-600 to-violet-600' : 'from-purple-500 to-violet-500',
+                textColor: darkMode ? 'text-purple-100' : 'text-white'
+            }
         };
-        return configs[category] || { color: 'bg-gray-500', icon: '📋', gradient: 'from-gray-500 to-gray-600' };
+        return configs[category] || {
+            color: darkMode ? 'bg-gray-600' : 'bg-gray-500',
+            icon: '📋',
+            gradient: darkMode ? 'from-gray-600 to-gray-700' : 'from-gray-500 to-gray-600',
+            textColor: darkMode ? 'text-gray-100' : 'text-white'
+        };
     };
 
     // Get difficulty config
     const getDifficultyConfig = (difficulty) => {
         const configs = {
-            Easy: { color: 'bg-green-500', textColor: 'text-green-700', bgColor: 'bg-green-100' },
-            Medium: { color: 'bg-yellow-500', textColor: 'text-yellow-700', bgColor: 'bg-yellow-100' },
-            Hard: { color: 'bg-red-500', textColor: 'text-red-700', bgColor: 'bg-red-100' }
+            Easy: {
+                color: darkMode ? 'bg-green-600' : 'bg-green-500',
+                textColor: darkMode ? 'text-green-100' : 'text-green-700',
+                bgColor: darkMode ? 'bg-green-900/30' : 'bg-green-100'
+            },
+            Medium: {
+                color: darkMode ? 'bg-yellow-600' : 'bg-yellow-500',
+                textColor: darkMode ? 'text-yellow-100' : 'text-yellow-700',
+                bgColor: darkMode ? 'bg-yellow-900/30' : 'bg-yellow-100'
+            },
+            Hard: {
+                color: darkMode ? 'bg-red-600' : 'bg-red-500',
+                textColor: darkMode ? 'text-red-100' : 'text-red-700',
+                bgColor: darkMode ? 'bg-red-900/30' : 'bg-red-100'
+            }
         };
-        return configs[difficulty] || { color: 'bg-gray-500', textColor: 'text-gray-700', bgColor: 'bg-gray-100' };
+        return configs[difficulty] || {
+            color: darkMode ? 'bg-gray-600' : 'bg-gray-500',
+            textColor: darkMode ? 'text-gray-100' : 'text-gray-700',
+            bgColor: darkMode ? 'bg-gray-900/30' : 'bg-gray-100'
+        };
     };
 
     // Get status config
     const getStatusConfig = (status) => {
         const configs = {
-            active: { color: 'bg-green-500', textColor: 'text-green-700', bgColor: 'bg-green-100', icon: '🟢' },
-            upcoming: { color: 'bg-blue-500', textColor: 'text-blue-700', bgColor: 'bg-blue-100', icon: '🔵' },
-            completed: { color: 'bg-purple-500', textColor: 'text-purple-700', bgColor: 'bg-purple-100', icon: '🟣' }
+            active: {
+                color: darkMode ? 'bg-green-600' : 'bg-green-500',
+                textColor: darkMode ? 'text-green-100' : 'text-green-700',
+                bgColor: darkMode ? 'bg-green-900/30' : 'bg-green-100',
+                icon: '🟢'
+            },
+            upcoming: {
+                color: darkMode ? 'bg-blue-600' : 'bg-blue-500',
+                textColor: darkMode ? 'text-blue-100' : 'text-blue-700',
+                bgColor: darkMode ? 'bg-blue-900/30' : 'bg-blue-100',
+                icon: '🔵'
+            },
+            completed: {
+                color: darkMode ? 'bg-purple-600' : 'bg-purple-500',
+                textColor: darkMode ? 'text-purple-100' : 'text-purple-700',
+                bgColor: darkMode ? 'bg-purple-900/30' : 'bg-purple-100',
+                icon: '🟣'
+            }
         };
-        return configs[status] || { color: 'bg-gray-500', textColor: 'text-gray-700', bgColor: 'bg-gray-100', icon: '⚪' };
+        return configs[status] || {
+            color: darkMode ? 'bg-gray-600' : 'bg-gray-500',
+            textColor: darkMode ? 'text-gray-100' : 'text-gray-700',
+            bgColor: darkMode ? 'bg-gray-900/30' : 'bg-gray-100',
+            icon: '⚪'
+        };
     };
 
     // Filter campaigns
     const filteredCampaigns = campaigns
         ? campaigns
-            .filter(campaign => campaign) // Remove any undefined/null campaigns
+            .filter(campaign => campaign)
             .filter(campaign => {
                 const matchesSearch =
                     (campaign.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -495,12 +570,27 @@ const AdminCampaignDashboard = () => {
                 return matchesSearch && matchesStatus && matchesCategory;
             })
         : [];
+
+    // Theme classes
+    const themeClasses = {
+        bg: darkMode ? 'bg-gray-900' : 'bg-gray-50',
+        text: darkMode ? 'text-gray-100' : 'text-gray-800',
+        card: darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200',
+        input: darkMode ? 'bg-gray-700 border-gray-600 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500',
+        header: darkMode ? 'bg-gray-800/80 border-gray-700' : 'bg-white/80 border-gray-200/50',
+        tab: darkMode ? 'text-gray-300 hover:text-white border-gray-700' : 'text-gray-700 hover:text-gray-900 border-gray-200',
+        modal: darkMode ? 'bg-gray-800 text-gray-100' : 'bg-white text-gray-900',
+        modalOverlay: darkMode ? 'bg-black/70' : 'bg-black/50',
+        statsCard: darkMode ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-100',
+        dropdown: darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300 text-gray-900'
+    };
+
     if (loading && !selectedCampaign) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center">
-                <div className="bg-white rounded-2xl shadow-xl p-8 flex flex-col items-center space-y-4">
+            <div className={`min-h-screen ${themeClasses.bg} flex items-center justify-center`}>
+                <div className={`${themeClasses.card} rounded-2xl shadow-xl p-8 flex flex-col items-center space-y-4 border`}>
                     <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                    <div className="text-xl font-semibold text-gray-700">Loading campaigns...</div>
+                    <div className={`text-xl font-semibold ${themeClasses.text}`}>Loading campaigns...</div>
                 </div>
             </div>
         );
@@ -508,10 +598,10 @@ const AdminCampaignDashboard = () => {
 
     if (error) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-red-50 to-red-100 flex items-center justify-center">
-                <div className="bg-white rounded-2xl shadow-xl p-8 text-center">
+            <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-red-50'} flex items-center justify-center`}>
+                <div className={`${themeClasses.card} rounded-2xl shadow-xl p-8 text-center border`}>
                     <div className="text-red-500 text-6xl mb-4">⚠️</div>
-                    <div className="text-red-600 text-xl font-semibold">{error}</div>
+                    <div className="text-red-600 dark:text-red-400 text-xl font-semibold">{error}</div>
                     <button
                         onClick={() => setError(null)}
                         className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
@@ -524,9 +614,9 @@ const AdminCampaignDashboard = () => {
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-100">
+        <div className={`min-h-screen ${themeClasses.bg} ${themeClasses.text} transition-colors duration-200`}>
             {/* Modern Header */}
-            <header className="bg-white/80 backdrop-blur-md border-b border-gray-200/50 sticky top-0 z-40">
+            <header className={`backdrop-blur-md sticky top-0 z-40 border-b ${themeClasses.header} transition-colors duration-200`}>
                 <div className="max-w-7xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0">
                         <div className="flex items-center space-x-4">
@@ -534,19 +624,28 @@ const AdminCampaignDashboard = () => {
                                 <BarChart2 className="w-6 h-6 text-white" />
                             </div>
                             <div>
-                                <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
+                                <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
                                     Campaign Management
                                 </h1>
-                                <p className="text-sm text-gray-500 mt-1">Manage your environmental campaigns</p>
+                                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>Manage your environmental campaigns</p>
                             </div>
                         </div>
-                        <button
-                            onClick={() => navigate('/admin')}
-                            className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 px-4 py-2 rounded-xl transition-all duration-200 hover:scale-105"
-                        >
-                            <Settings size={18} />
-                            <span className="font-medium">Admin Dashboard</span>
-                        </button>
+                        <div className="flex items-center space-x-4">
+                            <button
+                                onClick={toggleDarkMode}
+                                className={`p-2 rounded-full ${darkMode ? 'bg-gray-700 text-yellow-300' : 'bg-gray-200 text-gray-700'}`}
+                                aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+                            >
+                                {darkMode ? <Sun size={18} /> : <Moon size={18} />}
+                            </button>
+                            <button
+                                onClick={() => navigate('/admin')}
+                                className={`flex items-center space-x-2 ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'} px-4 py-2 rounded-xl transition-all duration-200`}
+                            >
+                                <Settings size={18} />
+                                <span className="font-medium">Admin Dashboard</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </header>
@@ -554,81 +653,96 @@ const AdminCampaignDashboard = () => {
             <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-8">
                 {/* Stats Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+                    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm font-medium text-gray-600">Total Campaigns</p>
-                                <div className="text-3xl font-bold text-gray-900">{campaigns.length}</div>
+                                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Campaigns</p>
+                                <div className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{campaigns.length}</div>
                             </div>
-                            <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
-                                <BarChart2 className="w-6 h-6 text-blue-600" />
+                            <div className={`w-12 h-12 ${darkMode ? 'bg-blue-900/30' : 'bg-blue-100'} rounded-xl flex items-center justify-center`}>
+                                <BarChart2 className={`w-6 h-6 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
                             </div>
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+                    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm font-medium text-gray-600">Active Campaigns</p>
-                                <div className="text-3xl font-bold text-green-600">
+                                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Active Campaigns</p>
+                                <div className={`text-3xl font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
                                     {campaigns.filter(c => c.status === 'active').length}
                                 </div>
                             </div>
-                            <div className="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
-                                <TrendingUp className="w-6 h-6 text-green-600" />
+                            <div className={`w-12 h-12 ${darkMode ? 'bg-green-900/30' : 'bg-green-100'} rounded-xl flex items-center justify-center`}>
+                                <TrendingUp className={`w-6 h-6 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
                             </div>
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+                    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm font-medium text-gray-600">Total Participants</p>
-                                <div className="text-3xl font-bold text-purple-600">
+                                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Participants</p>
+                                <div className={`text-3xl font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
                                     {campaigns.reduce((sum, c) => sum + (c.participants || 0), 0)}
                                 </div>
                             </div>
-                            <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
-                                <Users className="w-6 h-6 text-purple-600" />
+                            <div className={`w-12 h-12 ${darkMode ? 'bg-purple-900/30' : 'bg-purple-100'} rounded-xl flex items-center justify-center`}>
+                                <Users className={`w-6 h-6 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
                             </div>
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-2xl shadow-lg p-6 border border-gray-100">
+                    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-sm font-medium text-gray-600">Total Rewards</p>
-                                <div className="text-3xl font-bold text-orange-600">
+                                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Rewards</p>
+                                <div className={`text-3xl font-bold ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>
                                     {campaigns.reduce((sum, c) => sum + (c.reward || 0), 0).toFixed(3)} RFX
                                 </div>
                             </div>
-                            <div className="w-12 h-12 bg-orange-100 rounded-xl flex items-center justify-center">
-                                <Award className="w-6 h-6 text-orange-600" />
+                            <div className={`w-12 h-12 ${darkMode ? 'bg-orange-900/30' : 'bg-orange-100'} rounded-xl flex items-center justify-center`}>
+                                <Award className={`w-6 h-6 ${darkMode ? 'text-orange-400' : 'text-orange-600'}`} />
                             </div>
                         </div>
                     </div>
                 </div>
 
                 {/* Campaign List Section */}
-                <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+                <div className={`rounded-2xl shadow-lg border ${themeClasses.card} overflow-hidden transition-colors duration-200`}>
                     {/* Header with Search and Filters */}
-                    <div className="p-6 border-b border-gray-100">
+                    <div className={`p-6 border-b ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center space-y-4 lg:space-y-0">
                             <div>
-                                <h2 className="text-xl font-bold text-gray-900">All Campaigns</h2>
-                                <p className="text-sm text-gray-500 mt-1">{filteredCampaigns.length} campaigns found</p>
+                                <h2 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                    {showMyCampaigns ? 'My Campaigns' : 'All Campaigns'}
+                                </h2>
+                                <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>{filteredCampaigns.length} campaigns found</p>
                             </div>
 
                             <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+                                {/* Toggle Button */}
+                                <div className="flex items-center space-x-2">
+                                    <button
+                                        onClick={() => setShowMyCampaigns(!showMyCampaigns)}
+                                        className={`px-4 py-2 rounded-xl font-medium transition-colors ${showMyCampaigns
+                                            ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                            : darkMode ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                            }`}
+                                    >
+                                        {showMyCampaigns ? 'Show All Campaigns' : 'Show My Campaigns'}
+                                    </button>
+                                </div>
+
                                 {/* Search */}
                                 <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                                    <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 ${darkMode ? 'text-gray-400' : 'text-gray-500'} w-4 h-4`} />
                                     <input
                                         type="text"
                                         placeholder="Search campaigns..."
                                         value={searchTerm}
                                         onChange={(e) => setSearchTerm(e.target.value)}
-                                        className="pl-10 pr-4 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full sm:w-64"
+                                        className={`pl-10 pr-4 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent w-full sm:w-64 ${themeClasses.input}`}
                                     />
                                 </div>
 
@@ -637,7 +751,7 @@ const AdminCampaignDashboard = () => {
                                     <select
                                         value={filterStatus}
                                         onChange={(e) => setFilterStatus(e.target.value)}
-                                        className="px-3 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                        className={`px-3 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm ${themeClasses.dropdown}`}
                                     >
                                         <option value="all">All Status</option>
                                         <option value="active">Active</option>
@@ -648,7 +762,7 @@ const AdminCampaignDashboard = () => {
                                     <select
                                         value={filterCategory}
                                         onChange={(e) => setFilterCategory(e.target.value)}
-                                        className="px-3 py-2 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                                        className={`px-3 py-2 border rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm ${themeClasses.dropdown}`}
                                     >
                                         <option value="all">All Categories</option>
                                         <option value="Ocean">Ocean</option>
@@ -685,7 +799,7 @@ const AdminCampaignDashboard = () => {
                                     return (
                                         <div
                                             key={campaign._id}
-                                            className={`bg-white rounded-2xl shadow-md border-2 transition-all duration-200 hover:shadow-xl hover:scale-[1.02] cursor-pointer ${selectedCampaign?._id === campaign._id ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-100 hover:border-gray-200'
+                                            className={`rounded-2xl shadow-md border-2 transition-all duration-200 hover:shadow-xl hover:scale-[1.02] cursor-pointer ${selectedCampaign?._id === campaign._id ? 'border-blue-500 ring-2 ring-blue-200' : darkMode ? 'border-gray-700 hover:border-gray-600' : 'border-gray-100 hover:border-gray-200'
                                                 }`}
                                             onClick={() => setSelectedCampaign(campaign)}
                                         >
@@ -709,7 +823,7 @@ const AdminCampaignDashboard = () => {
 
                                                 {/* Status Badge */}
                                                 <div className="absolute top-3 left-3">
-                                                    <span className={`px-3 py-1 text-xs font-semibold rounded-full ${statusConfig.bgColor} ${statusConfig.textColor} backdrop-blur-sm`}>
+                                                    <span className={`px-3 py-1 text-xs font-semibold rounded-full ${statusConfig.bgColor} ${statusConfig.textColor} ${darkMode ? 'backdrop-blur-md' : ''}`}>
                                                         {statusConfig.icon} {campaign.status}
                                                     </span>
                                                 </div>
@@ -717,17 +831,17 @@ const AdminCampaignDashboard = () => {
                                                 {/* Featured badges */}
                                                 <div className="absolute top-3 right-3 flex space-x-1">
                                                     {campaign.featured && (
-                                                        <span className="bg-yellow-100 text-yellow-700 px-2 py-1 text-xs font-bold rounded-full">
+                                                        <span className={`${darkMode ? 'bg-yellow-900/30 text-yellow-300' : 'bg-yellow-100 text-yellow-700'} px-2 py-1 text-xs font-bold rounded-full`}>
                                                             <Star size={12} className="inline" />
                                                         </span>
                                                     )}
                                                     {campaign.trending && (
-                                                        <span className="bg-pink-100 text-pink-700 px-2 py-1 text-xs font-bold rounded-full">
+                                                        <span className={`${darkMode ? 'bg-pink-900/30 text-pink-300' : 'bg-pink-100 text-pink-700'} px-2 py-1 text-xs font-bold rounded-full`}>
                                                             <TrendingUp size={12} className="inline" />
                                                         </span>
                                                     )}
                                                     {campaign.new && (
-                                                        <span className="bg-green-100 text-green-700 px-2 py-1 text-xs font-bold rounded-full">
+                                                        <span className={`${darkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-700'} px-2 py-1 text-xs font-bold rounded-full`}>
                                                             <Zap size={12} className="inline" />
                                                         </span>
                                                     )}
@@ -735,16 +849,16 @@ const AdminCampaignDashboard = () => {
                                             </div>
 
                                             {/* Campaign Content */}
-                                            <div className="p-5">
+                                            <div className={`p-5 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
                                                 <div className="flex items-start justify-between mb-3">
-                                                    <h3 className="text-lg font-bold text-gray-900 line-clamp-2">{campaign.title}</h3>
+                                                    <h3 className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'} line-clamp-2`}>{campaign.title}</h3>
                                                     <div className="flex space-x-1 ml-2">
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 openEditModal(campaign);
                                                             }}
-                                                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                                            className={`p-2 ${darkMode ? 'text-blue-400 hover:bg-gray-700' : 'text-blue-600 hover:bg-blue-50'} rounded-lg transition-colors`}
                                                         >
                                                             <Edit size={16} />
                                                         </button>
@@ -753,34 +867,34 @@ const AdminCampaignDashboard = () => {
                                                                 e.stopPropagation();
                                                                 handleDeleteCampaign(campaign._id);
                                                             }}
-                                                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                                            className={`p-2 ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-red-50'} rounded-lg transition-colors`}
                                                         >
                                                             <Trash2 size={16} />
                                                         </button>
                                                     </div>
                                                 </div>
 
-                                                <p className="text-sm text-gray-600 mb-4 line-clamp-2">{campaign.description}</p>
+                                                <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-4 line-clamp-2`}>{campaign.description}</p>
 
                                                 {/* Campaign Stats */}
                                                 <div className="grid grid-cols-2 gap-3 mb-4">
-                                                    <div className="text-center p-2 bg-gray-50 rounded-lg">
-                                                        <div className="text-lg font-bold text-gray-900">{campaign.participants || 0}</div>
-                                                        <div className="text-xs text-gray-500">Participants</div>
+                                                    <div className={`text-center p-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} rounded-lg`}>
+                                                        <div className={`text-lg font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{campaign.participants || 0}</div>
+                                                        <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Participants</div>
                                                     </div>
-                                                    <div className="text-center p-2 bg-gray-50 rounded-lg">
-                                                        <div className="text-lg font-bold text-green-600">{campaign.reward} RFX</div>
-                                                        <div className="text-xs text-gray-500">Reward</div>
+                                                    <div className={`text-center p-2 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'} rounded-lg`}>
+                                                        <div className={`text-lg font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>{campaign.reward} RFX</div>
+                                                        <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Reward</div>
                                                     </div>
                                                 </div>
 
                                                 {/* Progress Bar */}
                                                 <div className="mb-4">
-                                                    <div className="flex justify-between text-xs text-gray-500 mb-1">
-                                                        <span>Progress</span>
-                                                        <span>{Math.round(campaign.progress || 0)}%</span>
+                                                    <div className="flex justify-between text-xs mb-1">
+                                                        <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Progress</span>
+                                                        <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>{Math.round(campaign.progress || 0)}%</span>
                                                     </div>
-                                                    <div className="w-full bg-gray-200 rounded-full h-2">
+                                                    <div className={`w-full ${darkMode ? 'bg-gray-700' : 'bg-gray-200'} rounded-full h-2`}>
                                                         <div
                                                             className={`h-2 rounded-full bg-gradient-to-r ${categoryConfig.gradient}`}
                                                             style={{ width: `${campaign.progress || 0}%` }}
@@ -791,14 +905,14 @@ const AdminCampaignDashboard = () => {
                                                 {/* Bottom Row */}
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex items-center space-x-2">
-                                                        <span className={`px-2 py-1 text-xs font-semibold rounded-lg ${categoryConfig.color} text-white`}>
+                                                        <span className={`px-2 py-1 text-xs font-semibold rounded-lg ${categoryConfig.color} ${categoryConfig.textColor}`}>
                                                             {campaign.category}
                                                         </span>
                                                         <span className={`px-2 py-1 text-xs font-semibold rounded-lg ${difficultyConfig.bgColor} ${difficultyConfig.textColor}`}>
                                                             {campaign.difficulty}
                                                         </span>
                                                     </div>
-                                                    <div className="flex items-center text-xs text-gray-500">
+                                                    <div className={`flex items-center text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                                                         <Clock size={12} className="mr-1" />
                                                         {campaign.duration || 0}d
                                                     </div>
@@ -810,9 +924,9 @@ const AdminCampaignDashboard = () => {
                             </div>
                         ) : (
                             <div className="text-center py-12">
-                                <div className="text-gray-400 text-6xl mb-4">📋</div>
-                                <h3 className="text-lg font-semibold text-gray-900 mb-2">No campaigns found</h3>
-                                <p className="text-gray-500 mb-6">Create your first campaign or adjust your filters</p>
+                                <div className={`text-6xl mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>📋</div>
+                                <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>No campaigns found</h3>
+                                <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-6`}>Create your first campaign or adjust your filters</p>
                                 <button
                                     onClick={() => {
                                         setSelectedCampaign(null);
@@ -830,34 +944,34 @@ const AdminCampaignDashboard = () => {
 
                 {/* Campaign Details */}
                 {selectedCampaign && (
-                    <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+                    <div className={`rounded-2xl shadow-lg border ${themeClasses.card} overflow-hidden transition-colors duration-200`}>
                         <Tabs selectedIndex={activeTab} onSelect={index => setActiveTab(index)}>
-                            <TabList className="flex border-b border-gray-200 bg-gray-50">
-                                <Tab className="flex-1 px-4 py-4 text-sm font-medium text-gray-700 hover:text-gray-900 focus:outline-none cursor-pointer transition-colors">
+                            <TabList className={`flex border-b ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-gray-50'}`}>
+                                <Tab className={`flex-1 px-4 py-4 text-sm font-medium focus:outline-none cursor-pointer transition-colors ${darkMode ? 'text-gray-300 hover:text-white border-gray-700' : 'text-gray-700 hover:text-gray-900 border-gray-200'}`}>
                                     <div className="flex items-center justify-center space-x-2">
                                         <BarChart2 size={18} />
                                         <span className="hidden sm:inline">Overview</span>
                                     </div>
                                 </Tab>
-                                <Tab className="flex-1 px-4 py-4 text-sm font-medium text-gray-700 hover:text-gray-900 focus:outline-none cursor-pointer transition-colors">
+                                <Tab className={`flex-1 px-4 py-4 text-sm font-medium focus:outline-none cursor-pointer transition-colors ${darkMode ? 'text-gray-300 hover:text-white border-gray-700' : 'text-gray-700 hover:text-gray-900 border-gray-200'}`}>
                                     <div className="flex items-center justify-center space-x-2">
                                         <Users size={18} />
                                         <span className="hidden sm:inline">Participants</span>
-                                        <span className="bg-gray-200 text-gray-700 px-2 py-1 rounded-full text-xs">
+                                        <span className={`px-2 py-1 rounded-full text-xs ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'}`}>
                                             {selectedCampaign.participants || 0}
                                         </span>
                                     </div>
                                 </Tab>
-                                <Tab className="flex-1 px-4 py-4 text-sm font-medium text-gray-700 hover:text-gray-900 focus:outline-none cursor-pointer transition-colors">
+                                <Tab className={`flex-1 px-4 py-4 text-sm font-medium focus:outline-none cursor-pointer transition-colors ${darkMode ? 'text-gray-300 hover:text-white border-gray-700' : 'text-gray-700 hover:text-gray-900 border-gray-200'}`}>
                                     <div className="flex items-center justify-center space-x-2">
                                         <List size={18} />
                                         <span className="hidden sm:inline">Tasks</span>
-                                        <span className="bg-gray-200 text-gray-700 px-2 py-1 rounded-full text-xs">
+                                        <span className={`px-2 py-1 rounded-full text-xs ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'}`}>
                                             {selectedCampaign.tasksList?.length || 0}
                                         </span>
                                     </div>
                                 </Tab>
-                                <Tab className="flex-1 px-4 py-4 text-sm font-medium text-gray-700 hover:text-gray-900 focus:outline-none cursor-pointer transition-colors">
+                                <Tab className={`flex-1 px-4 py-4 text-sm font-medium focus:outline-none cursor-pointer transition-colors ${darkMode ? 'text-gray-300 hover:text-white border-gray-700' : 'text-gray-700 hover:text-gray-900 border-gray-200'}`}>
                                     <div className="flex items-center justify-center space-x-2">
                                         <Upload size={18} />
                                         <span className="hidden sm:inline">Proofs</span>
@@ -890,58 +1004,58 @@ const AdminCampaignDashboard = () => {
                                         {/* Campaign Details */}
                                         <div className="lg:col-span-2 space-y-6">
                                             <div>
-                                                <h3 className="text-2xl font-bold text-gray-900 mb-2">{selectedCampaign.title || 'N/A'}</h3>
-                                                <p className="text-gray-600 leading-relaxed">{selectedCampaign.description || 'No description'}</p>
+                                                <h3 className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>{selectedCampaign.title || 'N/A'}</h3>
+                                                <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} leading-relaxed`}>{selectedCampaign.description || 'No description'}</p>
                                             </div>
 
                                             {/* Stats Grid */}
                                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                                <div className="bg-gradient-to-r from-green-50 to-green-100 p-4 rounded-xl">
-                                                    <div className="text-sm text-green-600 font-medium">Total Reward</div>
-                                                    <div className="text-2xl font-bold text-green-700">{selectedCampaign.reward || 0} RFX</div>
+                                                <div className={`bg-gradient-to-r ${darkMode ? 'from-green-900/30 to-green-800/30' : 'from-green-50 to-green-100'} p-4 rounded-xl`}>
+                                                    <div className={`text-sm font-medium ${darkMode ? 'text-green-300' : 'text-green-600'}`}>Total Reward</div>
+                                                    <div className={`text-2xl font-bold ${darkMode ? 'text-green-400' : 'text-green-700'}`}>{selectedCampaign.reward || 0} RFX</div>
                                                 </div>
-                                                <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-xl">
-                                                    <div className="text-sm text-blue-600 font-medium">Participants</div>
-                                                    <div className="text-2xl font-bold text-blue-700">{selectedCampaign.participants || 0}</div>
+                                                <div className={`bg-gradient-to-r ${darkMode ? 'from-blue-900/30 to-blue-800/30' : 'from-blue-50 to-blue-100'} p-4 rounded-xl`}>
+                                                    <div className={`text-sm font-medium ${darkMode ? 'text-blue-300' : 'text-blue-600'}`}>Participants</div>
+                                                    <div className={`text-2xl font-bold ${darkMode ? 'text-blue-400' : 'text-blue-700'}`}>{selectedCampaign.participants || 0}</div>
                                                 </div>
-                                                <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-4 rounded-xl">
-                                                    <div className="text-sm text-purple-600 font-medium">Completion</div>
-                                                    <div className="text-2xl font-bold text-purple-700">
+                                                <div className={`bg-gradient-to-r ${darkMode ? 'from-purple-900/30 to-purple-800/30' : 'from-purple-50 to-purple-100'} p-4 rounded-xl`}>
+                                                    <div className={`text-sm font-medium ${darkMode ? 'text-purple-300' : 'text-purple-600'}`}>Completion</div>
+                                                    <div className={`text-2xl font-bold ${darkMode ? 'text-purple-400' : 'text-purple-700'}`}>
                                                         {selectedCampaign.tasksList?.length > 0 && selectedCampaign.participants > 0
                                                             ? Math.round((selectedCampaign.completedTasks / (selectedCampaign.tasksList.length * selectedCampaign.participants)) * 100)
                                                             : 0}%
                                                     </div>
                                                 </div>
-                                                <div className="bg-gradient-to-r from-orange-50 to-orange-100 p-4 rounded-xl">
-                                                    <div className="text-sm text-orange-600 font-medium">Duration</div>
-                                                    <div className="text-2xl font-bold text-orange-700">{selectedCampaign.duration || 0}d</div>
+                                                <div className={`bg-gradient-to-r ${darkMode ? 'from-orange-900/30 to-orange-800/30' : 'from-orange-50 to-orange-100'} p-4 rounded-xl`}>
+                                                    <div className={`text-sm font-medium ${darkMode ? 'text-orange-300' : 'text-orange-600'}`}>Duration</div>
+                                                    <div className={`text-2xl font-bold ${darkMode ? 'text-orange-400' : 'text-orange-700'}`}>{selectedCampaign.duration || 0}d</div>
                                                 </div>
                                             </div>
 
                                             {/* Campaign Properties */}
-                                            <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+                                            <div className={`rounded-xl p-4 space-y-3 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                     <div className="flex items-center space-x-3">
-                                                        <span className="text-gray-500 font-medium w-24">Category:</span>
-                                                        <span className={`px-3 py-1 text-sm font-semibold rounded-lg ${getCategoryConfig(selectedCampaign.category).color} text-white`}>
+                                                        <span className={`font-medium w-24 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Category:</span>
+                                                        <span className={`px-3 py-1 text-sm font-semibold rounded-lg ${getCategoryConfig(selectedCampaign.category).color} ${getCategoryConfig(selectedCampaign.category).textColor}`}>
                                                             {getCategoryConfig(selectedCampaign.category).icon} {selectedCampaign.category || 'N/A'}
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center space-x-3">
-                                                        <span className="text-gray-500 font-medium w-24">Difficulty:</span>
+                                                        <span className={`font-medium w-24 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Difficulty:</span>
                                                         <span className={`px-3 py-1 text-sm font-semibold rounded-lg ${getDifficultyConfig(selectedCampaign.difficulty).bgColor} ${getDifficultyConfig(selectedCampaign.difficulty).textColor}`}>
                                                             {selectedCampaign.difficulty || 'N/A'}
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center space-x-3">
-                                                        <span className="text-gray-500 font-medium w-24">Status:</span>
+                                                        <span className={`font-medium w-24 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Status:</span>
                                                         <span className={`px-3 py-1 text-sm font-semibold rounded-lg ${getStatusConfig(selectedCampaign.status).bgColor} ${getStatusConfig(selectedCampaign.status).textColor}`}>
                                                             {getStatusConfig(selectedCampaign.status).icon} {selectedCampaign.status || 'N/A'}
                                                         </span>
                                                     </div>
                                                     <div className="flex items-center space-x-3">
-                                                        <span className="text-gray-500 font-medium w-24">Started:</span>
-                                                        <span className="text-gray-700">
+                                                        <span className={`font-medium w-24 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Started:</span>
+                                                        <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
                                                             {selectedCampaign.startDate ? format(new Date(selectedCampaign.startDate), 'MMM d, yyyy') : 'N/A'}
                                                         </span>
                                                     </div>
@@ -949,8 +1063,8 @@ const AdminCampaignDashboard = () => {
 
                                                 {selectedCampaign.endDate && (
                                                     <div className="flex items-center space-x-3">
-                                                        <span className="text-gray-500 font-medium w-24">Ends:</span>
-                                                        <span className="text-gray-700">{format(new Date(selectedCampaign.endDate), 'MMM d, yyyy')}</span>
+                                                        <span className={`font-medium w-24 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>Ends:</span>
+                                                        <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>{format(new Date(selectedCampaign.endDate), 'MMM d, yyyy')}</span>
                                                     </div>
                                                 )}
                                             </div>
@@ -962,7 +1076,7 @@ const AdminCampaignDashboard = () => {
                             <TabPanel>
                                 <div className="p-6">
                                     <div className="flex justify-between items-center mb-6">
-                                        <h3 className="text-xl font-bold text-gray-900">
+                                        <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                             Participants ({selectedCampaign.participants || 0})
                                         </h3>
                                     </div>
@@ -974,7 +1088,7 @@ const AdminCampaignDashboard = () => {
                                                 const completionPercentage = (userCampaign?.completed || 0) / (selectedCampaign.tasksList?.length || 1) * 100;
 
                                                 return (
-                                                    <div key={user._id} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+                                                    <div key={user._id} className={`border rounded-xl p-4 hover:shadow-md transition-shadow ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
                                                         <div className="flex items-center space-x-3 mb-3">
                                                             {user.avatar ? (
                                                                 <img
@@ -994,23 +1108,23 @@ const AdminCampaignDashboard = () => {
                                                                 </div>
                                                             )}
                                                             <div className="flex-1">
-                                                                <div className="font-semibold text-gray-900">{user.username || 'N/A'}</div>
-                                                                <div className="text-sm text-gray-500">{user.email || 'N/A'}</div>
+                                                                <div className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{user.username || 'N/A'}</div>
+                                                                <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{user.email || 'N/A'}</div>
                                                             </div>
                                                         </div>
 
                                                         <div className="space-y-2">
                                                             <div className="flex justify-between text-sm">
-                                                                <span className="text-gray-600">Progress</span>
-                                                                <span className="font-medium">{userCampaign?.completed || 0}/{selectedCampaign.tasksList?.length || 0}</span>
+                                                                <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Progress</span>
+                                                                <span className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{userCampaign?.completed || 0}/{selectedCampaign.tasksList?.length || 0}</span>
                                                             </div>
-                                                            <div className="w-full bg-gray-200 rounded-full h-2">
+                                                            <div className={`w-full ${darkMode ? 'bg-gray-700' : 'bg-gray-200'} rounded-full h-2`}>
                                                                 <div
                                                                     className={`h-2 rounded-full bg-gradient-to-r ${getCategoryConfig(selectedCampaign.category).gradient}`}
                                                                     style={{ width: `${completionPercentage}%` }}
                                                                 ></div>
                                                             </div>
-                                                            <div className="flex justify-between text-xs text-gray-500">
+                                                            <div className={`flex justify-between text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
                                                                 <span>Earned: {((userCampaign?.completed || 0) * (selectedCampaign.reward || 0)).toFixed(5)} RFX</span>
                                                                 <span>
                                                                     {userCampaign?.lastActivity ? format(new Date(userCampaign.lastActivity), 'MMM d') : 'No activity'}
@@ -1023,9 +1137,9 @@ const AdminCampaignDashboard = () => {
                                         </div>
                                     ) : (
                                         <div className="text-center py-12">
-                                            <div className="text-gray-400 text-6xl mb-4">👥</div>
-                                            <h3 className="text-lg font-semibold text-gray-900 mb-2">No participants yet</h3>
-                                            <p className="text-gray-500">Participants will appear here once they join the campaign</p>
+                                            <div className={`text-6xl mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>👥</div>
+                                            <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>No participants yet</h3>
+                                            <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Participants will appear here once they join the campaign</p>
                                         </div>
                                     )}
                                 </div>
@@ -1034,7 +1148,7 @@ const AdminCampaignDashboard = () => {
                             <TabPanel>
                                 <div className="p-6">
                                     <div className="flex justify-between items-center mb-6">
-                                        <h3 className="text-xl font-bold text-gray-900">
+                                        <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                             Tasks ({selectedCampaign.tasksList?.length || 0})
                                         </h3>
                                         <button
@@ -1049,23 +1163,23 @@ const AdminCampaignDashboard = () => {
                                     {selectedCampaign.tasksList?.length > 0 ? (
                                         <div className="space-y-4">
                                             {selectedCampaign.tasksList.map((task, index) => (
-                                                <div key={task._id || index} className="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow">
+                                                <div key={task._id || index} className={`border rounded-xl p-6 hover:shadow-md transition-shadow ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
                                                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0">
                                                         <div className="flex-1">
                                                             <div className="flex items-center space-x-3 mb-2">
                                                                 <span className="bg-gradient-to-r from-blue-500 to-purple-500 text-white font-bold px-3 py-1 rounded-lg text-sm">
                                                                     Day {task.day}
                                                                 </span>
-                                                                <h4 className="text-lg font-semibold text-gray-900">{task.title}</h4>
+                                                                <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{task.title}</h4>
                                                             </div>
-                                                            <p className="text-gray-600 mb-3">{task.description}</p>
+                                                            <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-3`}>{task.description}</p>
 
                                                             {task.requirements?.length > 0 && (
                                                                 <div className="mb-3">
-                                                                    <span className="text-sm font-medium text-gray-700">Requirements:</span>
+                                                                    <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Requirements:</span>
                                                                     <div className="flex flex-wrap gap-2 mt-1">
                                                                         {task.requirements.map((req, i) => (
-                                                                            <span key={i} className="bg-gray-100 text-gray-700 px-2 py-1 rounded-md text-xs">
+                                                                            <span key={i} className={`px-2 py-1 rounded-md text-xs ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
                                                                                 {req}
                                                                             </span>
                                                                         ))}
@@ -1075,13 +1189,13 @@ const AdminCampaignDashboard = () => {
                                                         </div>
 
                                                         <div className="text-right space-y-2">
-                                                            <div className="text-xl font-bold text-green-600">{task.reward} RFX</div>
+                                                            <div className={`text-xl font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>{task.reward} RFX</div>
                                                             <div className="space-x-2">
-                                                                <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded-md text-xs font-medium capitalize">
+                                                                <span className={`px-2 py-1 rounded-md text-xs font-medium capitalize ${darkMode ? 'bg-blue-900/30 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
                                                                     {task.type}
                                                                 </span>
                                                                 {task.platform && (
-                                                                    <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded-md text-xs font-medium">
+                                                                    <span className={`px-2 py-1 rounded-md text-xs font-medium ${darkMode ? 'bg-purple-900/30 text-purple-300' : 'bg-purple-100 text-purple-700'}`}>
                                                                         {task.platform}
                                                                     </span>
                                                                 )}
@@ -1090,12 +1204,12 @@ const AdminCampaignDashboard = () => {
                                                     </div>
 
                                                     {task.contentUrl && (
-                                                        <div className="mt-4 pt-4 border-t border-gray-100">
+                                                        <div className={`mt-4 pt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                                                             <a
                                                                 href={task.contentUrl}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
-                                                                className="inline-flex items-center text-blue-600 hover:text-blue-800 font-medium"
+                                                                className={`inline-flex items-center font-medium ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}
                                                             >
                                                                 <Eye size={16} className="mr-2" />
                                                                 View Content
@@ -1107,9 +1221,9 @@ const AdminCampaignDashboard = () => {
                                         </div>
                                     ) : (
                                         <div className="text-center py-12">
-                                            <div className="text-gray-400 text-6xl mb-4">📝</div>
-                                            <h3 className="text-lg font-semibold text-gray-900 mb-2">No tasks added yet</h3>
-                                            <p className="text-gray-500 mb-6">Add tasks to make your campaign interactive</p>
+                                            <div className={`text-6xl mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>📝</div>
+                                            <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>No tasks added yet</h3>
+                                            <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-6`}>Add tasks to make your campaign interactive</p>
                                             <button
                                                 onClick={() => setIsTaskModalOpen(true)}
                                                 className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200"
@@ -1124,7 +1238,7 @@ const AdminCampaignDashboard = () => {
                             <TabPanel>
                                 <div className="p-6">
                                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0 mb-6">
-                                        <h3 className="text-xl font-bold text-gray-900">Submitted Proofs</h3>
+                                        <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Submitted Proofs</h3>
                                         {selectedProofs.length > 0 && (
                                             <div className="flex space-x-2">
                                                 <button
@@ -1148,13 +1262,13 @@ const AdminCampaignDashboard = () => {
                                     {proofs.length > 0 ? (
                                         <div className="space-y-6">
                                             {proofs.map((proofGroup) => (
-                                                <div key={proofGroup.taskId} className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-                                                    <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                                                <div key={proofGroup.taskId} className={`rounded-xl overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border`}>
+                                                    <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
                                                         <div className="flex justify-between items-center">
-                                                            <h4 className="font-semibold text-gray-900">
+                                                            <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                                                                 {proofGroup.taskTitle} (Day {proofGroup.day})
                                                             </h4>
-                                                            <div className="text-sm text-gray-500">
+                                                            <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                                                                 {proofGroup.proofs.filter(p => p.status === 'completed').length} / {proofGroup.proofs.length} approved
                                                             </div>
                                                         </div>
@@ -1163,13 +1277,13 @@ const AdminCampaignDashboard = () => {
                                                     <div className="p-6">
                                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                                             {proofGroup.proofs.map((proof) => (
-                                                                <div key={`${proofGroup.taskId}-${proof.userId}`} className="border border-gray-200 rounded-lg p-4">
+                                                                <div key={`${proofGroup.taskId}-${proof.userId}`} className={`border rounded-lg p-4 ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
                                                                     <div className="flex items-center space-x-2 mb-3">
                                                                         <input
                                                                             type="checkbox"
                                                                             checked={selectedProofs.some(p => p.taskId === proofGroup.taskId && p.userId === proof.userId)}
                                                                             onChange={() => toggleProofSelection(proofGroup.taskId, proof.userId)}
-                                                                            className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                                                            className={`w-4 h-4 text-blue-600 focus:ring-blue-500 rounded ${darkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-300'}`}
                                                                         />
                                                                         {proof.avatar ? (
                                                                             <img
@@ -1189,8 +1303,8 @@ const AdminCampaignDashboard = () => {
                                                                             </div>
                                                                         )}
                                                                         <div className="flex-1">
-                                                                            <div className="text-sm font-medium text-gray-900">{proof.username || 'N/A'}</div>
-                                                                            <div className="text-xs text-gray-500">{proof.email || 'N/A'}</div>
+                                                                            <div className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{proof.username || 'N/A'}</div>
+                                                                            <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{proof.email || 'N/A'}</div>
                                                                         </div>
                                                                     </div>
 
@@ -1199,16 +1313,16 @@ const AdminCampaignDashboard = () => {
                                                                             href={proof.proofUrl}
                                                                             target="_blank"
                                                                             rel="noopener noreferrer"
-                                                                            className="inline-flex items-center text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                                                            className={`inline-flex items-center text-sm font-medium ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}
                                                                         >
                                                                             <Eye size={14} className="mr-1" />
                                                                             View Proof
                                                                         </a>
 
                                                                         <div className="flex items-center justify-between">
-                                                                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${proof.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                                                                proof.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                                                                                    'bg-yellow-100 text-yellow-800'
+                                                                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${proof.status === 'completed' ? (darkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-800') :
+                                                                                    proof.status === 'rejected' ? (darkMode ? 'bg-red-900/30 text-red-300' : 'bg-red-100 text-red-800') :
+                                                                                        (darkMode ? 'bg-yellow-900/30 text-yellow-300' : 'bg-yellow-100 text-yellow-800')
                                                                                 }`}>
                                                                                 {proof.status || 'pending'}
                                                                             </span>
@@ -1217,7 +1331,7 @@ const AdminCampaignDashboard = () => {
                                                                                 {proof.status !== 'completed' && (
                                                                                     <button
                                                                                         onClick={() => handleApproveProof(proofGroup.taskId, proof.userId, true)}
-                                                                                        className="p-1 text-green-600 hover:bg-green-50 rounded"
+                                                                                        className={`p-1 rounded ${darkMode ? 'text-green-400 hover:bg-gray-700' : 'text-green-600 hover:bg-green-50'}`}
                                                                                     >
                                                                                         <Check size={14} />
                                                                                     </button>
@@ -1225,7 +1339,7 @@ const AdminCampaignDashboard = () => {
                                                                                 {proof.status !== 'rejected' && (
                                                                                     <button
                                                                                         onClick={() => handleApproveProof(proofGroup.taskId, proof.userId, false)}
-                                                                                        className="p-1 text-red-600 hover:bg-red-50 rounded"
+                                                                                        className={`p-1 rounded ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-red-50'}`}
                                                                                     >
                                                                                         <X size={14} />
                                                                                     </button>
@@ -1242,9 +1356,9 @@ const AdminCampaignDashboard = () => {
                                         </div>
                                     ) : (
                                         <div className="text-center py-12">
-                                            <div className="text-gray-400 text-6xl mb-4">📸</div>
-                                            <h3 className="text-lg font-semibold text-gray-900 mb-2">No proofs submitted yet</h3>
-                                            <p className="text-gray-500">Participant proof submissions will appear here</p>
+                                            <div className={`text-6xl mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>📸</div>
+                                            <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>No proofs submitted yet</h3>
+                                            <p className={darkMode ? 'text-gray-400' : 'text-gray-500'}>Participant proof submissions will appear here</p>
                                         </div>
                                     )}
                                 </div>
@@ -1258,8 +1372,8 @@ const AdminCampaignDashboard = () => {
             <Modal
                 isOpen={isModalOpen}
                 onRequestClose={() => setIsModalOpen(false)}
-                className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-auto my-8 overflow-y-auto max-h-[90vh]"
-                overlayClassName="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center p-4 z-50"
+                className={`rounded-2xl shadow-2xl max-w-4xl w-full mx-auto my-8 overflow-y-auto max-h-[90vh] ${themeClasses.modal} transition-colors duration-200`}
+                overlayClassName={`fixed inset-0 ${themeClasses.modalOverlay} backdrop-blur-sm flex items-start justify-center p-4 z-50`}
                 contentLabel="Campaign Form"
             >
                 <div className="p-8">
@@ -1268,11 +1382,11 @@ const AdminCampaignDashboard = () => {
                             <h2 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                                 {selectedCampaign ? 'Edit Campaign' : 'Create New Campaign'}
                             </h2>
-                            <p className="text-gray-500 mt-1">Configure your environmental campaign settings</p>
+                            <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>Configure your environmental campaign settings</p>
                         </div>
                         <button
                             onClick={() => setIsModalOpen(false)}
-                            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            className={`p-2 ${darkMode ? 'text-gray-400 hover:text-gray-300 hover:bg-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'} rounded-lg transition-colors`}
                         >
                             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -1282,11 +1396,11 @@ const AdminCampaignDashboard = () => {
 
                     <form onSubmit={handleSubmit} className="space-y-8">
                         {/* Basic Information */}
-                        <div className="bg-gray-50 rounded-xl p-6">
-                            <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
+                        <div className={`rounded-xl p-6 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                            <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'} mb-4`}>Basic Information</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="md:col-span-2">
-                                    <label htmlFor="title" className="block text-sm font-medium text-gray-700 mb-2">
+                                    <label htmlFor="title" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                         Campaign Title *
                                     </label>
                                     <input
@@ -1295,14 +1409,14 @@ const AdminCampaignDashboard = () => {
                                         name="title"
                                         value={formData.title}
                                         onChange={handleChange}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
                                         placeholder="Enter campaign title"
                                         required
                                     />
                                 </div>
 
                                 <div className="md:col-span-2">
-                                    <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
+                                    <label htmlFor="description" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                         Description *
                                     </label>
                                     <textarea
@@ -1311,14 +1425,14 @@ const AdminCampaignDashboard = () => {
                                         value={formData.description}
                                         onChange={handleChange}
                                         rows={4}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
+                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none ${themeClasses.input}`}
                                         placeholder="Describe your campaign goals and impact"
                                         required
                                     />
                                 </div>
 
                                 <div>
-                                    <label htmlFor="category" className="block text-sm font-medium text-gray-700 mb-2">
+                                    <label htmlFor="category" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                         Category *
                                     </label>
                                     <select
@@ -1326,7 +1440,7 @@ const AdminCampaignDashboard = () => {
                                         name="category"
                                         value={formData.category}
                                         onChange={handleChange}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
                                         required
                                     >
                                         <option value="Ocean">🌊 Ocean</option>
@@ -1337,7 +1451,7 @@ const AdminCampaignDashboard = () => {
                                 </div>
 
                                 <div>
-                                    <label htmlFor="image" className="block text-sm font-medium text-gray-700 mb-2">
+                                    <label htmlFor="image" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                         Campaign Image
                                     </label>
                                     <input
@@ -1345,7 +1459,7 @@ const AdminCampaignDashboard = () => {
                                         id="image"
                                         name="image"
                                         onChange={(e) => setFormData({ ...formData, image: e.target.files[0] })}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${darkMode ? 'file:text-white file:bg-gray-700' : ''}`}
                                         accept="image/*"
                                     />
                                     {selectedCampaign?.image && !formData.image && (
@@ -1366,11 +1480,11 @@ const AdminCampaignDashboard = () => {
                         </div>
 
                         {/* Campaign Settings */}
-                        <div className="bg-gray-50 rounded-xl p-6">
-                            <h3 className="text-lg font-semibold text-gray-900 mb-4">Campaign Settings</h3>
+                        <div className={`rounded-xl p-6 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                            <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'} mb-4`}>Campaign Settings</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                 <div>
-                                    <label htmlFor="reward" className="block text-sm font-medium text-gray-700 mb-2">
+                                    <label htmlFor="reward" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                         Reward (RFX) *
                                     </label>
                                     <input
@@ -1381,14 +1495,14 @@ const AdminCampaignDashboard = () => {
                                         onChange={handleChange}
                                         step="0.00001"
                                         min="0"
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
                                         placeholder="0.005"
                                         required
                                     />
                                 </div>
 
                                 <div>
-                                    <label htmlFor="difficulty" className="block text-sm font-medium text-gray-700 mb-2">
+                                    <label htmlFor="difficulty" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                         Difficulty *
                                     </label>
                                     <select
@@ -1396,7 +1510,7 @@ const AdminCampaignDashboard = () => {
                                         name="difficulty"
                                         value={formData.difficulty}
                                         onChange={handleChange}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
                                         required
                                     >
                                         <option value="Easy">Easy</option>
@@ -1406,7 +1520,7 @@ const AdminCampaignDashboard = () => {
                                 </div>
 
                                 <div>
-                                    <label htmlFor="duration" className="block text-sm font-medium text-gray-700 mb-2">
+                                    <label htmlFor="duration" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                         Duration (days) *
                                     </label>
                                     <input
@@ -1416,14 +1530,14 @@ const AdminCampaignDashboard = () => {
                                         value={formData.duration}
                                         onChange={handleChange}
                                         min="1"
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
                                         placeholder="7"
                                         required
                                     />
                                 </div>
 
                                 <div>
-                                    <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-2">
+                                    <label htmlFor="status" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                         Status *
                                     </label>
                                     <select
@@ -1431,7 +1545,7 @@ const AdminCampaignDashboard = () => {
                                         name="status"
                                         value={formData.status}
                                         onChange={handleChange}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
                                         required
                                     >
                                         <option value="active">🟢 Active</option>
@@ -1441,7 +1555,7 @@ const AdminCampaignDashboard = () => {
                                 </div>
 
                                 <div>
-                                    <label htmlFor="startDate" className="block text-sm font-medium text-gray-700 mb-2">
+                                    <label htmlFor="startDate" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                         Start Date *
                                     </label>
                                     <input
@@ -1450,13 +1564,13 @@ const AdminCampaignDashboard = () => {
                                         name="startDate"
                                         value={formData.startDate}
                                         onChange={handleChange}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
                                         required
                                     />
                                 </div>
 
                                 <div>
-                                    <label htmlFor="endDate" className="block text-sm font-medium text-gray-700 mb-2">
+                                    <label htmlFor="endDate" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                         End Date (auto-calculated)
                                     </label>
                                     <input
@@ -1465,7 +1579,7 @@ const AdminCampaignDashboard = () => {
                                         name="endDate"
                                         value={formData.endDate}
                                         onChange={handleChange}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
                                         readOnly
                                     />
                                 </div>
@@ -1473,61 +1587,61 @@ const AdminCampaignDashboard = () => {
                         </div>
 
                         {/* Campaign Features */}
-                        <div className="bg-gray-50 rounded-xl p-6">
-                            <h3 className="text-lg font-semibold text-gray-900 mb-4">Campaign Features</h3>
+                        <div className={`rounded-xl p-6 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
+                            <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'} mb-4`}>Campaign Features</h3>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                                <label className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-white transition-colors cursor-pointer">
+                                <label className={`flex items-center space-x-3 p-3 border rounded-lg transition-colors cursor-pointer ${darkMode ? 'border-gray-600 hover:bg-gray-600' : 'border-gray-200 hover:bg-white'}`}>
                                     <input
                                         type="checkbox"
                                         name="featured"
                                         checked={formData.featured}
                                         onChange={handleChange}
-                                        className="w-4 h-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 rounded"
+                                        className={`w-4 h-4 text-yellow-600 focus:ring-yellow-500 rounded ${darkMode ? 'border-gray-500 bg-gray-700' : 'border-gray-300'}`}
                                     />
-                                    <span className="text-sm font-medium text-gray-700">⭐ Featured</span>
+                                    <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>⭐ Featured</span>
                                 </label>
 
-                                <label className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-white transition-colors cursor-pointer">
+                                <label className={`flex items-center space-x-3 p-3 border rounded-lg transition-colors cursor-pointer ${darkMode ? 'border-gray-600 hover:bg-gray-600' : 'border-gray-200 hover:bg-white'}`}>
                                     <input
                                         type="checkbox"
                                         name="new"
                                         checked={formData.new}
                                         onChange={handleChange}
-                                        className="w-4 h-4 text-green-600 focus:ring-green-500 border-gray-300 rounded"
+                                        className={`w-4 h-4 text-green-600 focus:ring-green-500 rounded ${darkMode ? 'border-gray-500 bg-gray-700' : 'border-gray-300'}`}
                                     />
-                                    <span className="text-sm font-medium text-gray-700">🆕 New</span>
+                                    <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>🆕 New</span>
                                 </label>
 
-                                <label className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-white transition-colors cursor-pointer">
+                                <label className={`flex items-center space-x-3 p-3 border rounded-lg transition-colors cursor-pointer ${darkMode ? 'border-gray-600 hover:bg-gray-600' : 'border-gray-200 hover:bg-white'}`}>
                                     <input
                                         type="checkbox"
                                         name="trending"
                                         checked={formData.trending}
                                         onChange={handleChange}
-                                        className="w-4 h-4 text-pink-600 focus:ring-pink-500 border-gray-300 rounded"
+                                        className={`w-4 h-4 text-pink-600 focus:ring-pink-500 rounded ${darkMode ? 'border-gray-500 bg-gray-700' : 'border-gray-300'}`}
                                     />
-                                    <span className="text-sm font-medium text-gray-700">📈 Trending</span>
+                                    <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>📈 Trending</span>
                                 </label>
 
-                                <label className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-white transition-colors cursor-pointer">
+                                <label className={`flex items-center space-x-3 p-3 border rounded-lg transition-colors cursor-pointer ${darkMode ? 'border-gray-600 hover:bg-gray-600' : 'border-gray-200 hover:bg-white'}`}>
                                     <input
                                         type="checkbox"
                                         name="ending"
                                         checked={formData.ending}
                                         onChange={handleChange}
-                                        className="w-4 h-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
+                                        className={`w-4 h-4 text-red-600 focus:ring-red-500 rounded ${darkMode ? 'border-gray-500 bg-gray-700' : 'border-gray-300'}`}
                                     />
-                                    <span className="text-sm font-medium text-gray-700">⏰ Ending Soon</span>
+                                    <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>⏰ Ending Soon</span>
                                 </label>
                             </div>
                         </div>
 
                         {/* Tasks Section */}
-                        <div className="bg-gray-50 rounded-xl p-6">
+                        <div className={`rounded-xl p-6 ${darkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
                             <div className="flex justify-between items-center mb-4">
                                 <div>
-                                    <h3 className="text-lg font-semibold text-gray-900">Campaign Tasks</h3>
-                                    <p className="text-sm text-gray-500">{formData.tasksList.length} tasks configured</p>
+                                    <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Campaign Tasks</h3>
+                                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{formData.tasksList.length} tasks configured</p>
                                 </div>
                                 <button
                                     type="button"
@@ -1542,19 +1656,19 @@ const AdminCampaignDashboard = () => {
                             {formData.tasksList.length > 0 ? (
                                 <div className="space-y-3 max-h-60 overflow-y-auto">
                                     {formData.tasksList.map((task, index) => (
-                                        <div key={index} className="bg-white border border-gray-200 rounded-lg p-4">
+                                        <div key={index} className={`border rounded-lg p-4 ${darkMode ? 'border-gray-600 bg-gray-800' : 'border-gray-200 bg-white'}`}>
                                             <div className="flex justify-between items-start">
                                                 <div className="flex-1">
                                                     <div className="flex items-center space-x-2 mb-1">
-                                                        <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-medium">
+                                                        <span className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-2 py-1 rounded text-xs font-medium">
                                                             Day {task.day}
                                                         </span>
-                                                        <h4 className="font-medium text-gray-900">{task.title}</h4>
+                                                        <h4 className={`font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{task.title}</h4>
                                                     </div>
-                                                    <p className="text-sm text-gray-600 mb-2">{task.description}</p>
-                                                    <div className="flex items-center space-x-2 text-xs text-gray-500">
-                                                        <span className="bg-gray-100 px-2 py-1 rounded">{task.type}</span>
-                                                        <span className="text-green-600 font-medium">{task.reward} RFX</span>
+                                                    <p className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-2`}>{task.description}</p>
+                                                    <div className="flex items-center space-x-2 text-xs">
+                                                        <span className={`px-2 py-1 rounded ${darkMode ? 'bg-gray-600 text-gray-300' : 'bg-gray-100 text-gray-500'}`}>{task.type}</span>
+                                                        <span className={`font-medium ${darkMode ? 'text-green-400' : 'text-green-600'}`}>{task.reward} RFX</span>
                                                     </div>
                                                 </div>
                                                 <button
@@ -1565,7 +1679,7 @@ const AdminCampaignDashboard = () => {
                                                             tasksList: prev.tasksList.filter((_, i) => i !== index)
                                                         }));
                                                     }}
-                                                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                    className={`p-2 rounded-lg transition-colors ${darkMode ? 'text-red-400 hover:bg-gray-600' : 'text-red-500 hover:bg-red-50'}`}
                                                 >
                                                     <Trash2 size={16} />
                                                 </button>
@@ -1574,19 +1688,19 @@ const AdminCampaignDashboard = () => {
                                     ))}
                                 </div>
                             ) : (
-                                <div className="text-center py-8 border-2 border-dashed border-gray-300 rounded-lg">
-                                    <div className="text-gray-400 text-4xl mb-2">📝</div>
-                                    <p className="text-gray-500 text-sm">No tasks added yet. Add tasks to make your campaign interactive.</p>
+                                <div className={`text-center py-8 border-2 border-dashed rounded-lg ${darkMode ? 'border-gray-600' : 'border-gray-300'}`}>
+                                    <div className={`text-4xl mb-2 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>📝</div>
+                                    <p className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>No tasks added yet. Add tasks to make your campaign interactive.</p>
                                 </div>
                             )}
                         </div>
 
                         {/* Form Actions */}
-                        <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-4 pt-6 border-t border-gray-200">
+                        <div className={`flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-4 pt-6 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                             <button
                                 type="button"
                                 onClick={() => setIsModalOpen(false)}
-                                className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                                className={`px-6 py-3 border rounded-lg font-medium transition-colors ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
                             >
                                 Cancel
                             </button>
@@ -1613,8 +1727,8 @@ const AdminCampaignDashboard = () => {
             <Modal
                 isOpen={isTaskModalOpen}
                 onRequestClose={() => setIsTaskModalOpen(false)}
-                className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-auto my-8 overflow-y-auto max-h-[90vh]"
-                overlayClassName="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start justify-center p-4 z-50"
+                className={`rounded-2xl shadow-2xl max-w-2xl w-full mx-auto my-8 overflow-y-auto max-h-[90vh] ${themeClasses.modal} transition-colors duration-200`}
+                overlayClassName={`fixed inset-0 ${themeClasses.modalOverlay} backdrop-blur-sm flex items-start justify-center p-4 z-50`}
                 contentLabel="Task Form"
             >
                 <div className="p-8">
@@ -1623,11 +1737,11 @@ const AdminCampaignDashboard = () => {
                             <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                                 Add New Task
                             </h2>
-                            <p className="text-gray-500 mt-1">Configure a new task for your campaign</p>
+                            <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>Configure a new task for your campaign</p>
                         </div>
                         <button
                             onClick={() => setIsTaskModalOpen(false)}
-                            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            className={`p-2 ${darkMode ? 'text-gray-400 hover:text-gray-300 hover:bg-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'} rounded-lg transition-colors`}
                         >
                             <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
@@ -1638,7 +1752,7 @@ const AdminCampaignDashboard = () => {
                     <form onSubmit={handleAddTask} className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                                <label htmlFor="task-day" className="block text-sm font-medium text-gray-700 mb-2">
+                                <label htmlFor="task-day" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                     Day Number *
                                 </label>
                                 <input
@@ -1648,14 +1762,14 @@ const AdminCampaignDashboard = () => {
                                     value={taskForm.day}
                                     onChange={handleTaskChange}
                                     min="1"
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                    className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
                                     placeholder="1"
                                     required
                                 />
                             </div>
 
                             <div>
-                                <label htmlFor="task-reward" className="block text-sm font-medium text-gray-700 mb-2">
+                                <label htmlFor="task-reward" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                     Reward (RFX) *
                                 </label>
                                 <input
@@ -1666,7 +1780,7 @@ const AdminCampaignDashboard = () => {
                                     onChange={handleTaskChange}
                                     step="0.00001"
                                     min="0"
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                    className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
                                     placeholder="0.001"
                                     required
                                 />
@@ -1674,7 +1788,7 @@ const AdminCampaignDashboard = () => {
                         </div>
 
                         <div>
-                            <label htmlFor="task-title" className="block text-sm font-medium text-gray-700 mb-2">
+                            <label htmlFor="task-title" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                 Task Title *
                             </label>
                             <input
@@ -1683,14 +1797,14 @@ const AdminCampaignDashboard = () => {
                                 name="title"
                                 value={taskForm.title}
                                 onChange={handleTaskChange}
-                                className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
                                 placeholder="Enter task title"
                                 required
                             />
                         </div>
 
                         <div>
-                            <label htmlFor="task-description" className="block text-sm font-medium text-gray-700 mb-2">
+                            <label htmlFor="task-description" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                 Description *
                             </label>
                             <textarea
@@ -1699,7 +1813,7 @@ const AdminCampaignDashboard = () => {
                                 value={taskForm.description}
                                 onChange={handleTaskChange}
                                 rows={3}
-                                className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none"
+                                className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none ${themeClasses.input}`}
                                 placeholder="Describe what participants need to do"
                                 required
                             />
@@ -1707,7 +1821,7 @@ const AdminCampaignDashboard = () => {
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                                <label htmlFor="task-type" className="block text-sm font-medium text-gray-700 mb-2">
+                                <label htmlFor="task-type" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                     Task Type *
                                 </label>
                                 <select
@@ -1715,7 +1829,7 @@ const AdminCampaignDashboard = () => {
                                     name="type"
                                     value={taskForm.type}
                                     onChange={handleTaskChange}
-                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                    className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
                                     required
                                 >
                                     <option value="social-follow">📱 Social Follow</option>
@@ -1729,7 +1843,7 @@ const AdminCampaignDashboard = () => {
 
                             {(taskForm.type === 'social-follow' || taskForm.type === 'social-post') && (
                                 <div>
-                                    <label htmlFor="task-platform" className="block text-sm font-medium text-gray-700 mb-2">
+                                    <label htmlFor="task-platform" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                         Platform *
                                     </label>
                                     <select
@@ -1737,7 +1851,7 @@ const AdminCampaignDashboard = () => {
                                         name="platform"
                                         value={taskForm.platform}
                                         onChange={handleTaskChange}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
                                         required
                                     >
                                         <option value="Twitter">🐦 Twitter</option>
@@ -1757,7 +1871,7 @@ const AdminCampaignDashboard = () => {
                         {(taskForm.type === 'video-watch' || taskForm.type === 'article-read') && (
                             <div className="space-y-4">
                                 <div>
-                                    <label htmlFor="task-contentUrl" className="block text-sm font-medium text-gray-700 mb-2">
+                                    <label htmlFor="task-contentUrl" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                         Content URL
                                     </label>
                                     <input
@@ -1766,14 +1880,14 @@ const AdminCampaignDashboard = () => {
                                         name="contentUrl"
                                         value={taskForm.contentUrl}
                                         onChange={handleTaskChange}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
                                         placeholder="https://example.com/content"
                                     />
-                                    <p className="mt-1 text-sm text-gray-500">Or upload content file below</p>
+                                    <p className={`mt-1 text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Or upload content file below</p>
                                 </div>
 
                                 <div>
-                                    <label htmlFor="task-contentFile" className="block text-sm font-medium text-gray-700 mb-2">
+                                    <label htmlFor="task-contentFile" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                         Content File
                                     </label>
                                     <input
@@ -1781,7 +1895,7 @@ const AdminCampaignDashboard = () => {
                                         id="task-contentFile"
                                         name="contentFile"
                                         onChange={handleTaskChange}
-                                        className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${darkMode ? 'file:text-white file:bg-gray-700' : ''}`}
                                         accept={taskForm.type === 'video-watch' ? 'video/*' : 'application/pdf,text/*'}
                                     />
                                 </div>
@@ -1789,7 +1903,7 @@ const AdminCampaignDashboard = () => {
                         )}
 
                         <div>
-                            <label htmlFor="task-requirements" className="block text-sm font-medium text-gray-700 mb-2">
+                            <label htmlFor="task-requirements" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
                                 Requirements (comma separated)
                             </label>
                             <input
@@ -1798,17 +1912,17 @@ const AdminCampaignDashboard = () => {
                                 name="requirements"
                                 value={taskForm.requirements}
                                 onChange={handleTaskChange}
-                                className="w-full px-4 py-3 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
                                 placeholder="e.g., Twitter account, Email verification"
                             />
-                            <p className="mt-1 text-sm text-gray-500">Optional requirements participants must meet</p>
+                            <p className={`mt-1 text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Optional requirements participants must meet</p>
                         </div>
 
-                        <div className="flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-4 pt-6 border-t border-gray-200">
+                        <div className={`flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-4 pt-6 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
                             <button
                                 type="button"
                                 onClick={() => setIsTaskModalOpen(false)}
-                                className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                                className={`px-6 py-3 border rounded-lg font-medium transition-colors ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
                             >
                                 Cancel
                             </button>

@@ -19,6 +19,8 @@ import {
     FaTiktok as TikTok
 } from 'react-icons/fa';
 
+import axios from 'axios'
+
 // Bind modal to app element
 Modal.setAppElement('#root');
 
@@ -434,55 +436,42 @@ export default function RFXCampaignPage() {
     };
 
     const handleProofUpload = async (taskId, file) => {
-        setUploading(true);
-        const formData = new FormData();
-        formData.append('campaignId', selectedCampaign.id);
-        formData.append('taskId', taskId);
-        formData.append('proof', file);
+        if (!selectedCampaign || !selectedCampaign.id) {
+            throw new Error('No campaign selected');
+        }
 
         try {
-            const response = await fetch(`${BASE_URL}/campaigns/upload-proof`, {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${localStorage.getItem('authToken')}`,
-                },
-                body: formData,
-            });
+            const formData = new FormData();
+            formData.append('proof', file);
 
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.message || `Upload failed with status ${response.status}`);
-            }
+            const response = await axios.post(
+                `${BASE_URL}/campaigns/${selectedCampaign.id}/tasks/${taskId}/proof`,
+                formData,
+                {
+                    headers: {
+                        'Content-Type': 'multipart/form-data',
+                        Authorization: `Bearer ${localStorage.getItem('token')}`,
+                    },
+                }
+            );
 
-            const data = await response.json();
-            setTasks((prev) => prev.map((task) =>
-                task.id === taskId ? { ...task, status: 'pending', proof: data.proofUrl || '' } : task
-            ));
-            setError({
-                type: 'success',
-                message: 'Proof uploaded successfully, pending verification',
-            });
+            console.log('Proof uploaded:', response.data);
+
+            // Refresh the campaign data
+            await fetchCampaignDetails(selectedCampaign.id);
+
+            return response.data;
         } catch (error) {
-            console.error('Upload proof error:', {
-                message: error.message,
-                response: error.response?.data,
-                status: error.response?.status
-            });
-            setError({
-                type: 'error',
-                message: error.message || 'Failed to upload proof',
-            });
-        } finally {
-            setUploading(false);
+            console.error('Upload proof error:', error);
+            throw error;
         }
     };
 
     const handleJoinCampaign = async (campaignId) => {
         setLoading(true);
         try {
-            const response = await fetchWithAuth(`${BASE_URL}/campaigns/join`, {
+            const response = await fetchWithAuth(`${BASE_URL}/campaigns/${campaignId}/join`, {
                 method: 'POST',
-                body: JSON.stringify({ campaignId }),
             });
 
             const campaign = campaigns.find((c) => c.id === campaignId);
@@ -1233,17 +1222,30 @@ export default function RFXCampaignPage() {
                                                                     <div className="text-xs text-gray-500 mb-1">
                                                                         Upload proof:
                                                                     </div>
-                                                                    <input
-                                                                        type="file"
-                                                                        id={`file-${task.id}`}
-                                                                        className="hidden"
-                                                                        accept="image/*,video/*"
-                                                                        onChange={(e) => {
-                                                                            if (e.target.files[0]) {
-                                                                                handleProofUpload(task.id, e.target.files[0]);
-                                                                            }
-                                                                        }}
-                                                                    />
+                                                                            <input
+                                                                                type="file"
+                                                                                id={`file-${task.id}`}
+                                                                                className="hidden"
+                                                                                accept="image/*,video/*"
+                                                                                onChange={(e) => {
+                                                                                    if (e.target.files[0]) {
+                                                                                        handleProofUpload(task.id, e.target.files[0])
+                                                                                            .then(() => {
+                                                                                                // Refresh data or show success message
+                                                                                                setError({
+                                                                                                    type: 'success',
+                                                                                                    message: 'Proof uploaded successfully!'
+                                                                                                });
+                                                                                            })
+                                                                                            .catch(err => {
+                                                                                                setError({
+                                                                                                    type: 'error',
+                                                                                                    message: err.response?.data?.message || 'Failed to upload proof'
+                                                                                                });
+                                                                                            });
+                                                                                    }
+                                                                                }}
+                                                                            />
                                                                     <label
                                                                         htmlFor={`file-${task.id}`}
                                                                         className="flex items-center space-x-2 px-3 py-2 rounded-lg cursor-pointer transition-all bg-blue-400/20 text-blue-400 border border-blue-400/30 hover:bg-blue-400/30 text-sm"

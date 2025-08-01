@@ -492,31 +492,24 @@ app.post('/campaigns/start-task', authenticateToken, async (req, res) => {
 });
 
 // Admin routes
-app.get('/admin/campaigns', authenticateToken, adminAuth, async (req, res) => {
+app.get('/admin/campaigns', [authenticateToken, adminAuth], async (req, res) => {
     try {
+        const { createdByMe } = req.query;
         let query = {};
-        // If not admin, only show campaigns created by this admin
-        if (req.user.email !== process.env.ADMIN_EMAIL) {
+
+        // If createdByMe is true, filter campaigns by the authenticated user's ID
+        if (createdByMe === 'true') {
             query.createdBy = req.user.userId;
         }
-        
+
         const campaigns = await Campaign.find(query)
             .sort({ createdAt: -1 })
             .lean();
-            
-        // Get total counts
-        const totalCampaigns = await Campaign.countDocuments();
-        const myCampaigns = await Campaign.countDocuments({ createdBy: req.user.userId });
-        
-        res.json({
-            campaigns,
-            stats: {
-                totalCampaigns,
-                myCampaigns
-            }
-        });
+
+        res.json(campaigns);
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        console.error('Get admin campaigns error:', err);
+        res.status(500).json({ message: 'Failed to fetch campaigns' });
     }
 });
 
