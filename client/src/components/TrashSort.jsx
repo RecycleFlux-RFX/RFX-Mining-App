@@ -16,7 +16,7 @@ const TrashSortGame = () => {
 
     const BASE_URL = 'http://localhost:3000';
     const navigate = useNavigate();
-    const gameId = '1'; // Static ID for EcoSort Master from gamesPage
+    const gameId = '688d176754cb10bba40ace66'; // Static ID for EcoSort Master from gamesPage
 
     // Static waste items to match gamesPage approach
     const wasteItems = [
@@ -61,33 +61,59 @@ const TrashSortGame = () => {
                 throw new Error('Please log in to play the game');
             }
 
+            // Verify the game ID is a valid ObjectId
+            if (!/^[0-9a-fA-F]{24}$/.test(gameId)) {
+                throw new Error('Invalid game ID format');
+            }
+
             const response = await axios.post(
                 `${BASE_URL}/games/start`,
-                { gameId, title: 'EcoSort Master' },
-                { headers: { Authorization: `Bearer ${token}` } }
+                {
+                    gameId,
+                    title: 'EcoSort Master' // Match the exact title from your database
+                },
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    validateStatus: (status) => status < 500 // Handle 4xx errors normally
+                }
             );
 
-            if (response.status !== 200) {
+            if (response.data.success === false) {
                 throw new Error(response.data.message || 'Failed to start game');
             }
 
-            // Reset game state
-            setScore(0);
-            setStreak(0);
-            setTimeLeft(5);
-            setQuestionsAnswered(0);
-            setCorrectAnswers(0);
-            setCurrentItem(getRandomItem());
+            // Game started successfully
             setGameState('playing');
-            setFeedback(null);
+            setScore(0);
+            setTimeLeft(60);
+            setCombo(0);
+            setFallingItems([]);
+            setFeedback('');
+            setShowInstructions(true);
+            itemIdCounter.current = 0;
             setError(null);
+
         } catch (error) {
             console.error('Error starting game:', error);
-            setError(error.message || 'Failed to start game');
-            if (error.message.includes('Authentication') || error.message.includes('Invalid token')) {
+            let errorMessage = error.response?.data?.message || error.message || 'Failed to start game';
+
+            // Handle specific error cases
+            if (errorMessage.includes('authentication') || errorMessage.includes('token')) {
+                errorMessage = 'Session expired. Please log in again.';
                 localStorage.removeItem('authToken');
                 navigate('/login');
+            } else if (errorMessage.includes('ObjectId') || errorMessage.includes('Cast to ObjectId')) {
+                errorMessage = 'Game configuration error. Please try another game.';
+            } else if (errorMessage.includes('locked')) {
+                errorMessage = 'This game is currently unavailable.';
+            } else if (errorMessage.includes('daily limit')) {
+                errorMessage = 'You\'ve reached your daily play limit for this game.';
             }
+
+            setError(errorMessage);
         }
     };
 

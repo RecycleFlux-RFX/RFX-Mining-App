@@ -1777,3 +1777,206 @@ app.post('/admin/campaigns/:id/approve-proof', authenticateToken, adminAuth, asy
 });
 
 
+
+
+
+
+
+// Game Routes
+// Get all games
+app.get('/games', async (req, res) => {
+  try {
+    const games = await Game.find().lean();
+    res.json(games.map(game => ({
+      ...game,
+      id: game._id
+    })));
+  } catch (err) {
+    console.error('Get games error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get game progress for authenticated user
+app.get('/games/progress', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('games level xp totalXp gamesPlayed earnings');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.json({
+      playerStats: {
+        level: user.level,
+        xp: user.xp,
+        totalXp: user.totalXp,
+        gamesPlayed: user.gamesPlayed,
+        tokensEarned: user.earnings
+      },
+      games: user.games.map(g => ({
+        id: g.gameId,
+        lastPlayed: g.lastPlayed,
+        plays: g.plays,
+        totalScore: g.totalScore,
+        highScore: g.highScore,
+        totalXp: g.totalXp,
+        achievements: g.achievements
+      }))
+    });
+  } catch (err) {
+    console.error('Get game progress error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Start a game session
+app.post('/games/start', authenticateToken, async (req, res) => {
+    try {
+        const { gameId, title } = req.body;
+
+        // Validate gameId
+        if (!mongoose.Types.ObjectId.isValid(gameId)) {
+            return res.status(400).json({ message: 'Invalid game ID' });
+        }
+
+        const user = await User.findById(req.user.userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const game = await Game.findById(gameId);
+        if (!game) {
+            return res.status(404).json({ message: 'Game not found' });
+        }
+
+        const userGame = user.games.find(g => g.gameId.toString() === gameId);
+        const today = new Date().toDateString();
+        if (userGame && userGame.lastPlayed && new Date(userGame.lastPlayed).toDateString() === today) {
+            return res.status(400).json({ message: 'Daily play limit reached' });
+        }
+
+        if (!userGame) {
+            user.games.push({
+                gameId,
+                lastPlayed: new Date(),
+                plays: 1
+            });
+        } else {
+            userGame.lastPlayed = new Date();
+            userGame.plays += 1;
+        }
+
+        user.gamesPlayed += 1;
+        game.plays += 1;
+
+        await Promise.all([user.save(), game.save()]);
+        res.json({ message: 'Game session started' });
+    } catch (err) {
+        console.error('Start game error:', err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Complete a game session and award rewards
+app.post('/games/complete', authenticateToken, async (req, res) => {
+  try {
+    const { gameId, score, xpEarned } = req.body;
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    const game = await Game.findById(gameId);
+    if (!game) {
+      return res.status(404).json({ message: 'Game not found' });
+    }
+
+    const userGame = user.games.find(g => g.gameId.toString() === gameId);
+    if (!userGame) {
+      return res.status(400).json({ message: 'Game session not started' });
+    }
+
+    userGame.totalScore += score || 0;
+    userGame.highScore = Math.max(userGame.highScore, score || 0);
+    userGame.totalXp += xpEarned || game.xpReward;
+    user.xp += xpEarned || game.xpReward;
+    user.earnings += parseFloat(game.reward.replace('₿ ', ''));
+
+    // Level up logic
+    while (user.xp >= user.totalXp) {
+      user.xp -= user.totalXp;
+      user.level += 1;
+      user.totalXp *= 1.5; // Increase XP needed for next level
+    }
+
+    const transaction = new Transaction({
+      userId: user._id,
+      amount: parseFloat(game.reward.replace('₿ ', '')),
+      type: 'earn',
+      category: 'Game',
+      activity: `Completed ${game.title}`,
+      description: `Earned ${game.reward} for playing ${game.title}`,
+      color: 'green',
+      timestamp: new Date()
+    });
+
+    await Promise.all([user.save(), transaction.save()]);
+    res.json({
+      message: 'Game completed successfully',
+      reward: game.reward,
+      xp: xpEarned || game.xpReward,
+      newLevel: user.level,
+      newBalance: user.earnings
+    });
+  } catch (err) {
+    console.error('Complete game error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Admin Routes for Games
+app.post('/admin/games', [authenticateToken, adminAuth], async (req, res) => {
+  try {
+    const gameData = req.body;
+    const game = new Game({
+      ...gameData,
+      reward: `₿ ${parseFloat(gameData.reward).toFixed(5)}`
+    });
+    await game.save();
+    res.status(201).json(game);
+  } catch (err) {
+    console.error('Create game error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.put('/admin/games/:id', [authenticateToken, adminAuth], async (req, res) => {
+  try {
+    const game = await Game.findById(req.params.id);
+    if (!game) {
+      return res.status(404).json({ message: 'Game not found' });
+    }
+    Object.assign(game, req.body);
+    game.reward = `₿ ${parseFloat(req.body.reward).toFixed(5)}`;
+    await game.save();
+    res.json(game);
+  } catch (err) {
+    console.error('Update game error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.delete('/admin/games/:id', [authenticateToken, adminAuth], async (req, res) => {
+  try {
+    const game = await Game.findByIdAndDelete(req.params.id);
+    if (!game) {
+      return res.status(404).json({ message: 'Game not found' });
+    }
+    await User.updateMany(
+      { 'games.gameId': req.params.id },
+      { $pull: { games: { gameId: req.params.id } } }
+    );
+    res.json({ message: 'Game deleted successfully' });
+  } catch (err) {
+    console.error('Delete game error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});

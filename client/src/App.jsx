@@ -15,6 +15,7 @@ import RFXVerseInterface from '../src/components/dashboard/NFT';
 import AdminDashboard from './components/admin/AdminDashboard';
 import AdminVerify from './components/admin/AdminVerify';
 import AdminCampaignDashboard from './components/admin/adminCampaignDashboard';
+import TrivaInterface from './components/TriviaInterface';
 
 // Admin Route Protection Component
 const ProtectedAdminRoute = ({ children }) => {
@@ -39,7 +40,8 @@ function App() {
                 {/* Game Routes */}
                 <Route path="/games" element={<RFXGamesPage />} />
                 <Route path="/games/recycle-rush" element={<RecycleRush />} />
-                <Route path="/games/re" element={<TrashSortGame />} />
+                <Route path="/games/trash-sort" element={<TrashSortGame />} />
+                <Route path="/games/Trivial" element={<TrivaInterface />} />
                 <Route path="/games/recycle-builders" element={<UpcycleBuilder />} />
 
                 {/* User Dashboard Routes */}

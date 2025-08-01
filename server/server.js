@@ -659,200 +659,374 @@ app.get('/wallet/rank', authenticateToken, async (req, res) => {
 // Game Routes
 // Get all games
 app.get('/games', async (req, res) => {
-  try {
-    const games = await Game.find().lean();
-    res.json(games.map(game => ({
-      ...game,
-      id: game._id
-    })));
-  } catch (err) {
-    console.error('Get games error:', err);
-    res.status(500).json({ message: 'Server error' });
-  }
+    try {
+        const games = await Game.find().lean();
+        res.json(games.map(game => ({
+            ...game,
+            id: game._id
+        })));
+    } catch (err) {
+        console.error('Get games error:', err);
+        res.status(500).json({ message: 'Server error' });
+    }
 });
 
 // Get game progress for authenticated user
 app.get('/games/progress', authenticateToken, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.userId).select('games level xp totalXp gamesPlayed earnings');
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+    try {
+        const user = await User.findById(req.user.userId).select('games level xp totalXp gamesPlayed earnings');
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+        res.json({
+            playerStats: {
+                level: user.level,
+                xp: user.xp,
+                totalXp: user.totalXp,
+                gamesPlayed: user.gamesPlayed,
+                tokensEarned: user.earnings
+            },
+            games: user.games.map(g => ({
+                id: g.gameId,
+                lastPlayed: g.lastPlayed,
+                plays: g.plays,
+                totalScore: g.totalScore,
+                highScore: g.highScore,
+                totalXp: g.totalXp,
+                achievements: g.achievements
+            }))
+        });
+    } catch (err) {
+        console.error('Get game progress error:', err);
+        res.status(500).json({ message: 'Server error' });
     }
-    res.json({
-      playerStats: {
-        level: user.level,
-        xp: user.xp,
-        totalXp: user.totalXp,
-        gamesPlayed: user.gamesPlayed,
-        tokensEarned: user.earnings
-      },
-      games: user.games.map(g => ({
-        id: g.gameId,
-        lastPlayed: g.lastPlayed,
-        plays: g.plays,
-        totalScore: g.totalScore,
-        highScore: g.highScore,
-        totalXp: g.totalXp,
-        achievements: g.achievements
-      }))
-    });
-  } catch (err) {
-    console.error('Get game progress error:', err);
-    res.status(500).json({ message: 'Server error' });
-  }
 });
 
+// Start a game session
 // Start a game session
 app.post('/games/start', authenticateToken, async (req, res) => {
     try {
         const { gameId, title } = req.body;
 
-        // Validate gameId
-        if (!mongoose.Types.ObjectId.isValid(gameId)) {
-            return res.status(400).json({ message: 'Invalid game ID' });
+        // Validate input
+        if (!gameId || !title) {
+            return res.status(400).json({
+                success: false,
+                message: 'Game ID and title are required'
+            });
         }
 
+        // Check if game exists
+        const game = await Game.findById(gameId);
+        if (!game) {
+            return res.status(404).json({
+                success: false,
+                message: 'Game not found'
+            });
+        }
+
+        // Check if game is locked
+        if (game.locked) {
+            return res.status(403).json({
+                success: false,
+                message: 'This game is currently locked'
+            });
+        }
+
+        // Get user and check daily limit
+        const user = await User.findById(req.user.userId);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        const userGameStats = user.games.find(g => g.gameId.toString() === gameId);
+        if (userGameStats && userGameStats.plays >= game.dailyLimit) {
+            return res.status(403).json({
+                success: false,
+                message: 'Daily play limit reached for this game'
+            });
+        }
+
+        // Update game plays count
+        game.plays += 1;
+        await game.save();
+
+        // Update user game stats
+        let gameStats = user.games.find(g => g.gameId.toString() === gameId);
+
+        if (!gameStats) {
+            gameStats = {
+                gameId,
+                lastPlayed: new Date(),
+                plays: 1,
+                totalScore: 0,
+                highScore: 0,
+                totalXp: 0,
+                achievements: []
+            };
+            user.games.push(gameStats);
+        } else {
+            gameStats.plays += 1;
+            gameStats.lastPlayed = new Date();
+        }
+
+        // Add to gamePlays history
+        user.gamePlays.push({
+            gameId,
+            title,
+            score: 0,
+            playedAt: new Date()
+        });
+
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Game session started',
+            path: game.path
+        });
+    } catch (err) {
+        console.error('Error starting game:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Error starting game session'
+        });
+    }
+});
+
+// Complete a game session and award rewards
+app.post('/games/complete', authenticateToken, async (req, res) => {
+    try {
+        const { gameId, score, xpEarned } = req.body;
         const user = await User.findById(req.user.userId);
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
-
         const game = await Game.findById(gameId);
         if (!game) {
             return res.status(404).json({ message: 'Game not found' });
         }
 
         const userGame = user.games.find(g => g.gameId.toString() === gameId);
-        const today = new Date().toDateString();
-        if (userGame && userGame.lastPlayed && new Date(userGame.lastPlayed).toDateString() === today) {
-            return res.status(400).json({ message: 'Daily play limit reached' });
-        }
-
         if (!userGame) {
-            user.games.push({
-                gameId,
-                lastPlayed: new Date(),
-                plays: 1
-            });
-        } else {
-            userGame.lastPlayed = new Date();
-            userGame.plays += 1;
+            return res.status(400).json({ message: 'Game session not started' });
         }
 
-        user.gamesPlayed += 1;
-        game.plays += 1;
+        userGame.totalScore += score || 0;
+        userGame.highScore = Math.max(userGame.highScore, score || 0);
+        userGame.totalXp += xpEarned || game.xpReward;
+        user.xp += xpEarned || game.xpReward;
+        user.earnings += parseFloat(game.reward.replace('₿ ', ''));
 
-        await Promise.all([user.save(), game.save()]);
-        res.json({ message: 'Game session started' });
+        // Level up logic
+        while (user.xp >= user.totalXp) {
+            user.xp -= user.totalXp;
+            user.level += 1;
+            user.totalXp *= 1.5; // Increase XP needed for next level
+        }
+
+        const transaction = new Transaction({
+            userId: user._id,
+            amount: parseFloat(game.reward.replace('₿ ', '')),
+            type: 'earn',
+            category: 'Game',
+            activity: `Completed ${game.title}`,
+            description: `Earned ${game.reward} for playing ${game.title}`,
+            color: 'green',
+            timestamp: new Date()
+        });
+
+        await Promise.all([user.save(), transaction.save()]);
+        res.json({
+            message: 'Game completed successfully',
+            reward: game.reward,
+            xp: xpEarned || game.xpReward,
+            newLevel: user.level,
+            newBalance: user.earnings
+        });
     } catch (err) {
-        console.error('Start game error:', err);
+        console.error('Complete game error:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });
 
-// Complete a game session and award rewards
-app.post('/games/complete', authenticateToken, async (req, res) => {
-  try {
-    const { gameId, score, xpEarned } = req.body;
-    const user = await User.findById(req.user.userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+app.post('/api/games/complete', authenticateToken, async (req, res) => {
+    try {
+        const { gameId, score, xpEarned, tokensEarned } = req.body;
+        
+        // Validate input
+        if (!gameId || !score || !xpEarned || !tokensEarned) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'All fields are required' 
+            });
+        }
+
+        // Check if game exists
+        const game = await Game.findById(gameId);
+        if (!game) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Game not found' 
+            });
+        }
+
+        // Update user stats
+        const user = req.user;
+        
+        // Update game-specific stats
+        let gameStats = user.games.find(g => g.gameId.toString() === gameId);
+        if (!gameStats) {
+            gameStats = {
+                gameId,
+                lastPlayed: new Date(),
+                plays: 1,
+                totalScore: score,
+                highScore: score,
+                totalXp: xpEarned,
+                achievements: []
+            };
+            user.games.push(gameStats);
+        } else {
+            gameStats.plays += 1;
+            gameStats.lastPlayed = new Date();
+            gameStats.totalScore += score;
+            if (score > gameStats.highScore) {
+                gameStats.highScore = score;
+            }
+            gameStats.totalXp += xpEarned;
+        }
+
+        // Update general stats
+        user.playerStats = user.playerStats || {};
+        user.playerStats.xp += xpEarned;
+        user.playerStats.gamesPlayed += 1;
+        user.playerStats.tokensEarned += tokensEarned;
+        
+        // Check for level up
+        if (user.playerStats.xp >= user.playerStats.totalXp) {
+            user.playerStats.level += 1;
+            user.playerStats.xp = user.playerStats.xp - user.playerStats.totalXp;
+            user.playerStats.totalXp = Math.floor(user.playerStats.totalXp * 1.2); // Increase XP needed for next level
+        }
+
+        // Update last game play record
+        const lastGamePlay = user.gamePlays.find(g => 
+            g.gameId.toString() === gameId && 
+            g.score === 0 && 
+            g.playedAt > new Date(Date.now() - 3600000) // Within the last hour
+        );
+        
+        if (lastGamePlay) {
+            lastGamePlay.score = score;
+        }
+
+        await user.save();
+
+        res.status(200).json({ 
+            success: true, 
+            message: 'Game completed successfully',
+            playerStats: user.playerStats
+        });
+    } catch (err) {
+        console.error('Error completing game:', err);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Error completing game' 
+        });
     }
-    const game = await Game.findById(gameId);
-    if (!game) {
-      return res.status(404).json({ message: 'Game not found' });
+});
+
+// User Progress Route
+app.get('/api/games/progress', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id)
+            .select('playerStats games gamePlays')
+            .populate('games.gameId', 'title category');
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+
+        // Calculate recent activity
+        const recentGames = user.gamePlays
+            .sort((a, b) => b.playedAt - a.playedAt)
+            .slice(0, 5);
+
+        res.status(200).json({
+            success: true,
+            playerStats: user.playerStats || {
+                level: 1,
+                xp: 0,
+                totalXp: 1000,
+                gamesPlayed: 0,
+                tokensEarned: 0
+            },
+            recentGames,
+            gameStats: user.games
+        });
+    } catch (err) {
+        console.error('Error fetching user progress:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching user progress'
+        });
     }
-
-    const userGame = user.games.find(g => g.gameId.toString() === gameId);
-    if (!userGame) {
-      return res.status(400).json({ message: 'Game session not started' });
-    }
-
-    userGame.totalScore += score || 0;
-    userGame.highScore = Math.max(userGame.highScore, score || 0);
-    userGame.totalXp += xpEarned || game.xpReward;
-    user.xp += xpEarned || game.xpReward;
-    user.earnings += parseFloat(game.reward.replace('₿ ', ''));
-
-    // Level up logic
-    while (user.xp >= user.totalXp) {
-      user.xp -= user.totalXp;
-      user.level += 1;
-      user.totalXp *= 1.5; // Increase XP needed for next level
-    }
-
-    const transaction = new Transaction({
-      userId: user._id,
-      amount: parseFloat(game.reward.replace('₿ ', '')),
-      type: 'earn',
-      category: 'Game',
-      activity: `Completed ${game.title}`,
-      description: `Earned ${game.reward} for playing ${game.title}`,
-      color: 'green',
-      timestamp: new Date()
-    });
-
-    await Promise.all([user.save(), transaction.save()]);
-    res.json({
-      message: 'Game completed successfully',
-      reward: game.reward,
-      xp: xpEarned || game.xpReward,
-      newLevel: user.level,
-      newBalance: user.earnings
-    });
-  } catch (err) {
-    console.error('Complete game error:', err);
-    res.status(500).json({ message: 'Server error' });
-  }
 });
 
 // Admin Routes for Games
 app.post('/admin/games', [authenticateToken, adminAuth], async (req, res) => {
-  try {
-    const gameData = req.body;
-    const game = new Game({
-      ...gameData,
-      reward: `₿ ${parseFloat(gameData.reward).toFixed(5)}`
-    });
-    await game.save();
-    res.status(201).json(game);
-  } catch (err) {
-    console.error('Create game error:', err);
-    res.status(500).json({ message: 'Server error' });
-  }
+    try {
+        const gameData = req.body;
+        const game = new Game({
+            ...gameData,
+            reward: `₿ ${parseFloat(gameData.reward).toFixed(5)}`
+        });
+        await game.save();
+        res.status(201).json(game);
+    } catch (err) {
+        console.error('Create game error:', err);
+        res.status(500).json({ message: 'Server error' });
+    }
 });
 
 app.put('/admin/games/:id', [authenticateToken, adminAuth], async (req, res) => {
-  try {
-    const game = await Game.findById(req.params.id);
-    if (!game) {
-      return res.status(404).json({ message: 'Game not found' });
+    try {
+        const game = await Game.findById(req.params.id);
+        if (!game) {
+            return res.status(404).json({ message: 'Game not found' });
+        }
+        Object.assign(game, req.body);
+        game.reward = `₿ ${parseFloat(req.body.reward).toFixed(5)}`;
+        await game.save();
+        res.json(game);
+    } catch (err) {
+        console.error('Update game error:', err);
+        res.status(500).json({ message: 'Server error' });
     }
-    Object.assign(game, req.body);
-    game.reward = `₿ ${parseFloat(req.body.reward).toFixed(5)}`;
-    await game.save();
-    res.json(game);
-  } catch (err) {
-    console.error('Update game error:', err);
-    res.status(500).json({ message: 'Server error' });
-  }
 });
 
 app.delete('/admin/games/:id', [authenticateToken, adminAuth], async (req, res) => {
-  try {
-    const game = await Game.findByIdAndDelete(req.params.id);
-    if (!game) {
-      return res.status(404).json({ message: 'Game not found' });
+    try {
+        const game = await Game.findByIdAndDelete(req.params.id);
+        if (!game) {
+            return res.status(404).json({ message: 'Game not found' });
+        }
+        await User.updateMany(
+            { 'games.gameId': req.params.id },
+            { $pull: { games: { gameId: req.params.id } } }
+        );
+        res.json({ message: 'Game deleted successfully' });
+    } catch (err) {
+        console.error('Delete game error:', err);
+        res.status(500).json({ message: 'Server error' });
     }
-    await User.updateMany(
-      { 'games.gameId': req.params.id },
-      { $pull: { games: { gameId: req.params.id } } }
-    );
-    res.json({ message: 'Game deleted successfully' });
-  } catch (err) {
-    console.error('Delete game error:', err);
-    res.status(500).json({ message: 'Server error' });
-  }
 });
 
 
@@ -1464,7 +1638,7 @@ app.get('/admin/campaigns/:id/proofs', [authenticateToken, adminAuth], async (re
         // Format proofs grouped by task
         const proofs = campaign.tasksList.map(task => {
             const taskProofs = task.completedBy.map(proof => {
-                const participant = campaign.participantsList.find(p => 
+                const participant = campaign.participantsList.find(p =>
                     p.userId && p.userId._id.toString() === proof.userId.toString()
                 );
                 return {
@@ -1500,7 +1674,7 @@ app.get('/admin/campaigns/:id/proofs', [authenticateToken, adminAuth], async (re
 app.post('/admin/campaigns/:id/approve-proof', [authenticateToken, adminAuth], async (req, res) => {
     try {
         const { taskId, userId, approve } = req.body;
-        
+
         const campaign = await Campaign.findById(req.params.id);
         if (!campaign) {
             return res.status(404).json({ message: 'Campaign not found' });
@@ -1513,7 +1687,7 @@ app.post('/admin/campaigns/:id/approve-proof', [authenticateToken, adminAuth], a
         }
 
         // Find the proof in task's completedBy
-        const proof = task.completedBy.find(p => 
+        const proof = task.completedBy.find(p =>
             p.userId.toString() === userId
         );
         if (!proof) {
@@ -1524,12 +1698,12 @@ app.post('/admin/campaigns/:id/approve-proof', [authenticateToken, adminAuth], a
         proof.status = approve ? 'completed' : 'rejected';
 
         // Find participant in campaign
-        const participant = campaign.participantsList.find(p => 
+        const participant = campaign.participantsList.find(p =>
             p.userId.toString() === userId
         );
         if (participant) {
             // Find participant's task
-            const participantTask = participant.tasks.find(t => 
+            const participantTask = participant.tasks.find(t =>
                 t.taskId.toString() === taskId
             );
             if (participantTask) {
@@ -1545,7 +1719,7 @@ app.post('/admin/campaigns/:id/approve-proof', [authenticateToken, adminAuth], a
             const user = await User.findById(userId);
             if (user) {
                 // Find user's campaign
-                const userCampaign = user.campaigns.find(c => 
+                const userCampaign = user.campaigns.find(c =>
                     c.campaignId.toString() === req.params.id
                 );
                 if (userCampaign) {
@@ -1554,8 +1728,8 @@ app.post('/admin/campaigns/:id/approve-proof', [authenticateToken, adminAuth], a
                 }
 
                 // Find user's task
-                const userTask = user.tasks.find(t => 
-                    t.taskId.toString() === taskId && 
+                const userTask = user.tasks.find(t =>
+                    t.taskId.toString() === taskId &&
                     t.campaignId.toString() === req.params.id
                 );
                 if (userTask) {
@@ -1588,7 +1762,7 @@ app.post('/admin/campaigns/:id/approve-proof', [authenticateToken, adminAuth], a
 
         await campaign.save();
 
-        res.json({ 
+        res.json({
             message: `Proof ${approve ? 'approved' : 'rejected'} successfully`,
             status: approve ? 'completed' : 'rejected'
         });
@@ -1603,7 +1777,7 @@ app.put('/admin/campaigns/:id', [authenticateToken, adminAuth, upload.single('im
     try {
         const formData = req.body;
         const campaign = await Campaign.findById(req.params.id);
-        
+
         if (!campaign) {
             return res.status(404).json({ message: 'Campaign not found' });
         }
@@ -1651,14 +1825,14 @@ app.put('/admin/campaigns/:id', [authenticateToken, adminAuth, upload.single('im
         }
 
         // Calculate end date
-        const endDate = new Date(new Date(formData.startDate).getTime() + 
+        const endDate = new Date(new Date(formData.startDate).getTime() +
             (parseInt(formData.duration) * 24 * 60 * 60 * 1000));
 
         // Handle file path
         let imagePath = campaign.image;
         if (req.file) {
             imagePath = path.join('uploads', 'campaigns', req.file.filename);
-            
+
             // Delete old image if it exists and a new one is uploaded
             if (campaign.image) {
                 const oldImagePath = path.join(__dirname, campaign.image);
@@ -1693,7 +1867,7 @@ app.put('/admin/campaigns/:id', [authenticateToken, adminAuth, upload.single('im
         });
     } catch (err) {
         if (req.file) {
-            fs.unlink(req.file.path, () => {});
+            fs.unlink(req.file.path, () => { });
         }
         console.error('Update campaign error:', err);
         res.status(500).json({
@@ -1707,7 +1881,7 @@ app.put('/admin/campaigns/:id', [authenticateToken, adminAuth, upload.single('im
 app.delete('/admin/campaigns/:id', [authenticateToken, adminAuth], async (req, res) => {
     try {
         const campaign = await Campaign.findByIdAndDelete(req.params.id);
-        
+
         if (!campaign) {
             return res.status(404).json({ message: 'Campaign not found' });
         }
@@ -1748,7 +1922,7 @@ app.get('/admin/campaigns/created-by/:userId', [authenticateToken, adminAuth], a
 });
 
 // Error handling middleware
-app.use((err, req, res, next) => {  
+app.use((err, req, res, next) => {
     console.error('Server error:', err);
     res.status(err.status || 500).json({
         message: err.message || 'Internal Server Error'

@@ -160,7 +160,20 @@ const userSchema = new mongoose.Schema({
     createdAt: {
         type: Date,
         default: Date.now
-    }
+    },
+        playerStats: {
+        level: { type: Number, default: 1 },
+        xp: { type: Number, default: 0 },
+        totalXp: { type: Number, default: 1000 },
+        gamesPlayed: { type: Number, default: 0 },
+        tokensEarned: { type: Number, default: 0 }
+    },
+    gamePlays: [{
+        gameId: { type: mongoose.Schema.Types.ObjectId, ref: 'Game' },
+        title: String,
+        score: Number,
+        playedAt: { type: Date, default: Date.now }
+    }],
 });
 
 userSchema.index({ 'campaigns.campaignId': 1 });

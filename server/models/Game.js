@@ -5,7 +5,7 @@ const gameSchema = new mongoose.Schema({
     subtitle: { type: String, required: true, trim: true },
     description: { type: String, required: true },
     description_long: { type: String, required: true },
-    category: { type: String, required: true, enum: ['Puzzle', 'Action', 'Simulation', 'Strategy'] },
+    category: { type: String, required: true, enum: ['Puzzle', 'Action', 'Simulation', 'Strategy', 'Trivia'] },
     difficulty: { type: String, required: true, enum: ['Easy', 'Medium', 'Hard'] },
     players: { type: Number, default: 0 },
     avgTime: { type: String, required: true },
@@ -22,15 +22,26 @@ const gameSchema = new mongoose.Schema({
     screenshots: { type: Number, default: 0 },
     path: { type: String, required: true },
     locked: { type: Boolean, default: false },
-    bgColor: { type: String, required: true }, // Added
-    cardColor: { type: String, required: true }, // Added
-    canPlay: { type: Boolean, default: true }, // Added
+    bgColor: { type: String, required: true },
+    cardColor: { type: String, required: true },
+    canPlay: { type: Boolean, default: true },
+    dailyLimit: { type: Number, default: 3 },
     wasteItems: [{
         name: { type: String, required: true },
         correct: { type: String, required: true, enum: ['Plastic', 'Paper', 'Metal', 'Organic', 'Glass'] },
         emoji: { type: String, required: true }
     }],
-    createdAt: { type: Date, default: Date.now }
+    triviaQuestions: [{
+        question: { type: String, required: true },
+        options: [{ type: String, required: true }],
+        correctAnswer: { type: Number, required: true },
+        explanation: { type: String, required: true }
+    }],
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now }
 });
+
+// Add index for better query performance
+gameSchema.index({ title: 1, category: 1, featured: 1, new: 1, trending: 1 });
 
 module.exports = mongoose.model('Game', gameSchema);

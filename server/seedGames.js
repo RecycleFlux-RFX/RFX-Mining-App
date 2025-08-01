@@ -1,6 +1,20 @@
 const mongoose = require('mongoose');
-const Game = require('./models/game');
-require('dotenv').config();
+const Game = require('./models/Game');
+require('dotenv').config();// Adjust path to your Game model
+
+// MongoDB connection with error handling
+async function connectDB() {
+    try {
+        await mongoose.connect(process.env.MONGO_URI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true
+        });
+        console.log('Connected to MongoDB');
+    } catch (err) {
+        console.error('MongoDB connection error:', err);
+        process.exit(1);
+    }
+}
 
 const games = [
     {
@@ -23,70 +37,29 @@ const games = [
         powerUps: ["Double Points", "Time Freeze", "Auto Sort"],
         gameMode: ["Classic", "Time Attack", "Endless"],
         screenshots: 4,
-        path: "/games/re",
         locked: false,
+        path: "/game/ecosort-master",
+        bgColor: "from-green-500 to-blue-500",
+        cardColor: "bg-green-100",
+        canPlay: true,
+        dailyLimit: 3,
         wasteItems: [
             { name: "Plastic Bottle", correct: "Plastic", emoji: "♳" },
             { name: "Newspaper", correct: "Paper", emoji: "📰" },
             { name: "Tin Can", correct: "Metal", emoji: "🥫" },
             { name: "Apple Core", correct: "Organic", emoji: "🍎" },
             { name: "Glass Jar", correct: "Glass", emoji: "🍶" }
-        ]
-    },
-    {
-        title: "Ocean Defender",
-        subtitle: "Underwater Cleanup",
-        description: "Navigate underwater worlds and clean up ocean pollution. Battle against time and sea creatures to restore marine ecosystems.",
-        description_long: "Dive deep into polluted oceans and become the ultimate ocean defender. Use special tools to clean up plastic waste, rescue marine life, and restore coral reefs in this immersive underwater adventure.",
-        category: "Action",
-        difficulty: "Medium",
-        players: 18734,
-        avgTime: "8 min",
-        reward: "₿ 0.00300",
-        xpReward: 45,
-        featured: false,
-        new: true,
-        trending: false,
-        rating: 4.6,
-        plays: 89000,
-        achievements: 12,
-        powerUps: ["Turbo Speed", "Pollution Magnet", "Shield Boost"],
-        gameMode: ["Story", "Survival", "Co-op"],
-        screenshots: 6,
-        path: "/games/recycle-rush",
-        locked: false,
-        wasteItems: [
-            { name: "Plastic Bag", correct: "Plastic", emoji: "🛍️" },
-            { name: "Fish Bone", correct: "Organic", emoji: "🐟" },
-            { name: "Broken Glass", correct: "Glass", emoji: "🥂" }
-        ]
-    },
-    {
-        title: "Carbon Footprint Quest",
-        subtitle: "Lifestyle Simulator",
-        description: "Make daily choices that impact your carbon footprint. Learn sustainable living while building your eco-friendly virtual life.",
-        description_long: "Experience the consequences of everyday choices in this life simulation game. Build an eco-friendly lifestyle, manage resources, and see how your decisions impact the planet's health over time.",
-        category: "Simulation",
-        difficulty: "Medium",
-        players: 15672,
-        avgTime: "12 min",
-        reward: "₿ 0.00250",
-        xpReward: 35,
-        featured: false,
-        new: false,
-        trending: true,
-        rating: 4.7,
-        plays: 67000,
-        achievements: 15,
-        powerUps: ["Green Energy", "Smart Home", "Eco Transport"],
-        gameMode: ["Career", "Challenge", "Free Play"],
-        screenshots: 5,
-        path: "/games/recycle-builders",
-        locked: false,
-        wasteItems: [
-            { name: "Cardboard Box", correct: "Paper", emoji: "📦" },
-            { name: "Aluminum Can", correct: "Metal", emoji: "🥤" }
-        ]
+        ],
+        triviaQuestions: [
+            {
+                question: "Which material takes the longest to decompose?",
+                options: ["Plastic", "Paper", "Metal", "Glass"],
+                correctAnswer: 0,
+                explanation: "Plastic can take up to 1000 years to decompose naturally."
+            }
+        ],
+        createdAt: new Date(),
+        updatedAt: new Date()
     },
     {
         title: "Forest Guardian",
@@ -108,12 +81,26 @@ const games = [
         powerUps: ["Fast Growth", "Disease Immunity", "Fire Protection"],
         gameMode: ["Campaign", "Sandbox", "Multiplayer"],
         screenshots: 7,
-        path: "/games/recycle-builders",
         locked: false,
+        path: "/game/forest-guardian",
+        bgColor: "from-emerald-500 to-teal-500",
+        cardColor: "bg-emerald-100",
+        canPlay: true,
+        dailyLimit: 5,
         wasteItems: [
             { name: "Wooden Plank", correct: "Organic", emoji: "🪵" },
             { name: "Plastic Wrapper", correct: "Plastic", emoji: "🍬" }
-        ]
+        ],
+        triviaQuestions: [
+            {
+                question: "How much oxygen does one tree produce annually?",
+                options: ["10 lbs", "50 lbs", "100 lbs", "260 lbs"],
+                correctAnswer: 3,
+                explanation: "A single tree can produce about 260 pounds of oxygen per year."
+            }
+        ],
+        createdAt: new Date(),
+        updatedAt: new Date()
     },
     {
         title: "Green Energy Tycoon",
@@ -135,58 +122,55 @@ const games = [
         powerUps: ["Efficiency Boost", "Weather Control", "Tech Upgrade"],
         gameMode: ["Tycoon", "Scenario", "Competitive"],
         screenshots: 8,
-        path: "/games/recycle-builders",
         locked: false,
+        path: "/game/green-energy-tycoon",
+        bgColor: "from-yellow-500 to-orange-500",
+        cardColor: "bg-yellow-100",
+        canPlay: true,
+        dailyLimit: 5,
         wasteItems: [
             { name: "Solar Panel Scrap", correct: "Metal", emoji: "☀️" },
             { name: "Battery", correct: "Metal", emoji: "🔋" }
-        ]
-    },
-    {
-        title: "Eco Puzzle Challenge",
-        subtitle: "Environmental Brain Teasers",
-        description: "Solve environmental puzzles and learn about sustainability. Each puzzle teaches real-world eco facts while challenging your mind.",
-        description_long: "Exercise your brain with eco-themed puzzles that teach environmental science. From climate change scenarios to biodiversity challenges, each puzzle is both fun and educational.",
-        category: "Puzzle",
-        difficulty: "Easy",
-        players: 21345,
-        avgTime: "5 min",
-        reward: "₿ 0.00100",
-        xpReward: 20,
-        featured: false,
-        new: false,
-        trending: false,
-        rating: 4.4,
-        plays: 156000,
-        achievements: 10,
-        powerUps: ["Hint System", "Skip Puzzle", "Double XP"],
-        gameMode: ["Daily Challenge", "Progressive", "Time Trial"],
-        screenshots: 3,
-        path: "/games/recycle-builders",
-        locked: false,
-        wasteItems: [
-            { name: "Coffee Cup", correct: "Paper", emoji: "☕" },
-            { name: "Plastic Straw", correct: "Plastic", emoji: "🥤" }
-        ]
+        ],
+        triviaQuestions: [
+            {
+                question: "What percentage of global electricity comes from renewables?",
+                options: ["10%", "20%", "30%", "40%"],
+                correctAnswer: 2,
+                explanation: "As of 2023, about 30% of global electricity comes from renewable sources."
+            }
+        ],
+        createdAt: new Date(),
+        updatedAt: new Date()
     }
 ];
 
-const seedGames = async () => {
+async function seedDatabase() {
     try {
-        await mongoose.connect(process.env.MONGO_URI);
-        console.log('MongoDB connected successfully');
+        // Connect to database
+        await connectDB();
 
-        await Game.deleteMany({});
-        console.log('Cleared existing games');
+        // Clear existing data with confirmation
+        const deleteResult = await Game.deleteMany({});
+        console.log(`Deleted ${deleteResult.deletedCount} existing games`);
 
-        await Game.insertMany(games);
-        console.log('Inserted games successfully');
+        // Insert new data with validation
+        const createdGames = await Game.insertMany(games);
+        console.log(`Successfully seeded ${createdGames.length} games`);
 
-        mongoose.connection.close();
-    } catch (err) {
-        console.error('Error seeding games:', err);
-        mongoose.connection.close();
+        // Verify the inserted data
+        const count = await Game.countDocuments();
+        console.log(`Total games in database: ${count}`);
+
+    } catch (error) {
+        console.error('Error during seeding:', error);
+    } finally {
+        // Close connection
+        await mongoose.disconnect();
+        console.log('Disconnected from database');
+        process.exit(0);
     }
-};
+}
 
-seedGames();
+// Run the seeder
+seedDatabase();

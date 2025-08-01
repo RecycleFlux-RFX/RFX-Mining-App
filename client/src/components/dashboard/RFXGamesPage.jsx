@@ -99,7 +99,9 @@ export default function RFXGamesPage() {
                     const validatedGames = response.map(game => ({
                         ...game,
                         id: game._id || game.id,
+                        path: game.path || `/game/${game.title.toLowerCase().replace(/\s+/g, '-')}`,
                         bgColor: game.bgColor || 'from-purple-500 to-blue-500',
+                        cardColor: game.cardColor || 'bg-purple-100',
                         canPlay: game.canPlay !== undefined ? game.canPlay : true,
                         locked: game.locked || false,
                         plays: game.plays || 0,
@@ -167,11 +169,22 @@ export default function RFXGamesPage() {
         if (game.locked || !game.canPlay) return;
 
         try {
-            await fetchWithAuth(`${BASE_URL}/games/start`, {
+            const response = await fetchWithAuth(`${BASE_URL}/games/start`, {
                 method: 'POST',
-                body: JSON.stringify({ gameId: game.id, title: game.title }),
+                body: JSON.stringify({
+                    gameId: game.id,
+                    title: game.title,
+                    path: game.path // Make sure to include the path if needed
+                }),
             });
-            navigate(game.path);
+
+            // Check if response has path to navigate to
+            if (response.path) {
+                navigate(response.path);
+            } else {
+                // Fallback to the game's path if not in response
+                navigate(game.path);
+            }
         } catch (err) {
             console.error('Error starting game:', err);
             setError({
