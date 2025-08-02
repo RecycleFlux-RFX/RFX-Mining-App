@@ -13,11 +13,18 @@ const path = require('path');
 const fs = require('fs'); // Added for file system operations
 const Game = require('./models/game');
 const Campaign = require('./models/campaign');
-
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
 // Load environment variables
 dotenv.config();
 
 const app = express();
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
 
 // Middleware
 app.use(cors({
@@ -34,19 +41,13 @@ if (!fs.existsSync(uploadDir)) {
 }
 
 // Configure multer for file uploads with improved filename handling
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, uploadDir);
-    },
-    filename: (req, file, cb) => {
-        // Sanitize filename: remove special characters and spaces
-        const sanitizedName = file.originalname
-            .replace(/[^a-zA-Z0-9.]/g, '_') // Replace special chars with underscores
-            .replace(/\s+/g, '_'); // Replace spaces with underscores
-
-        const uniqueName = `${Date.now()}-${sanitizedName}`;
-        cb(null, uniqueName);
-    }
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'campaign-proofs',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'gif'],
+    transformation: [{ width: 800, height: 600, crop: 'limit' }]
+  }
 });
 
 const upload = multer({
@@ -63,6 +64,7 @@ const upload = multer({
         cb(new Error('Only image files (JPEG, JPG, PNG, GIF) are allowed!'));
     }
 });
+
 
 // Serve static files from uploads directory
 app.use('/uploads', express.static(uploadDir));
@@ -341,9 +343,9 @@ app.post('/admin/campaigns', [authenticateToken, adminAuth, upload.single('image
             (parseInt(formData.duration) * 24 * 60 * 60 * 1000));
 
         // Handle file path
-        let imagePath = null;
+let imageUrl = null;
         if (req.file) {
-            imagePath = path.join('uploads', 'campaigns', req.file.filename);
+            imageUrl = req.file.path; // Cloudinary URL
         }
 
         const campaign = new Campaign({
@@ -361,7 +363,7 @@ app.post('/admin/campaigns', [authenticateToken, adminAuth, upload.single('image
             endDate: endDate,
             status: formData.status,
             tasksList: tasksList,
-            image: imagePath,
+            image: imageUrl, // Store Cloudinary URL
             participants: 0,
             completedTasks: 0,
             participantsList: [],
@@ -372,7 +374,7 @@ app.post('/admin/campaigns', [authenticateToken, adminAuth, upload.single('image
 
         res.status(201).json({
             ...campaign.toObject(),
-            image: imagePath ? `/uploads/campaigns/${path.basename(imagePath)}` : null
+            image: imageUrl // Return Cloudinary URL directly
         });
     } catch (err) {
         if (req.file) {
@@ -522,6 +524,8 @@ app.patch('/user/update-wallet', authenticateToken, async (req, res) => {
 
 
 
+
+
 // Wallet Routes (existing routes remain the same)
 // Update the wallet/transactions route
 app.get('/wallet/transactions', authenticateToken, async (req, res) => {
@@ -653,6 +657,7 @@ app.get('/wallet/rank', authenticateToken, async (req, res) => {
         res.status(500).json({ message: 'Server error' });
     }
 });
+
 
 
 
@@ -1153,7 +1158,6 @@ app.get('/campaigns/:id/user', authenticateToken, async (req, res) => {
     }
 });
 
-// Join a campaign
 // Join campaign
 app.post('/campaigns/:id/join', authenticateToken, async (req, res) => {
     try {
@@ -1203,13 +1207,13 @@ app.post('/campaigns/:id/join', authenticateToken, async (req, res) => {
 });
 
 // Upload proof
+// Upload proof - modified for Cloudinary
 app.post('/campaigns/:campaignId/tasks/:taskId/proof', [authenticateToken, upload.single('proof')], async (req, res) => {
     try {
         const { campaignId, taskId } = req.params;
-        const proofFile = req.file;
         const userId = req.user.userId;
 
-        if (!proofFile) {
+        if (!req.file) {
             return res.status(400).json({ message: 'Proof file is required' });
         }
 
@@ -1228,9 +1232,8 @@ app.post('/campaigns/:campaignId/tasks/:taskId/proof', [authenticateToken, uploa
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Construct the proof URL
-        const proofUrl = `/uploads/campaigns/${proofFile.filename}`;
-        console.log('Proof URL:', proofUrl); // Debug log to verify URL
+        // Cloudinary provides the URL in req.file.path
+        const proofUrl = req.file.path;
 
         // Update user's task status
         let userTask = user.tasks.find(t =>
@@ -1300,13 +1303,10 @@ app.post('/campaigns/:campaignId/tasks/:taskId/proof', [authenticateToken, uploa
 
         res.json({
             message: 'Proof uploaded successfully, pending verification',
-            proofUrl: proofUrl // Return relative URL
+            proofUrl: proofUrl
         });
     } catch (err) {
         console.error('Upload proof error:', err);
-        if (req.file) {
-            fs.unlink(req.file.path, () => { });
-        }
         res.status(500).json({ message: 'Failed to upload proof' });
     }
 });
@@ -1557,11 +1557,17 @@ app.post('/campaigns/:id/tasks/:taskId/complete', authenticateToken, async (req,
 });
 
 // Get user's campaigns
+// Get user's campaigns
 app.get('/user/campaigns', authenticateToken, async (req, res) => {
     try {
         const user = await User.findById(req.user.userId)
-            .populate('campaigns.campaignId', 'title description category reward duration startDate endDate status image participants completedTasks')
-            .select('campaigns');
+            .populate({
+                path: 'campaigns.campaignId',
+                select: 'title description category reward duration startDate endDate status image participants completedTasks tasksList',
+                model: 'Campaign'
+            })
+            .select('campaigns tasks')
+            .lean();
 
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
@@ -1570,20 +1576,46 @@ app.get('/user/campaigns', authenticateToken, async (req, res) => {
         // Format the response
         const userCampaigns = user.campaigns.map(uc => {
             const campaign = uc.campaignId;
+            if (!campaign) return null; // Skip if campaign not found
+            
+            // Safely get total tasks
+            const totalTasks = campaign.tasksList?.length || 0;
+            
+            // Safely get user's completed tasks count
+            const userTasks = user.tasks || [];
+            const userCompleted = userTasks
+                .filter(t => t.campaignId && 
+                            t.campaignId.toString() === campaign._id.toString() && 
+                            t.status === 'completed')
+                .length;
+            
+            // Calculate progress (0 if no tasks)
+            const progress = totalTasks > 0 ? (userCompleted / totalTasks) * 100 : 0;
+
             return {
-                ...campaign.toObject(),
+                ...campaign,
+                _id: campaign._id,
+                id: campaign._id.toString(),
                 userJoined: true,
-                userCompleted: uc.completed,
+                userCompleted,
                 lastActivity: uc.lastActivity,
-                progress: campaign.tasksList ?
-                    (uc.completed / campaign.tasksList.length) * 100 : 0
+                progress,
+                tasks: totalTasks,
+                completed: campaign.completedTasks || 0,
+                participants: campaign.participants || 0,
+                reward: campaign.reward ? `${campaign.reward} RFX` : '0 RFX',
+                duration: campaign.duration ? `${campaign.duration} days` : 'N/A',
+                startDate: campaign.startDate ? new Date(campaign.startDate).toISOString() : new Date().toISOString()
             };
-        });
+        }).filter(c => c !== null); // Remove any null entries
 
         res.json(userCampaigns);
     } catch (err) {
         console.error('Get user campaigns error:', err);
-        res.status(500).json({ message: 'Failed to fetch user campaigns' });
+        res.status(500).json({ 
+            message: 'Failed to fetch user campaigns',
+            error: err.message 
+        });
     }
 });
 

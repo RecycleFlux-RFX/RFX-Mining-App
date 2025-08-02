@@ -359,7 +359,7 @@ app.post('/campaigns/upload-proof', [authenticateToken, upload.single('proof')],
     }
 });
 
-// Complete task (admin verification)
+/* // Complete task (admin verification)
 app.post('/campaigns/complete-task', authenticateToken, async (req, res) => {
     try {
         const { campaignId, taskId } = req.body;
@@ -465,7 +465,7 @@ app.post('/campaigns/complete-task', authenticateToken, async (req, res) => {
     } catch (err) {
         res.status(500).json({ message: err.message });
     }
-});
+}); */
 
 
 // Add this route to start tasks

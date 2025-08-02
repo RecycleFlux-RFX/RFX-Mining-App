@@ -4,13 +4,15 @@ import {
     Plus, Trash2, Edit, Check, X, Upload,
     BarChart2, Users, List, Settings, Search,
     Filter, Eye, Calendar, Clock, Award,
-    TrendingUp, Star, Zap, ChevronDown, Sun, Moon
+    TrendingUp, Star, Zap, ChevronDown, Sun, Moon, Bell
 } from 'react-feather';
 import api from '../../api/api';
 import Modal from 'react-modal';
 import { Tab, Tabs, TabList, TabPanel } from 'react-tabs';
 import 'react-tabs/style/react-tabs.css';
 import { format, addDays } from 'date-fns';
+import { toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 Modal.setAppElement('#root');
 
@@ -29,8 +31,8 @@ const AdminCampaignDashboard = () => {
     const [filterStatus, setFilterStatus] = useState('all');
     const [filterCategory, setFilterCategory] = useState('all');
     const [showMyCampaigns, setShowMyCampaigns] = useState(false);
+    const [notifications, setNotifications] = useState([]);
     const [darkMode, setDarkMode] = useState(() => {
-        // Check for saved preference or system preference
         const savedMode = localStorage.getItem('darkMode');
         if (savedMode !== null) return savedMode === 'true';
         return window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -115,7 +117,7 @@ const AdminCampaignDashboard = () => {
                 console.error('Error fetching campaigns:', error);
                 setError(error.response?.data?.message || error.message);
                 setCampaigns([]);
-                alert('Failed to fetch campaigns: ' + (error.response?.data?.message || error.message));
+                toast.error('Failed to fetch campaigns: ' + (error.response?.data?.message || error.message));
             } finally {
                 setLoading(false);
             }
@@ -146,15 +148,44 @@ const AdminCampaignDashboard = () => {
                             }
                         });
                         setProofs(proofsRes.data);
+                        
+                        // Check for new proofs and show notifications
+                        checkNewProofs(proofsRes.data);
                     }
                 } catch (err) {
                     setError(err.response?.data?.message || 'Failed to fetch campaign details');
+                    toast.error(err.response?.data?.message || 'Failed to fetch campaign details');
                 }
             };
 
             fetchCampaignDetails();
         }
     }, [selectedCampaign?._id, activeTab]);
+
+    // Check for new proofs and show notifications
+    const checkNewProofs = (newProofs) => {
+        const pendingProofs = newProofs.flatMap(proofGroup => 
+            proofGroup.proofs.filter(p => p.status === 'pending')
+        );
+        
+        if (pendingProofs.length > 0) {
+            const newNotifications = pendingProofs.map(proof => ({
+                id: `${proof.taskId}-${proof.userId}`,
+                message: `New proof submitted by ${proof.username} for task "${proof.taskTitle}"`,
+                timestamp: new Date(),
+                read: false
+            }));
+            
+            setNotifications(prev => [
+                ...newNotifications.filter(n => !prev.some(p => p.id === n.id)),
+                ...prev
+            ]);
+            
+            if (newNotifications.length > 0) {
+                toast.info(`You have ${pendingProofs.length} new proof submissions to review`);
+            }
+        }
+    };
 
     // Handle form changes
     const handleChange = (e) => {
@@ -215,12 +246,14 @@ const AdminCampaignDashboard = () => {
                     formPayload,
                     config
                 );
+                toast.success('Campaign updated successfully');
             } else {
                 response = await api.post(
                     '/admin/campaigns',
                     formPayload,
                     config
                 );
+                toast.success('Campaign created successfully');
             }
 
             // Update state and close modal
@@ -236,9 +269,11 @@ const AdminCampaignDashboard = () => {
             resetFormData();
         } catch (err) {
             console.error('Error saving campaign:', err);
-            setError(err.response?.data?.message ||
+            const errorMsg = err.response?.data?.message ||
                 err.response?.data?.error ||
-                'Failed to save campaign');
+                'Failed to save campaign';
+            setError(errorMsg);
+            toast.error(errorMsg);
         } finally {
             setLoading(false);
         }
@@ -287,22 +322,22 @@ const AdminCampaignDashboard = () => {
                 tasksList: [...prev.tasksList, newTask]
             }));
 
-            // Reset task form
-            setTaskForm({
-                day: '1',
+            // Reset task form but keep the same day and type for adding multiple tasks
+            setTaskForm(prev => ({
+                ...prev,
                 title: '',
                 description: '',
-                type: 'social-follow',
-                platform: 'Twitter',
-                reward: 0.001,
                 requirements: '',
                 contentUrl: '',
                 contentFile: null
-            });
+            }));
 
+            toast.success('Task added successfully');
             setIsTaskModalOpen(false);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to add task');
+            const errorMsg = err.response?.data?.message || 'Failed to add task';
+            setError(errorMsg);
+            toast.error(errorMsg);
         } finally {
             setLoading(false);
         }
@@ -333,8 +368,12 @@ const AdminCampaignDashboard = () => {
             if (selectedCampaign?._id === id) {
                 setSelectedCampaign(null);
             }
+
+            toast.success('Campaign deleted successfully');
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to delete campaign');
+            const errorMsg = err.response?.data?.message || 'Failed to delete campaign';
+            setError(errorMsg);
+            toast.error(errorMsg);
         }
     };
 
@@ -386,8 +425,19 @@ const AdminCampaignDashboard = () => {
                 });
                 return { ...prev, tasksList: updatedTasks };
             });
+
+            // Mark notification as read
+            setNotifications(prev => 
+                prev.map(n => 
+                    n.id === `${taskId}-${userId}` ? { ...n, read: true } : n
+                )
+            );
+
+            toast.success(`Proof ${approve ? 'approved' : 'rejected'} successfully`);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to update proof status');
+            const errorMsg = err.response?.data?.message || 'Failed to update proof status';
+            setError(errorMsg);
+            toast.error(errorMsg);
         }
     };
 
@@ -421,8 +471,20 @@ const AdminCampaignDashboard = () => {
             );
             setProofs(proofsRes.data);
             setSelectedProofs([]);
+
+            // Mark notifications as read
+            setNotifications(prev => 
+                prev.map(n => {
+                    const isSelected = selectedProofs.some(p => n.id === `${p.taskId}-${p.userId}`);
+                    return isSelected ? { ...n, read: true } : n;
+                })
+            );
+
+            toast.success(`Bulk ${approve ? 'approval' : 'rejection'} completed for ${selectedProofs.length} proofs`);
         } catch (err) {
-            setError(err.response?.data?.message || 'Failed to bulk update proofs');
+            const errorMsg = err.response?.data?.message || 'Failed to bulk update proofs';
+            setError(errorMsg);
+            toast.error(errorMsg);
         }
     };
 
@@ -571,6 +633,14 @@ const AdminCampaignDashboard = () => {
             })
         : [];
 
+    // Get pending proof count
+    const getPendingProofCount = () => {
+        if (!proofs.length) return 0;
+        return proofs.reduce((count, proofGroup) => {
+            return count + proofGroup.proofs.filter(p => p.status === 'pending').length;
+        }, 0);
+    };
+
     // Theme classes
     const themeClasses = {
         bg: darkMode ? 'bg-gray-900' : 'bg-gray-50',
@@ -631,6 +701,21 @@ const AdminCampaignDashboard = () => {
                             </div>
                         </div>
                         <div className="flex items-center space-x-4">
+                            {/* Notifications */}
+                            <div className="relative">
+                                <button
+                                    className={`p-2 rounded-full ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-200 hover:bg-gray-300'} relative`}
+                                    onClick={() => setActiveTab(3)}
+                                >
+                                    <Bell size={18} />
+                                    {notifications.filter(n => !n.read).length > 0 && (
+                                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                                            {notifications.filter(n => !n.read).length}
+                                        </span>
+                                    )}
+                                </button>
+                            </div>
+                            
                             <button
                                 onClick={toggleDarkMode}
                                 className={`p-2 rounded-full ${darkMode ? 'bg-gray-700 text-yellow-300' : 'bg-gray-200 text-gray-700'}`}
@@ -652,61 +737,62 @@ const AdminCampaignDashboard = () => {
 
             <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-8">
                 {/* Stats Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Campaigns</p>
-                                <div className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{campaigns.length}</div>
-                            </div>
-                            <div className={`w-12 h-12 ${darkMode ? 'bg-blue-900/30' : 'bg-blue-100'} rounded-xl flex items-center justify-center`}>
-                                <BarChart2 className={`w-6 h-6 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
-                            </div>
-                        </div>
-                    </div>
+{/* Stats Cards */}
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
+        <div className="flex items-center justify-between">
+            <div>
+                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Campaigns</p>
+                <div className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{campaigns.length}</div>
+            </div>
+            <div className={`w-12 h-12 ${darkMode ? 'bg-blue-900/30' : 'bg-blue-100'} rounded-xl flex items-center justify-center`}>
+                <BarChart2 className={`w-6 h-6 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+            </div>
+        </div>
+    </div>
 
-                    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Active Campaigns</p>
-                                <div className={`text-3xl font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                                    {campaigns.filter(c => c.status === 'active').length}
-                                </div>
-                            </div>
-                            <div className={`w-12 h-12 ${darkMode ? 'bg-green-900/30' : 'bg-green-100'} rounded-xl flex items-center justify-center`}>
-                                <TrendingUp className={`w-6 h-6 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Participants</p>
-                                <div className={`text-3xl font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
-                                    {campaigns.reduce((sum, c) => sum + (c.participants || 0), 0)}
-                                </div>
-                            </div>
-                            <div className={`w-12 h-12 ${darkMode ? 'bg-purple-900/30' : 'bg-purple-100'} rounded-xl flex items-center justify-center`}>
-                                <Users className={`w-6 h-6 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Rewards</p>
-                                <div className={`text-3xl font-bold ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>
-                                    {campaigns.reduce((sum, c) => sum + (c.reward || 0), 0).toFixed(3)} RFX
-                                </div>
-                            </div>
-                            <div className={`w-12 h-12 ${darkMode ? 'bg-orange-900/30' : 'bg-orange-100'} rounded-xl flex items-center justify-center`}>
-                                <Award className={`w-6 h-6 ${darkMode ? 'text-orange-400' : 'text-orange-600'}`} />
-                            </div>
-                        </div>
-                    </div>
+    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
+        <div className="flex items-center justify-between">
+            <div>
+                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Active Campaigns</p>
+                <div className={`text-3xl font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                    {campaigns.filter(c => c.status === 'active').length}
                 </div>
+            </div>
+            <div className={`w-12 h-12 ${darkMode ? 'bg-green-900/30' : 'bg-green-100'} rounded-xl flex items-center justify-center`}>
+                <TrendingUp className={`w-6 h-6 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
+            </div>
+        </div>
+    </div>
+
+    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
+        <div className="flex items-center justify-between">
+            <div>
+                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Participants</p>
+                <div className={`text-3xl font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                    {campaigns.reduce((sum, c) => sum + (c.participants || 0), 0)}
+                </div>
+            </div>
+            <div className={`w-12 h-12 ${darkMode ? 'bg-purple-900/30' : 'bg-purple-100'} rounded-xl flex items-center justify-center`}>
+                <Users className={`w-6 h-6 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
+            </div>
+        </div>
+    </div>
+
+    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
+        <div className="flex items-center justify-between">
+            <div>
+                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Pending Proofs</p>
+                <div className={`text-3xl font-bold ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>
+                    {getPendingProofCount()}
+                </div>
+            </div>
+            <div className={`w-12 h-12 ${darkMode ? 'bg-orange-900/30' : 'bg-orange-100'} rounded-xl flex items-center justify-center`}>
+                <Upload className={`w-6 h-6 ${darkMode ? 'text-orange-400' : 'text-orange-600'}`} />
+            </div>
+        </div>
+    </div>
+</div>
 
                 {/* Campaign List Section */}
                 <div className={`rounded-2xl shadow-lg border ${themeClasses.card} overflow-hidden transition-colors duration-200`}>
@@ -796,6 +882,11 @@ const AdminCampaignDashboard = () => {
                                     const statusConfig = getStatusConfig(campaign.status);
                                     const difficultyConfig = getDifficultyConfig(campaign.difficulty);
 
+                                    // Calculate pending proofs for this campaign
+                                    const pendingProofs = campaign.tasksList?.reduce((count, task) => {
+                                        return count + (task.completedBy?.filter(p => p.status === 'pending').length || 0);
+                                    }, 0) || 0;
+
                                     return (
                                         <div
                                             key={campaign._id}
@@ -807,7 +898,7 @@ const AdminCampaignDashboard = () => {
                                             <div className={`h-32 bg-gradient-to-r ${categoryConfig.gradient} rounded-t-2xl relative overflow-hidden`}>
                                                 {campaign.image ? (
                                                     <img
-                                                        src={campaign.image}
+                                                        src={campaign.image.startsWith('http') ? campaign.image : `/uploads/${campaign.image.split('uploads/')[1]}`}
                                                         alt={campaign.title}
                                                         className="w-full h-full object-cover"
                                                         onError={(e) => {
@@ -830,6 +921,11 @@ const AdminCampaignDashboard = () => {
 
                                                 {/* Featured badges */}
                                                 <div className="absolute top-3 right-3 flex space-x-1">
+                                                    {pendingProofs > 0 && (
+                                                        <span className={`${darkMode ? 'bg-red-900/30 text-red-300' : 'bg-red-100 text-red-700'} px-2 py-1 text-xs font-bold rounded-full`}>
+                                                            {pendingProofs} ⏳
+                                                        </span>
+                                                    )}
                                                     {campaign.featured && (
                                                         <span className={`${darkMode ? 'bg-yellow-900/30 text-yellow-300' : 'bg-yellow-100 text-yellow-700'} px-2 py-1 text-xs font-bold rounded-full`}>
                                                             <Star size={12} className="inline" />
@@ -975,6 +1071,11 @@ const AdminCampaignDashboard = () => {
                                     <div className="flex items-center justify-center space-x-2">
                                         <Upload size={18} />
                                         <span className="hidden sm:inline">Proofs</span>
+                                        {getPendingProofCount() > 0 && (
+                                            <span className={`px-2 py-1 rounded-full text-xs ${darkMode ? 'bg-red-900/30 text-red-300' : 'bg-red-100 text-red-700'}`}>
+                                                {getPendingProofCount()}
+                                            </span>
+                                        )}
                                     </div>
                                 </Tab>
                             </TabList>
@@ -986,7 +1087,7 @@ const AdminCampaignDashboard = () => {
                                         <div className="lg:col-span-1">
                                             {selectedCampaign.image ? (
                                                 <img
-                                                    src={selectedCampaign.image}
+                                                    src={selectedCampaign.image.startsWith('http') ? selectedCampaign.image : `/uploads/${selectedCampaign.image.split('uploads/')[1]}`}
                                                     alt={selectedCampaign.title}
                                                     className="w-full h-64 object-cover rounded-2xl shadow-lg"
                                                     onError={(e) => {
@@ -1206,7 +1307,7 @@ const AdminCampaignDashboard = () => {
                                                     {task.contentUrl && (
                                                         <div className={`mt-4 pt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
                                                             <a
-                                                                href={task.contentUrl}
+                                                                href={task.contentUrl.startsWith('http') ? task.contentUrl : `/uploads/${task.contentUrl.split('uploads/')[1]}`}
                                                                 target="_blank"
                                                                 rel="noopener noreferrer"
                                                                 className={`inline-flex items-center font-medium ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}
@@ -1283,7 +1384,7 @@ const AdminCampaignDashboard = () => {
                                                                             type="checkbox"
                                                                             checked={selectedProofs.some(p => p.taskId === proofGroup.taskId && p.userId === proof.userId)}
                                                                             onChange={() => toggleProofSelection(proofGroup.taskId, proof.userId)}
-                                                                            className={`w-4 h-4 text-blue-600 focus:ring-blue-500 rounded ${darkMode ? 'border-gray-600 bg-gray-700' : 'border-gray-300'}`}
+                                                                            className={`w-4 h-4 text-blue-600 focus:ring-blue-500 rounded ${darkMode ? 'border-gray-500 bg-gray-700' : 'border-gray-300'}`}
                                                                         />
                                                                         {proof.avatar ? (
                                                                             <img
@@ -1310,7 +1411,7 @@ const AdminCampaignDashboard = () => {
 
                                                                     <div className="space-y-2">
                                                                         <a
-                                                                            href={proof.proofUrl}
+                                                                            href={proof.proofUrl.startsWith('http') ? proof.proofUrl : `/uploads/${proof.proofUrl.split('uploads/')[1]}`}
                                                                             target="_blank"
                                                                             rel="noopener noreferrer"
                                                                             className={`inline-flex items-center text-sm font-medium ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}
@@ -1465,7 +1566,7 @@ const AdminCampaignDashboard = () => {
                                     {selectedCampaign?.image && !formData.image && (
                                         <div className="mt-3">
                                             <img
-                                                src={selectedCampaign.image}
+                                                src={selectedCampaign.image.startsWith('http') ? selectedCampaign.image : `/uploads/${selectedCampaign.image.split('uploads/')[1]}`}
                                                 alt="Current"
                                                 className="h-20 w-auto rounded-lg border border-gray-200"
                                                 onError={(e) => {

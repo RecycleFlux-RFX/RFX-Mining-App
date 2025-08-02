@@ -315,157 +315,185 @@ export default function RFXCampaignPage() {
         checkAuth();
     }, [navigate]);
 
-    const fetchInitialData = async () => {
-        setLoading(true);
+const fetchInitialData = async () => {
+    setLoading(true);
+    try {
+        const [userResponse, rankResponse, networkResponse, campaignsResponse] = await Promise.all([
+            fetchWithAuth(`${BASE_URL}/user/user`).catch(error => {
+                if (error.message.includes('404')) return { username: '', email: '', campaigns: [] };
+                throw error;
+            }),
+            fetchWithAuth(`${BASE_URL}/wallet/rank`).catch(error => {
+                if (error.message.includes('404')) return { rank: 'N/A' };
+                throw error;
+            }),
+            fetchWithAuth(`${BASE_URL}/user/network-stats`).catch(error => {
+                if (error.message.includes('404')) return { totalRecycled: '0.00', activeUsers: 0 };
+                throw error;
+            }),
+            fetchWithAuth(`${BASE_URL}/campaigns`).catch(error => {
+                if (error.message.includes('404')) return { data: [] };
+                throw error;
+            }),
+        ]);
+
+        // Get detailed user campaigns data with better error handling
+        let userCampaignsData = [];
         try {
-            const [userResponse, rankResponse, networkResponse, campaignsResponse] = await Promise.all([
-                fetchWithAuth(`${BASE_URL}/user/user`).catch(error => {
-                    if (error.message.includes('404')) return { username: '', email: '', campaigns: [] };
-                    throw error;
-                }),
-                fetchWithAuth(`${BASE_URL}/wallet/rank`).catch(error => {
-                    if (error.message.includes('404')) return { rank: 'N/A' };
-                    throw error;
-                }),
-                fetchWithAuth(`${BASE_URL}/user/network-stats`).catch(error => {
-                    if (error.message.includes('404')) return { totalRecycled: '0.00', activeUsers: 0 };
-                    throw error;
-                }),
-                fetchWithAuth(`${BASE_URL}/campaigns`).catch(error => {
-                    if (error.message.includes('404')) return { data: [] };
-                    throw error;
-                }),
-            ]);
-
-            console.log('User response:', userResponse);
-            console.log('Campaigns response:', campaignsResponse);
-
-            const userData = userResponse;
-            const campaignsData = campaignsResponse.data || campaignsResponse;
-            const mappedCampaigns = (campaignsData || []).map((c) => {
-                const userCampaign = userData.campaigns?.find(uc => uc.campaignId.toString() === c._id) || null;
-                return {
-                    ...c,
-                    id: c._id || c.id,
-                    tasks: c.tasksList ? c.tasksList.length : 0,
-                    completed: c.completedTasks || 0,
-                    participants: c.participants || 0,
-                    progress: c.tasksList ? (c.completedTasks / c.tasksList.length) * 100 : 0,
-                    reward: c.reward ? `${c.reward} RFX` : '0 RFX',
-                    duration: c.duration ? `${c.duration} days` : 'N/A',
-                    userJoined: !!userCampaign,
-                    userCompleted: userCampaign ? userCampaign.completed : 0,
-                    startDate: c.startDate ? new Date(c.startDate).toISOString() : new Date().toISOString(),
-                };
-            });
-
-            setCampaigns(mappedCampaigns);
-            setUserCampaigns(mappedCampaigns.filter(c => c.userJoined));
-            setUserStats({
-                earnings: userData.earnings || 0,
-                co2Saved: userData.co2Saved || '0.00',
-                walletAddress: userData.walletAddress || '',
-                fullName: userData.fullName || ''
-            });
-            setUserRank(rankResponse.rank || 'N/A');
-            setNetworkStats({
-                totalRecycled: networkResponse.totalRecycled || '0.00',
-                activeUsers: networkResponse.activeUsers || 0
-            });
+            const userCampaignsResponse = await fetchWithAuth(`${BASE_URL}/user/campaigns`);
+            userCampaignsData = Array.isArray(userCampaignsResponse) ? userCampaignsResponse : [];
         } catch (error) {
-            console.error('Fetch data error:', {
-                message: error.message,
-                response: error.response?.data,
-                status: error.response?.status
-            });
-            setError({
-                type: 'error',
-                message: error.message || 'Failed to fetch data',
-            });
-            if (error.message === 'User not found' || error.message.includes('Invalid token') || error.status === 401) {
-                localStorage.removeItem('authToken');
-                navigate('/login');
+            console.error('Error fetching user campaigns:', error);
+            // If we fail to get user campaigns, try to reconstruct from userResponse.campaigns
+            userCampaignsData = (userResponse.campaigns || []).map(c => ({
+                ...c,
+                id: c.campaignId?.toString(),
+                _id: c.campaignId,
+                userJoined: true,
+                userCompleted: c.completed || 0,
+                progress: 0 // Default progress if we can't calculate
+            }));
+        }
+
+        const campaignsData = campaignsResponse.data || campaignsResponse;
+        
+        const mappedCampaigns = (campaignsData || []).map((c) => {
+            const userCampaign = userCampaignsData.find(uc => 
+                uc._id?.toString() === c._id?.toString() || 
+                uc.id?.toString() === c._id?.toString()
+            ) || null;
+            
+            // Calculate proper progress based on user's completed tasks vs total tasks
+            const userProgress = userCampaign && c.tasksList 
+                ? (userCampaign.userCompleted / c.tasksList.length) * 100 
+                : 0;
+            
+            const globalProgress = c.tasksList && c.participants > 0
+                ? (c.completedTasks / (c.tasksList.length * c.participants)) * 100
+                : 0;
+
+            return {
+                ...c,
+                id: c._id?.toString() || c.id,
+                tasks: c.tasksList ? c.tasksList.length : 0,
+                completed: c.completedTasks || 0,
+                participants: c.participants || 0,
+                progress: userCampaign ? userProgress : globalProgress,
+                reward: c.reward ? `${c.reward} RFX` : '0 RFX',
+                duration: c.duration ? `${c.duration} days` : 'N/A',
+                userJoined: !!userCampaign,
+                userCompleted: userCampaign ? userCampaign.userCompleted || 0 : 0,
+                startDate: c.startDate ? new Date(c.startDate).toISOString() : new Date().toISOString(),
+            };
+        });
+
+        setCampaigns(mappedCampaigns);
+        setUserCampaigns(mappedCampaigns.filter(c => c.userJoined));
+        setUserStats({
+            earnings: userResponse.earnings || 0,
+            co2Saved: userResponse.co2Saved || '0.00',
+            walletAddress: userResponse.walletAddress || '',
+            fullName: userResponse.fullName || ''
+        });
+        setUserRank(rankResponse.rank || 'N/A');
+        setNetworkStats({
+            totalRecycled: networkResponse.totalRecycled || '0.00',
+            activeUsers: networkResponse.activeUsers || 0
+        });
+    } catch (error) {
+        console.error('Fetch data error:', {
+            message: error.message,
+            response: error.response?.data,
+            status: error.response?.status
+        });
+        setError({
+            type: 'error',
+            message: error.message || 'Failed to fetch data',
+        });
+        if (error.message === 'User not found' || error.message.includes('Invalid token') || error.status === 401) {
+            localStorage.removeItem('authToken');
+            navigate('/login');
+        }
+    } finally {
+        setLoading(false);
+    }
+};
+const fetchCampaignDetails = async (campaignId) => {
+    try {
+        console.log('Fetching campaign details for ID:', campaignId);
+        const response = await fetchWithAuth(`${BASE_URL}/campaigns/${campaignId}/user`);
+        console.log('Campaign details response:', response);
+
+        const mappedTasks = (response.tasksList || []).map((task) => {
+            const userTask = response.participantsList
+                ?.find(p => p.userId.toString() === localStorage.getItem('userId'))
+                ?.tasks?.find(t => t.taskId.toString() === task._id) || {};
+            return {
+                ...task,
+                id: task._id || `temp-${Math.random()}`,
+                status: userTask.status || 'open',
+                reward: task.reward ? `${task.reward} RFX` : '0 RFX',
+                completed: userTask.status === 'completed',
+                proof: userTask.proof || null,
+                day: task.day || 1, // Fallback to day 1 if undefined
+            };
+        });
+
+        console.log('Mapped tasks:', mappedTasks);
+        setTasks(mappedTasks);
+        setSelectedCampaign({
+            ...response,
+            id: response._id,
+            tasks: mappedTasks.length,
+            reward: response.reward ? `${response.reward} RFX` : '0 RFX',
+            duration: response.duration ? `${response.duration} days` : '1 day',
+            startDate: response.startDate ? new Date(response.startDate).toISOString() : new Date().toISOString(),
+            currentDay: response.currentDay || 1,
+            dayTimeLeft: response.dayTimeLeft || { hours: 23, minutes: 59, seconds: 59 }
+        });
+        setCurrentDay(response.currentDay || 1);
+        setDayTimeLeft(response.dayTimeLeft || { hours: 23, minutes: 59, seconds: 59 });
+    } catch (error) {
+        console.error('Fetch campaign error:', {
+            message: error.message,
+            response: error.response?.data,
+            status: error.response?.status
+        });
+        setError({
+            type: 'error',
+            message: error.message || 'Failed to load campaign details',
+        });
+    }
+};
+
+const handleProofUpload = async (taskId, file) => {
+    if (!selectedCampaign || !selectedCampaign.id) {
+        throw new Error('No campaign selected');
+    }
+
+    try {
+        const formData = new FormData();
+        formData.append('proof', file);
+
+        const response = await axios.post(
+            `${BASE_URL}/campaigns/${selectedCampaign.id}/tasks/${taskId}/proof`,
+            formData,
+            {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                    Authorization: `Bearer ${localStorage.getItem('authToken')}`,
+                },
             }
-        } finally {
-            setLoading(false);
-        }
-    };
+        );
 
-    const fetchCampaignDetails = async (campaignId) => {
-        try {
-            console.log('Fetching campaign details for ID:', campaignId);
-            const response = await fetchWithAuth(`${BASE_URL}/campaigns/${campaignId}`);
-            console.log('Campaign details response:', response);
-
-            const mappedTasks = (response.tasksList || []).map((task) => {
-                const userTask = response.participantsList
-                    ?.find(p => p.userId.toString() === localStorage.getItem('userId'))
-                    ?.tasks?.find(t => t.taskId.toString() === task._id) || {};
-                return {
-                    ...task,
-                    id: task._id || `temp-${Math.random()}`,
-                    status: userTask.status || 'open',
-                    reward: task.reward ? `${task.reward} RFX` : '0 RFX',
-                    completed: userTask.status === 'completed',
-                    proof: userTask.proof || null,
-                    day: task.day || 1, // Fallback to day 1 if undefined
-                };
-            });
-
-            console.log('Mapped tasks:', mappedTasks);
-            setTasks(mappedTasks);
-            setSelectedCampaign({
-                ...response,
-                id: response._id,
-                tasks: mappedTasks.length,
-                reward: response.reward ? `${response.reward} RFX` : '0 RFX',
-                duration: response.duration ? `${response.duration} days` : '1 day',
-                startDate: response.startDate ? new Date(response.startDate).toISOString() : new Date().toISOString(),
-            });
-        } catch (error) {
-            console.error('Fetch campaign error:', {
-                message: error.message,
-                response: error.response?.data,
-                status: error.response?.status
-            });
-            setError({
-                type: 'error',
-                message: error.message || 'Failed to load campaign details',
-            });
-        }
-    };
-
-    const handleProofUpload = async (taskId, file) => {
-        if (!selectedCampaign || !selectedCampaign.id) {
-            throw new Error('No campaign selected');
-        }
-
-        try {
-            const formData = new FormData();
-            formData.append('proof', file);
-
-            const response = await axios.post(
-                `${BASE_URL}/campaigns/${selectedCampaign.id}/tasks/${taskId}/proof`,
-                formData,
-                {
-                    headers: {
-                        'Content-Type': 'multipart/form-data',
-                        Authorization: `Bearer ${localStorage.getItem('token')}`,
-                    },
-                }
-            );
-
-            console.log('Proof uploaded:', response.data);
-
-            // Refresh the campaign data
-            await fetchCampaignDetails(selectedCampaign.id);
-
-            return response.data;
-        } catch (error) {
-            console.error('Upload proof error:', error);
-            throw error;
-        }
-    };
+        console.log('Proof uploaded:', response.data);
+        await fetchCampaignDetails(selectedCampaign.id);
+        return response.data;
+    } catch (error) {
+        console.error('Upload proof error:', error);
+        throw error;
+    }
+};
 
     const handleJoinCampaign = async (campaignId) => {
         setLoading(true);
@@ -693,11 +721,11 @@ export default function RFXCampaignPage() {
                         </div>
                     </div>
                 </div>
-                {error && (
-                    <div className={`mb-4 p-4 rounded-xl ${getErrorColor()}`}>
-                        <p className="text-white">{error.message}</p>
-                    </div>
-                )}
+{error && (
+  <div className={`mb-3 p-2 rounded-md ${getErrorColor()} max-w-xs mx-auto`}>
+    <p className="text-white text-xs text-center">{error.message}</p>
+  </div>
+)}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                     {[
                         { label: 'Active Campaigns', value: activeCampaigns.length, icon: Target, color: 'green' },
@@ -768,18 +796,18 @@ export default function RFXCampaignPage() {
                                                     <p className="text-gray-400 text-sm">{campaign.description}</p>
                                                 </div>
                                             </div>
-                                            <div className="mb-4">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <span className="text-gray-400 text-sm">Tasks Progress</span>
-                                                    <span className="text-white text-sm font-semibold">{campaign.userCompleted}/{campaign.tasks}</span>
-                                                </div>
-                                                <div className="w-full bg-gray-700 rounded-full h-2">
-                                                    <div
-                                                        className={`h-2 rounded-full transition-all duration-1000 bg-gradient-to-r ${colors.button}`}
-                                                        style={{ width: `${(campaign.userCompleted / campaign.tasks) * 100}%` }}
-                                                    ></div>
-                                                </div>
-                                            </div>
+<div className="mb-4">
+    <div className="flex items-center justify-between mb-2">
+        <span className="text-gray-400 text-sm">Tasks Progress</span>
+        <span className="text-white text-sm font-semibold">{campaign.userCompleted}/{campaign.tasks}</span>
+    </div>
+    <div className="w-full bg-gray-700 rounded-full h-2">
+        <div
+            className={`h-2 rounded-full transition-all duration-1000 bg-gradient-to-r ${colors.button}`}
+            style={{ width: `${campaign.userJoined ? campaign.progress : campaign.globalProgress}%` }}
+        ></div>
+    </div>
+</div>
                                             <div className="grid grid-cols-3 gap-4 mb-4 text-center">
                                                 <div>
                                                     <div className="text-green-400 font-bold">{campaign.reward}</div>
@@ -974,18 +1002,18 @@ export default function RFXCampaignPage() {
                                                     <p className="text-gray-400 text-sm">{campaign.description}</p>
                                                 </div>
                                             </div>
-                                            <div className="mb-4">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <span className="text-gray-400 text-sm">Tasks Progress</span>
-                                                    <span className="text-white text-sm font-semibold">{campaign.completed}/{campaign.tasks}</span>
-                                                </div>
-                                                <div className="w-full bg-gray-700 rounded-full h-2">
-                                                    <div
-                                                        className={`h-2 rounded-full transition-all duration-1000 bg-gradient-to-r ${colors.button}`}
-                                                        style={{ width: `${campaign.progress}%` }}
-                                                    ></div>
-                                                </div>
-                                            </div>
+<div className="mb-4">
+    <div className="flex items-center justify-between mb-2">
+        <span className="text-gray-400 text-sm">Tasks Progress</span>
+        <span className="text-white text-sm font-semibold">{campaign.userCompleted}/{campaign.tasks}</span>
+    </div>
+    <div className="w-full bg-gray-700 rounded-full h-2">
+        <div
+            className={`h-2 rounded-full transition-all duration-1000 bg-gradient-to-r ${colors.button}`}
+            style={{ width: `${campaign.userJoined ? campaign.progress : campaign.globalProgress}%` }}
+        ></div>
+    </div>
+</div>
                                             <div className="grid grid-cols-3 gap-4 mb-4 text-center">
                                                 <div>
                                                     <div className="text-green-400 font-bold">{campaign.reward}</div>

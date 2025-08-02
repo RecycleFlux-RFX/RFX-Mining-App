@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Trash2, Recycle, Clock, Zap, Target } from 'lucide-react';
 import axios from 'axios';
@@ -13,10 +13,13 @@ const TrashSortGame = () => {
     const [questionsAnswered, setQuestionsAnswered] = useState(0);
     const [correctAnswers, setCorrectAnswers] = useState(0);
     const [error, setError] = useState(null);
+    const [showInstructions, setShowInstructions] = useState(false);
+    const [rewardTiers, setRewardTiers] = useState([]);
 
     const BASE_URL = 'http://localhost:3000';
     const navigate = useNavigate();
     const gameId = '688d176754cb10bba40ace66'; // Static ID for EcoSort Master from gamesPage
+    const itemIdCounter = useRef(0);
 
     // Static waste items to match gamesPage approach
     const wasteItems = [
@@ -50,9 +53,64 @@ const TrashSortGame = () => {
         Glass: "bg-teal-500 hover:bg-teal-600",
     };
 
+    // Score thresholds and rewards
+    const scoreRewards = [
+        { threshold: 50, xp: 5, tokens: 0.0001 },
+        { threshold: 100, xp: 10, tokens: 0.0002 },
+        { threshold: 150, xp: 15, tokens: 0.0003 },
+        { threshold: 200, xp: 20, tokens: 0.0004 },
+        { threshold: 250, xp: 25, tokens: 0.0005 },
+    ];
+
     const getRandomItem = useCallback(() => {
         return wasteItems[Math.floor(Math.random() * wasteItems.length)];
     }, []);
+
+    const calculateRewards = (finalScore) => {
+        let earnedXp = 0;
+        let earnedTokens = 0;
+        const achievedTiers = [];
+
+        for (const tier of scoreRewards) {
+            if (finalScore >= tier.threshold) {
+                earnedXp += tier.xp;
+                earnedTokens += tier.tokens;
+                achievedTiers.push({
+                    threshold: tier.threshold,
+                    xp: tier.xp,
+                    tokens: tier.tokens
+                });
+            }
+        }
+
+        // Base XP based on score (1 XP per 10 points)
+        const baseXp = Math.floor(finalScore / 10);
+        earnedXp += baseXp;
+
+        // Bonus for streaks
+        if (streak >= 5) {
+            earnedXp += 5;
+            achievedTiers.push({
+                description: "5+ Streak Bonus",
+                xp: 5,
+                tokens: 0
+            });
+        }
+
+        // Accuracy bonus
+        const accuracy = getAccuracy();
+        if (accuracy >= 80) {
+            earnedXp += 10;
+            achievedTiers.push({
+                description: "80%+ Accuracy Bonus",
+                xp: 10,
+                tokens: 0
+            });
+        }
+
+        setRewardTiers(achievedTiers);
+        return { xpEarned: earnedXp, tokensEarned: earnedTokens };
+    };
 
     const startGame = async () => {
         try {
@@ -70,14 +128,14 @@ const TrashSortGame = () => {
                 `${BASE_URL}/games/start`,
                 {
                     gameId,
-                    title: 'EcoSort Master' // Match the exact title from your database
+                    title: 'EcoSort Master'
                 },
                 {
                     headers: {
                         Authorization: `Bearer ${token}`,
                         'Content-Type': 'application/json'
                     },
-                    validateStatus: (status) => status < 500 // Handle 4xx errors normally
+                    validateStatus: (status) => status < 500
                 }
             );
 
@@ -88,10 +146,13 @@ const TrashSortGame = () => {
             // Game started successfully
             setGameState('playing');
             setScore(0);
+            setStreak(0);
             setTimeLeft(60);
-            setCombo(0);
-            setFallingItems([]);
-            setFeedback('');
+            setCurrentItem(getRandomItem());
+            setFeedback(null);
+            setQuestionsAnswered(0);
+            setCorrectAnswers(0);
+            setRewardTiers([]);
             setShowInstructions(true);
             itemIdCounter.current = 0;
             setError(null);
@@ -124,17 +185,23 @@ const TrashSortGame = () => {
                 throw new Error('Authentication missing');
             }
 
-            const xpEarned = Math.floor(score / 10); // Example: 10 points = 1 XP
+            const { xpEarned, tokensEarned } = calculateRewards(score);
             const achievements = streak >= 5 ? ['High Streak'] : [];
 
             const response = await axios.post(
                 `${BASE_URL}/games/complete`,
-                { gameId, score, xpEarned, achievements },
+                {
+                    gameId,
+                    score,
+                    xpEarned,
+                    tokensEarned,
+                    achievements
+                },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 
             console.log('Score submitted:', response.data);
-            navigate('/games'); // Navigate back to games page
+            setGameState('gameOver');
         } catch (error) {
             console.error('Error submitting score:', error);
             setError('Failed to submit score');
@@ -179,7 +246,6 @@ const TrashSortGame = () => {
 
         setTimeout(() => {
             if (questionsAnswered + 1 >= 15) {
-                setGameState('gameOver');
                 submitScore();
             } else {
                 nextQuestion();
@@ -192,13 +258,12 @@ const TrashSortGame = () => {
         setQuestionsAnswered((prev) => prev + 1);
         setFeedback({
             type: 'timeout',
-            message: `Time's up! The correct answer was ${currentItem.correct}`,
+            message: `Time's up! The correct answer was ${currentItem?.correct}`,
             streak: 0,
         });
 
         setTimeout(() => {
             if (questionsAnswered + 1 >= 15) {
-                setGameState('gameOver');
                 submitScore();
             } else {
                 nextQuestion();
@@ -223,12 +288,12 @@ const TrashSortGame = () => {
     if (error) {
         return (
             <div className="min-h-screen bg-gradient-to-br from-red-400 via-pink-500 to-purple-500 flex items-center justify-center p-4">
-                <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center">
+                <div className="bg-white rounded-2xl shadow-2xl p-8 text-center max-w-md w-full">
                     <h1 className="text-2xl font-bold text-red-600 mb-4">Error</h1>
                     <p className="text-gray-600 mb-6">{error}</p>
                     <button
                         onClick={() => navigate('/games')}
-                        className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-full text-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
+                        className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-6 rounded-lg transition-colors"
                     >
                         Back to Games
                     </button>
@@ -274,6 +339,8 @@ const TrashSortGame = () => {
     }
 
     if (gameState === 'gameOver') {
+        const { xpEarned, tokensEarned } = calculateRewards(score);
+
         return (
             <div className="min-h-screen bg-gradient-to-br from-purple-400 via-pink-500 to-red-500 flex items-center justify-center p-4">
                 <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center">
@@ -298,21 +365,56 @@ const TrashSortGame = () => {
                                 <div className="text-xs text-gray-500">Accuracy</div>
                             </div>
                         </div>
+
+                        {/* Rewards Section */}
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4">
+                            <h3 className="font-bold text-lg text-blue-800 mb-2">Rewards Earned</h3>
+                            <div className="space-y-2">
+                                <div className="flex justify-between">
+                                    <span className="text-gray-700">XP Earned:</span>
+                                    <span className="font-bold text-blue-600">{xpEarned} XP</span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-700">Tokens Earned:</span>
+                                    <span className="font-bold text-green-600">₿ {tokensEarned.toFixed(6)}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Reward Tiers Achieved */}
+                        {rewardTiers.length > 0 && (
+                            <div className="bg-gradient-to-r from-green-50 to-teal-50 rounded-xl p-4">
+                                <h3 className="font-bold text-lg text-green-800 mb-2">Achievements</h3>
+                                <ul className="space-y-1 text-sm">
+                                    {rewardTiers.map((tier, index) => (
+                                        <li key={index} className="flex justify-between">
+                                            <span>
+                                                {tier.threshold ? `Score ${tier.threshold}+` : tier.description}
+                                            </span>
+                                            <span className="font-medium">
+                                                +{tier.xp} XP{tier.tokens > 0 ? ` +₿ ${tier.tokens.toFixed(6)}` : ''}
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
                     </div>
 
-                    <button
-                        onClick={startGame}
-                        className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-4 px-8 rounded-full text-lg transition-all duration-200 transform hover:scale-105 shadow-lg mr-4"
-                    >
-                        Play Again
-                    </button>
-
-                    <button
-                        onClick={() => navigate('/games')}
-                        className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-4 px-8 rounded-full text-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
-                    >
-                        Back to Games
-                    </button>
+                    <div className="flex justify-center space-x-4">
+                        <button
+                            onClick={startGame}
+                            className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-4 px-8 rounded-full text-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
+                        >
+                            Play Again
+                        </button>
+                        <button
+                            onClick={() => navigate('/games')}
+                            className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-4 px-8 rounded-full text-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
+                        >
+                            Back to Games
+                        </button>
+                    </div>
                 </div>
             </div>
         );

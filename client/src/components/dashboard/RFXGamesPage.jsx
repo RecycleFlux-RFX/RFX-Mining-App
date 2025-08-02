@@ -602,7 +602,7 @@ export default function RFXGamesPage() {
                         <div className="flex items-start justify-between mb-6">
                             <div className="flex items-center space-x-4">
                                 <div className={`w-16 h-16 bg-gradient-to-br ${selectedGame.bgColor} rounded-2xl flex items-center justify-center`}>
-                                    {(categoryIcons[selectedGame.category] || categoryIcons.Default)({ className: "w-10 h-10 text-black" })}
+{React.createElement(categoryIcons[selectedGame.category] || categoryIcons.Default, { className: "w-10 h-10 text-black" })}
                                 </div>
                                 <div>
                                     <h2 className="text-2xl font-bold text-white">{selectedGame.title}</h2>
