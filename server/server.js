@@ -96,23 +96,23 @@ const authenticateToken = (req, res, next) => {
 
 // Admin Authentication Middleware
 const adminAuth = (req, res, next) => {
-    try {
-        if (!req.user) {
-            return res.status(401).json({ message: 'Unauthorized: No user data found' });
-        }
-
-        const isSuperAdmin = req.user.email === process.env.ADMIN_EMAIL;
-        const isAdmin = req.user.isAdmin === true;
-
-        if (!isSuperAdmin && !isAdmin) {
-            return res.status(403).json({ message: 'Not an admin account' });
-        }
-
-        next();
-    } catch (error) {
-        console.error('Admin auth error:', error);
-        res.status(500).json({ message: 'Server error during admin authentication' });
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized: No user data found' });
     }
+
+    const isSuperAdmin = req.user.email === process.env.SUPER_ADMIN_EMAIL;
+    const isAdmin = req.user.isAdmin === true;
+
+    if (!isSuperAdmin && !isAdmin) {
+      return res.status(403).json({ message: 'Not an admin account' });
+    }
+
+    next();
+  } catch (error) {
+    console.error('Admin auth error:', error);
+    res.status(500).json({ message: 'Server error during admin authentication' });
+  }
 };
 
 
@@ -437,6 +437,152 @@ app.post('', authenticateToken, async (req, res) => {
     }
 });
 
+// Get all users (for admin)
+app.get('/admin/users', [authenticateToken, superAdminAuth], async (req, res) => {
+  try {
+    const { page = 1, limit = 10, search = '' } = req.query;
+    
+    const query = {};
+    if (search) {
+      query.$or = [
+        { username: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { fullName: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const users = await User.find(query)
+      .select('-password -passkey -transactions')
+      .skip((page - 1) * limit)
+      .limit(parseInt(limit))
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const total = await User.countDocuments(query);
+
+    res.json({
+      data: users,
+      pagination: {
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (err) {
+    console.error('Get users error:', err);
+    res.status(500).json({ message: 'Failed to fetch users' });
+  }
+});
+
+// Suspend/activate user
+app.put('/admin/users/:id/suspend', [authenticateToken, superAdminAuth], async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isActive } = req.body;
+
+    if (typeof isActive !== 'boolean') {
+      return res.status(400).json({ message: 'isActive must be a boolean' });
+    }
+
+    const user = await User.findById(id);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Prevent modifying super admin
+    if (user.email === process.env.SUPER_ADMIN_EMAIL) {
+      return res.status(403).json({ message: 'Cannot modify super admin status' });
+    }
+
+    user.isActive = isActive;
+    await user.save();
+
+    res.json({
+      message: `User ${isActive ? 'activated' : 'suspended'} successfully`,
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        isActive: user.isActive
+      }
+    });
+  } catch (err) {
+    console.error('Suspend user error:', err);
+    res.status(500).json({ message: 'Failed to update user status' });
+  }
+});
+
+
+// Get system statistics
+app.get('/admin/stats', [authenticateToken, superAdminAuth], async (req, res) => {
+  try {
+    const [totalUsers, activeUsers, totalCampaigns, activeCampaigns, totalAdmins] = await Promise.all([
+      User.countDocuments(),
+      User.countDocuments({ isActive: true }),
+      Campaign.countDocuments(),
+      Campaign.countDocuments({ status: 'active' }),
+      User.countDocuments({ isAdmin: true })
+    ]);
+
+    // Get daily signups for last 7 days
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const dailySignups = await User.aggregate([
+      { 
+        $match: { 
+          createdAt: { $gte: sevenDaysAgo } 
+        } 
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]);
+
+    // Get user activity (last 7 days)
+    const userActivity = await User.aggregate([
+      {
+        $project: {
+          date: { $dateToString: { format: "%Y-%m-%d", date: "$lastActivity" } },
+          isActive: 1
+        }
+      },
+      {
+        $match: {
+          date: { $exists: true, $ne: null },
+          isActive: true
+        }
+      },
+      {
+        $group: {
+          _id: "$date",
+          activeUsers: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } },
+      { $limit: 7 }
+    ]);
+
+    res.json({
+      totalUsers,
+      activeUsers,
+      totalCampaigns,
+      activeCampaigns,
+      totalAdmins,
+      dailySignups: dailySignups.map(item => ({ date: item._id, count: item.count })),
+      userActivity: userActivity.map(item => ({ date: item._id, active: item.activeUsers }))
+    });
+  } catch (err) {
+    console.error('Get stats error:', err);
+    res.status(500).json({ message: 'Failed to fetch statistics' });
+  }
+});
+
 // Add this near your other auth routes
 app.post('/admin/campaigns', [authenticateToken, adminAuth, upload.single('image')], async (req, res) => {
     try {
@@ -697,6 +843,111 @@ app.get('/admin/admins', [authenticateToken, superAdminAuth], async (req, res) =
 });
 
 
+/* app.post('/admin/campaigns', [authenticateToken, superAdminAuth, upload.single('image')], async (req, res) => {
+    try {
+        // Parse form data
+        const formData = req.body;
+
+        // Validate required fields
+        if (!formData.title || !formData.description || !formData.category ||
+            !formData.reward || !formData.difficulty || !formData.duration ||
+            !formData.startDate || !formData.status) {
+            return res.status(400).json({ message: 'Missing required fields' });
+        }
+
+        // Validate description length
+        if (formData.description.length < 10) {
+            return res.status(400).json({
+                message: 'Description must be at least 10 characters long'
+            });
+        }
+
+        // Parse tasks if they exist
+        let tasksList = [];
+        if (formData.tasks) {
+            try {
+                tasksList = JSON.parse(formData.tasks);
+
+                // Validate each task
+                for (const task of tasksList) {
+                    if (!task.title || task.title.length < 3) {
+                        return res.status(400).json({
+                            message: 'Task title must be at least 3 characters long'
+                        });
+                    }
+                    if (!task.description || task.description.length < 10) {
+                        return res.status(400).json({
+                            message: 'Task description must be at least 10 characters long'
+                        });
+                    }
+                    if (!task.day || task.day < 1) {
+                        return res.status(400).json({
+                            message: 'Task day must be at least 1'
+                        });
+                    }
+                    if (!task.reward || task.reward < 0) {
+                        return res.status(400).json({
+                            message: 'Task reward must be a positive number'
+                        });
+                    }
+                    // Ensure completedBy is initialized
+                    task.completedBy = [];
+                }
+            } catch (e) {
+                console.error('Error parsing tasks:', e);
+                return res.status(400).json({ message: 'Invalid tasks format' });
+            }
+        }
+
+        // Calculate end date
+        const endDate = new Date(new Date(formData.startDate).getTime() +
+            (parseInt(formData.duration) * 24 * 60 * 60 * 1000));
+
+        // Handle file path
+let imageUrl = null;
+        if (req.file) {
+            imageUrl = req.file.path; // Cloudinary URL
+        }
+
+        const campaign = new Campaign({
+            title: formData.title,
+            description: formData.description,
+            category: formData.category,
+            reward: parseFloat(formData.reward),
+            difficulty: formData.difficulty,
+            duration: parseInt(formData.duration),
+            featured: formData.featured === 'true',
+            new: formData.new === 'true',
+            trending: formData.trending === 'true',
+            ending: formData.ending === 'true',
+            startDate: formData.startDate,
+            endDate: endDate,
+            status: formData.status,
+            tasksList: tasksList,
+            image: imageUrl, // Store Cloudinary URL
+            participants: 0,
+            completedTasks: 0,
+            participantsList: [],
+            createdBy: mongoose.Types.ObjectId(req.user.userId)
+        });
+
+        await campaign.save();
+
+        res.status(201).json({
+            ...campaign.toObject(),
+            image: imageUrl // Return Cloudinary URL directly
+        });
+    } catch (err) {
+        if (req.file) {
+            fs.unlink(req.file.path, () => { });
+        }
+        console.error('Error creating campaign:', err);
+        res.status(500).json({
+            message: err.message || 'Failed to create campaign',
+            error: err
+        });
+    }
+}); */
 
 // Create new admin
 app.post('/admin/admins', [authenticateToken, superAdminAuth], async (req, res) => {
