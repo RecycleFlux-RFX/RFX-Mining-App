@@ -18,83 +18,68 @@ export default function Login() {
         setError(null);
     };
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setIsLoading(true);
-        setError(null);
+const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError(null);
 
-        try {
-            // Check if this is an admin login attempt
-            const isAdminLogin = formData.username === 'abubakar.nabil.210@gmail.com';
+    try {
+        const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/login`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                username: formData.username,
+                password: formData.password,
+            }),
+        });
 
-            if (isAdminLogin) {
-                // Admin login flow
-                const response = await fetch('http://localhost:3000/auth/admin/check', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        email: formData.username,
-                    }),
-                });
+        const loginData = await response.json();
 
-                const data = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(data.message || 'Admin verification failed');
-                }
-
-                // Redirect to admin verification page, passing email and password
-                navigate('/admin/verify', {
-                    state: { email: formData.username, password: formData.password },
-                });
-                return;
-            }
-
-            // Regular user login flow
-            const loginResponse = await fetch('http://localhost:3000/auth/login', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    username: formData.username,
-                    password: formData.password,
-                }),
-            });
-
-            // In the login component, modify the success handler:
-            const loginData = await loginResponse.json();
-
-            if (!loginResponse.ok) {
-                throw new Error(loginData.message || 'Login failed');
-            }
-
-            // Store token and user data consistently
-            localStorage.setItem('authToken', loginData.token); // Changed from 'token' to 'authToken'
-            localStorage.setItem('user', JSON.stringify(loginData.user));
-            if (loginData.user.isAdmin) {
-                localStorage.setItem('isAdmin', 'true');
-            }
-
-            // Redirect based on user role
-            navigate(loginData.user.isAdmin ? '/admin/dashboard' : '/');
-
-        } catch (err) {
-            console.error('Login error:', err);
-            setError(err.message || 'Failed to connect to the server. Please try again.');
-        } finally {
-            setIsLoading(false);
+        if (!response.ok) {
+            throw new Error(loginData.message || 'Login failed');
         }
-    };
+
+        // Store token and user data
+        localStorage.setItem('authToken', loginData.token);
+        localStorage.setItem('user', JSON.stringify(loginData.user));
+        
+        if (loginData.user.isAdmin) {
+            localStorage.setItem('isAdmin', 'true');
+        }
+
+        if (loginData.user.isSuperAdmin) {
+            localStorage.setItem('isSuperAdmin', 'true');
+        }
+
+        // Redirect based on user role
+        if (loginData.user.isAdmin || loginData.user.isSuperAdmin) {
+            // All admin users go to verification page first
+            navigate('/admin/verify', { 
+                state: { 
+                    email: loginData.user.email,
+                    isSuperAdmin: loginData.user.isSuperAdmin 
+                } 
+            });
+        } else {
+            navigate('/');
+        }
+
+    } catch (err) {
+        console.error('Login error:', err);
+        setError(err.message || 'Failed to connect to the server. Please try again.');
+    } finally {
+        setIsLoading(false);
+    }
+};
 
     const handleGoogleSignIn = async () => {
         setIsLoading(true);
         setError(null);
 
         try {
-            const response = await fetch('http://localhost:3000/auth/google');
+            const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/google`);
             if (!response.ok) {
                 throw new Error('Failed to initiate Google Sign-In');
             }

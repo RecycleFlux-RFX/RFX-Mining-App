@@ -31,6 +31,10 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    isSuperAdmin: {
+    type: Boolean,
+    default: false
+},
     earnings: {
         type: Number,
         default: 0,
@@ -157,6 +161,10 @@ const userSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Transaction'
     }],
+        isActive: {
+        type: Boolean,
+        default: true
+    },
     createdAt: {
         type: Date,
         default: Date.now

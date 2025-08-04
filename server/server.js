@@ -15,6 +15,7 @@ const Game = require('./models/game');
 const Campaign = require('./models/campaign');
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const Leaderboard = require('./models/leaderboard')
 // Load environment variables
 dotenv.config();
 
@@ -25,6 +26,12 @@ cloudinary.config({
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
+
+
+console.log('SUPER_ADMIN_EMAIL:', process.env.SUPER_ADMIN_EMAIL); // Debug
+console.log('SUPER_ADMIN_PASSCODE:', process.env.SUPER_ADMIN_PASSCODE); // Debug
+console.log('JWT_SECRET:', process.env.JWT_SECRET); // Debug
+
 
 // Middleware
 app.use(cors({
@@ -109,6 +116,139 @@ const adminAuth = (req, res, next) => {
 };
 
 
+// server.js
+const superAdminAuth = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+        console.error('No token provided');
+        return res.status(401).json({ message: 'Authentication token required' });
+    }
+
+    try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        console.log('Decoded token:', decoded); // Debug token
+        console.log('SUPER_ADMIN_EMAIL:', process.env.SUPER_ADMIN_EMAIL); // Debug env
+        req.user = decoded;
+        
+        const isSuperAdmin = decoded.isSuperAdmin || 
+                           (decoded.email && decoded.email === process.env.SUPER_ADMIN_EMAIL);
+        
+        if (!isSuperAdmin) {
+            console.error('Super admin check failed:', {
+                isSuperAdmin: decoded.isSuperAdmin,
+                emailMatch: decoded.email === process.env.SUPER_ADMIN_EMAIL
+            });
+            return res.status(403).json({ 
+                message: 'Super admin access required',
+                details: {
+                    isSuperAdmin: decoded.isSuperAdmin,
+                    emailMatch: decoded.email === process.env.SUPER_ADMIN_EMAIL
+                }
+            });
+        }
+        
+        next();
+    } catch (err) {
+        console.error('Token verification error:', err);
+        return res.status(401).json({ message: 'Invalid or expired token' });
+    }
+};
+
+// Update the super admin verification endpoint
+app.post('/auth/superadmin/verify', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.userId);
+        console.log('User email:', user?.email); // Debug
+        console.log('Expected SUPER_ADMIN_EMAIL:', process.env.SUPER_ADMIN_EMAIL); // Debug
+        
+        if (!user || user.email !== process.env.SUPER_ADMIN_EMAIL) {
+            return res.status(403).json({ 
+                message: 'Super admin access required',
+                details: {
+                    expectedEmail: process.env.SUPER_ADMIN_EMAIL,
+                    userEmail: user?.email
+                }
+            });
+        }
+
+        const { passcode } = req.body;
+        if (passcode !== process.env.SUPER_ADMIN_PASSCODE) {
+            return res.status(400).json({ message: 'Invalid passcode' });
+        }
+
+        user.isSuperAdmin = true;
+        await user.save();
+
+        const newToken = jwt.sign(
+            { 
+                userId: user._id,
+                email: user.email,
+                isAdmin: true,
+                isSuperAdmin: true 
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        return res.status(200).json({
+            token: newToken,
+            isSuperAdmin: true
+        });
+    } catch (err) {
+        console.error('Super admin verification error:', err);
+        return res.status(500).json({ message: 'Server error' });
+    }
+});
+
+app.post('/auth/admin/verify', authenticateToken, async (req, res) => {
+    try {
+        const { password } = req.body;
+        const userId = req.user.userId;
+
+        if (!password) {
+            return res.status(400).json({ message: 'Password is required' });
+        }
+
+        // Get user from database
+        const user = await User.findById(userId);
+        
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Check if user is either admin or super admin
+        const isAdmin = user.isAdmin || user.email === process.env.SUPER_ADMIN_EMAIL;
+        if (!isAdmin) {
+            return res.status(403).json({ message: 'Not an admin account' });
+        }
+
+        // Verify password
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ message: 'Invalid credentials' });
+        }
+
+        // Check if this is super admin
+        const isSuperAdmin = user.email === process.env.SUPER_ADMIN_EMAIL;
+
+        res.status(200).json({
+            message: 'Admin verified successfully',
+            isSuperAdmin,
+            user: {
+                id: user._id,
+                email: user.email,
+                isAdmin: user.isAdmin,
+                isSuperAdmin
+            }
+        });
+    } catch (err) {
+        console.error('Admin verify error:', err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
 // Routes
 app.post('/auth/signup', async (req, res) => {
     try {
@@ -148,11 +288,17 @@ app.post('/auth/signup', async (req, res) => {
 
         await user.save();
 
-        const token = jwt.sign(
-            { userId: user._id, isAdmin: user.isAdmin },
-            process.env.JWT_SECRET,
-            { expiresIn: '7d' }
-        );
+// In your /auth/login route
+const token = jwt.sign(
+    { 
+        userId: user._id, 
+        email: user.email,
+        isAdmin: user.isAdmin,
+        isSuperAdmin: user.email === process.env.SUPER_ADMIN_EMAIL
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+);
 
         res.status(201).json({
             token,
@@ -193,8 +339,16 @@ app.post('/auth/login', async (req, res) => {
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
+        const isSuperAdmin = user.email === process.env.SUPER_ADMIN_EMAIL;
+        console.log('isSuperAdmin:', isSuperAdmin); // Debug
+
         const token = jwt.sign(
-            { userId: user._id, isAdmin: user.isAdmin },
+            { 
+                userId: user._id, 
+                email: user.email,
+                isAdmin: user.isAdmin,
+                isSuperAdmin: isSuperAdmin
+            },
             process.env.JWT_SECRET,
             { expiresIn: '7d' }
         );
@@ -207,14 +361,17 @@ app.post('/auth/login', async (req, res) => {
                 email: user.email,
                 fullName: user.fullName,
                 walletAddress: user.walletAddress,
-                isAdmin: user.isAdmin
-            }
+                isAdmin: user.isAdmin,
+                isSuperAdmin: isSuperAdmin
+            },
+            requiresPasscode: isSuperAdmin && !user.isSuperAdmin
         });
     } catch (err) {
         console.error('Login error:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });
+
 
 app.post('/auth/admin/check', async (req, res) => {
     try {
@@ -240,38 +397,37 @@ app.get('/auth/google', (req, res) => {
     res.status(501).json({ message: 'Google Sign-In not implemented' });
 });
 
-app.post('/auth/admin/verify', async (req, res) => {
+app.post('', authenticateToken, async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { password } = req.body;
+        const userId = req.user.userId;
 
-        if (!email || !password) {
-            return res.status(400).json({ message: 'Email and password are required' });
+        if (!password) {
+            return res.status(400).json({ message: 'Password is required' });
         }
 
-        const user = await User.findOne({ email });
+        // Get user from database using the ID from the token
+        const user = await User.findById(userId);
+        
         if (!user || !user.isAdmin) {
             return res.status(403).json({ message: 'Not an admin account' });
         }
 
+        // Verify password
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
-        const token = jwt.sign(
-            { userId: user._id, isAdmin: user.isAdmin },
-            process.env.JWT_SECRET,
-            { expiresIn: '7d' }
-        );
+        // Check if this is super admin
+        const isSuperAdmin = user.email === process.env.SUPER_ADMIN_EMAIL;
 
         res.status(200).json({
-            token,
+            message: 'Admin verified successfully',
+            isSuperAdmin,
             user: {
                 id: user._id,
-                username: user.username,
                 email: user.email,
-                fullName: user.fullName,
-                walletAddress: user.walletAddress,
                 isAdmin: user.isAdmin
             }
         });
@@ -521,6 +677,200 @@ app.patch('/user/update-wallet', authenticateToken, async (req, res) => {
     }
 });
 
+
+
+
+
+
+// Get all admins
+app.get('/admin/admins', [authenticateToken, superAdminAuth], async (req, res) => {
+    try {
+        const admins = await User.find({ isAdmin: true })
+            .select('-password -passkey -transactions')
+            .lean();
+            
+        res.json(admins);
+    } catch (err) {
+        console.error('Get admins error:', err);
+        res.status(500).json({ message: 'Failed to fetch admins' });
+    }
+});
+
+
+
+// Create new admin
+app.post('/admin/admins', [authenticateToken, superAdminAuth], async (req, res) => {
+    try {
+        const { username, email, fullName } = req.body;
+
+        if (!username || !email || !fullName) {
+            return res.status(400).json({ message: 'Username, email, and full name are required' });
+        }
+
+        // Check if user exists
+        const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+        if (existingUser) {
+            if (existingUser.isAdmin) {
+                return res.status(400).json({ message: 'User is already an admin' });
+            }
+            
+            // Convert existing user to admin
+            existingUser.isAdmin = true;
+            await existingUser.save();
+            
+            return res.status(200).json({
+                message: 'Existing user promoted to admin',
+                admin: {
+                    id: existingUser._id,
+                    username: existingUser.username,
+                    email: existingUser.email,
+                    fullName: existingUser.fullName,
+                    isAdmin: true
+                }
+            });
+        }
+
+        // Create new admin user with temporary password
+        const tempPassword = uuidv4().slice(0, 8);
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(tempPassword, salt);
+        const passkey = uuidv4();
+
+        const admin = new User({
+            username,
+            email,
+            password: hashedPassword,
+            passkey,
+            fullName,
+            walletAddress: ethers.Wallet.createRandom().address,
+            isAdmin: true
+        });
+
+        await admin.save();
+
+        // Send email with temp password (implementation depends on your email service)
+        // sendAdminInviteEmail(email, tempPassword);
+
+        res.status(201).json({
+            message: 'Admin created successfully',
+            admin: {
+                id: admin._id,
+                username: admin.username,
+                email: admin.email,
+                fullName: admin.fullName,
+                isAdmin: true
+            },
+            tempPassword
+        });
+    } catch (err) {
+        console.error('Create admin error:', err);
+        res.status(500).json({ message: 'Failed to create admin' });
+    }
+});
+
+// Update admin
+app.put('/admin/admins/:id', [authenticateToken, superAdminAuth], async (req, res) => {
+    try {
+        const { username, email, fullName, isActive } = req.body;
+
+        const admin = await User.findOne({
+            _id: req.params.id,
+            isAdmin: true
+        });
+
+        if (!admin) {
+            return res.status(404).json({ message: 'Admin not found' });
+        }
+
+        // Prevent modifying super admin
+        if (admin.email === process.env.ADMIN_EMAIL) {
+            return res.status(403).json({ message: 'Cannot modify super admin' });
+        }
+
+        if (username) admin.username = username;
+        if (email) admin.email = email;
+        if (fullName) admin.fullName = fullName;
+        if (typeof isActive !== 'undefined') admin.isActive = isActive;
+
+        await admin.save();
+
+        res.json({
+            message: 'Admin updated successfully',
+            admin: {
+                id: admin._id,
+                username: admin.username,
+                email: admin.email,
+                fullName: admin.fullName,
+                isAdmin: admin.isAdmin,
+                isActive: admin.isActive
+            }
+        });
+    } catch (err) {
+        console.error('Update admin error:', err);
+        res.status(500).json({ message: 'Failed to update admin' });
+    }
+});
+
+// Delete admin (soft delete)
+app.delete('/admin/admins/:id', [authenticateToken, superAdminAuth], async (req, res) => {
+    try {
+        const admin = await User.findOne({
+            _id: req.params.id,
+            isAdmin: true
+        });
+
+        if (!admin) {
+            return res.status(404).json({ message: 'Admin not found' });
+        }
+
+        // Prevent deleting super admin
+        if (admin.email === process.env.ADMIN_EMAIL) {
+            return res.status(403).json({ message: 'Cannot delete super admin' });
+        }
+
+        // Soft delete by marking as inactive
+        admin.isActive = false;
+        await admin.save();
+
+        res.json({ message: 'Admin deactivated successfully' });
+    } catch (err) {
+        console.error('Delete admin error:', err);
+        res.status(500).json({ message: 'Failed to deactivate admin' });
+    }
+});
+
+// Reset admin password
+app.post('/admin/admins/:id/reset-password', [authenticateToken, superAdminAuth], async (req, res) => {
+    try {
+        const admin = await User.findOne({
+            _id: req.params.id,
+            isAdmin: true
+        });
+
+        if (!admin) {
+            return res.status(404).json({ message: 'Admin not found' });
+        }
+
+        // Generate new temp password
+        const tempPassword = uuidv4().slice(0, 8);
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(tempPassword, salt);
+
+        admin.password = hashedPassword;
+        await admin.save();
+
+        // Send email with new temp password
+        // sendPasswordResetEmail(admin.email, tempPassword);
+
+        res.json({
+            message: 'Admin password reset successfully',
+            tempPassword
+        });
+    } catch (err) {
+        console.error('Reset admin password error:', err);
+        res.status(500).json({ message: 'Failed to reset admin password' });
+    }
+});
 
 
 
@@ -800,6 +1150,158 @@ app.post('/games/start', authenticateToken, async (req, res) => {
             message: 'Error starting game session'
         });
     }
+});
+
+// Submit game score
+app.post('/games/:id/score', authenticateToken, async (req, res) => {
+  try {
+    const { score } = req.body;
+    const gameId = req.params.id;
+    const userId = req.user.userId;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const game = await Game.findById(gameId);
+    if (!game) {
+      return res.status(404).json({ message: 'Game not found' });
+    }
+
+    // Update user's game stats
+    let userGame = user.games.find(g => g.gameId.toString() === gameId);
+    if (!userGame) {
+      userGame = {
+        gameId: game._id,
+        lastPlayed: new Date(),
+        plays: 1,
+        totalScore: score,
+        highScore: score,
+        totalXp: game.xpReward
+      };
+      user.games.push(userGame);
+    } else {
+      userGame.lastPlayed = new Date();
+      userGame.plays += 1;
+      userGame.totalScore += score;
+      if (score > userGame.highScore) {
+        userGame.highScore = score;
+      }
+      userGame.totalXp += game.xpReward;
+    }
+
+    // Add to game plays history
+    user.gamePlays.push({
+      gameId: game._id,
+      title: game.title,
+      score: score,
+      playedAt: new Date()
+    });
+
+    // Update player stats
+    user.playerStats.gamesPlayed += 1;
+    user.playerStats.tokensEarned += parseFloat(game.reward.replace('₿ ', '')) || 0;
+    
+    // Update XP and level
+    user.playerStats.xp += game.xpReward;
+    if (user.playerStats.xp >= user.playerStats.totalXp) {
+      user.playerStats.level += 1;
+      user.playerStats.xp = user.playerStats.xp - user.playerStats.totalXp;
+      user.playerStats.totalXp = Math.floor(user.playerStats.totalXp * 1.5);
+    }
+
+    // Update leaderboard
+    let leaderboard = await Leaderboard.findOne({ gameId });
+    if (!leaderboard) {
+      leaderboard = new Leaderboard({ gameId, scores: [] });
+    }
+
+    // Check if user already has a score
+    const existingScoreIndex = leaderboard.scores.findIndex(
+      s => s.userId.toString() === userId
+    );
+
+    if (existingScoreIndex >= 0) {
+      // Update if new score is higher
+      if (score > leaderboard.scores[existingScoreIndex].score) {
+        leaderboard.scores[existingScoreIndex].score = score;
+        leaderboard.scores[existingScoreIndex].playedAt = new Date();
+      }
+    } else {
+      // Add new score
+      leaderboard.scores.push({
+        userId,
+        username: user.username,
+        score,
+        playedAt: new Date()
+      });
+    }
+
+    // Sort scores in descending order
+    leaderboard.scores.sort((a, b) => b.score - a.score);
+    leaderboard.updatedAt = new Date();
+
+    await Promise.all([user.save(), leaderboard.save()]);
+
+    res.json({
+      message: 'Score submitted successfully',
+      newHighScore: userGame.highScore,
+      xpEarned: game.xpReward,
+      tokensEarned: game.reward
+    });
+  } catch (err) {
+    console.error('Submit score error:', err);
+    res.status(500).json({ message: 'Failed to submit score' });
+  }
+});
+
+// Get game leaderboard
+app.get('/games/:id/leaderboard', async (req, res) => {
+  try {
+    const gameId = req.params.id;
+    const limit = parseInt(req.query.limit) || 10;
+
+    const leaderboard = await Leaderboard.findOne({ gameId })
+      .populate('scores.userId', 'username avatar')
+      .lean();
+
+    if (!leaderboard) {
+      return res.json({
+        gameId,
+        scores: [],
+        userRank: null
+      });
+    }
+
+    // Get top scores
+    const topScores = leaderboard.scores.slice(0, limit);
+
+    // If authenticated, find user's rank
+    let userRank = null;
+    if (req.user) {
+      const userId = req.user.userId;
+      const userScoreIndex = leaderboard.scores.findIndex(
+        s => s.userId._id.toString() === userId
+      );
+      if (userScoreIndex >= 0) {
+        userRank = {
+          rank: userScoreIndex + 1,
+          score: leaderboard.scores[userScoreIndex].score,
+          playedAt: leaderboard.scores[userScoreIndex].playedAt
+        };
+      }
+    }
+
+    res.json({
+      gameId,
+      scores: topScores,
+      userRank
+    });
+  } catch (err) {
+    console.error('Get leaderboard error:', err);
+    res.status(500).json({ message: 'Failed to get leaderboard' });
+  }
 });
 
 // Complete a game session and award rewards
@@ -1952,6 +2454,8 @@ app.get('/admin/campaigns/created-by/:userId', [authenticateToken, adminAuth], a
         res.status(500).json({ message: 'Failed to fetch campaigns' });
     }
 });
+
+
 
 // Error handling middleware
 app.use((err, req, res, next) => {

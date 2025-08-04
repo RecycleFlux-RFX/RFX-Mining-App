@@ -3,67 +3,66 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { Lock, AlertCircle } from 'lucide-react';
 
 export default function AdminVerify() {
-    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
-    const location = useLocation();
+    const [email, setEmail] = useState('');
     const navigate = useNavigate();
 
     useEffect(() => {
-        const { state } = location;
-        if (state?.email) {
-            setEmail(state.email);
-            if (state.password) {
-                setPassword(state.password);
-                handleSubmit(state.password);
-            }
+        // Get email from the user data in localStorage
+        const userData = JSON.parse(localStorage.getItem('user'));
+        if (userData?.email) {
+            setEmail(userData.email);
+        } else {
+            // If no user data, redirect to login
+            navigate('/login');
         }
-    }, [location]);
+    }, [navigate]);
 
-    const handleSubmit = async (pass = password) => {
+    const handleSubmit = async (e) => {
+        e.preventDefault();
         setIsLoading(true);
         setError(null);
 
         try {
-            console.log('Attempting admin verification with email:', email); // Debugging
+            const token = localStorage.getItem('authToken');
+            if (!token) {
+                throw new Error('No authentication token found');
+            }
+
             const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/admin/verify`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({
-                    email,
-                    password: pass,
-                }),
+                body: JSON.stringify({ password })
             });
 
+            const data = await response.json();
+
             if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                console.error('Verification failed:', errorData); // Debugging
-                throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                throw new Error(data.message || 'Verification failed');
             }
 
-            const data = await response.json();
-            console.log('Verification successful:', data); // Debugging
-
-            localStorage.setItem('token', data.token);
-            localStorage.setItem('user', JSON.stringify(data.user));
-            localStorage.setItem('isAdmin', 'true');
+            // Update admin authentication status
             localStorage.setItem('adminAuthenticated', 'true');
 
-            navigate('/admin/campaigns');
+            // Redirect based on admin type
+            if (data.isSuperAdmin) {
+                localStorage.setItem('isSuperAdmin', 'true');
+                navigate('/admin/passcode-verify');
+            } else {
+                navigate('/admin/dashboard');
+            }
+
         } catch (err) {
             console.error('Admin verification error:', err);
-            setError(err.message || 'Failed to verify admin credentials. Please check your email and password.');
+            setError(err.message || 'Failed to verify admin credentials');
         } finally {
             setIsLoading(false);
         }
-    };
-
-    const handleFormSubmit = async (e) => {
-        e.preventDefault();
-        await handleSubmit();
     };
 
     return (
@@ -71,6 +70,9 @@ export default function AdminVerify() {
             <div className="w-full max-w-md bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl overflow-hidden">
                 <div className="p-6 sm:p-8">
                     <h1 className="text-2xl font-bold text-slate-900 mb-6">Admin Verification</h1>
+                    <p className="text-sm text-slate-600 mb-6">
+                        Verify your admin credentials for {email}
+                    </p>
 
                     {error && (
                         <div className="flex items-center space-x-2 p-4 bg-red-50 rounded-xl text-red-600 mb-6">
@@ -79,23 +81,10 @@ export default function AdminVerify() {
                         </div>
                     )}
 
-                    <form onSubmit={handleFormSubmit} className="space-y-6">
+                    <form onSubmit={handleSubmit} className="space-y-6">
                         <div>
                             <label className="block text-sm font-medium text-slate-700 mb-2">
-                                Email
-                            </label>
-                            <input
-                                type="email"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 text-slate-900"
-                                required
-                                disabled={isLoading}
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">
-                                Password
+                                Admin Password
                             </label>
                             <div className="relative">
                                 <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
@@ -112,10 +101,11 @@ export default function AdminVerify() {
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className={`w-full py-3 px-4 rounded-xl font-semibold text-white transition-all ${isLoading
+                            className={`w-full py-3 px-4 rounded-xl font-semibold text-white transition-all ${
+                                isLoading
                                     ? 'bg-gray-400 cursor-not-allowed'
                                     : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'
-                                }`}
+                            }`}
                         >
                             {isLoading ? 'Verifying...' : 'Verify Admin'}
                         </button>

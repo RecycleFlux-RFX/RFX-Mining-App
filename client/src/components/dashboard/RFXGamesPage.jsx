@@ -25,9 +25,12 @@ export default function RFXGamesPage() {
     const [activeTab, setActiveTab] = useState('games');
     const [selectedGame, setSelectedGame] = useState(null);
     const [games, setGames] = useState([]);
+    const [leaderboard, setLeaderboard] = useState(null);
+    const [userRank, setUserRank] = useState(null);
     const [loading, setLoading] = useState({
         games: true,
-        stats: true
+        stats: true,
+        leaderboard: false
     });
     const [playerStats, setPlayerStats] = useState({
         level: 0,
@@ -95,7 +98,6 @@ export default function RFXGamesPage() {
             try {
                 const response = await fetchWithAuth(`${BASE_URL}/games`);
                 if (response && Array.isArray(response)) {
-                    // Ensure all games have required fields with defaults
                     const validatedGames = response.map(game => ({
                         ...game,
                         id: game._id || game.id,
@@ -164,6 +166,29 @@ export default function RFXGamesPage() {
         }
     }, [location.pathname]);
 
+    // Fetch leaderboard when game is selected
+    useEffect(() => {
+        if (selectedGame) {
+            const fetchLeaderboard = async () => {
+                setLoading(prev => ({ ...prev, leaderboard: true }));
+                try {
+                    const response = await fetchWithAuth(`${BASE_URL}/games/${selectedGame.id}/leaderboard`);
+                    setLeaderboard(response.scores.slice(0, 3)); // Get top 3
+                    setUserRank(response.userRank);
+                } catch (err) {
+                    console.error('Error fetching leaderboard:', err);
+                    setError({
+                        type: 'error',
+                        message: 'Failed to load leaderboard data'
+                    });
+                } finally {
+                    setLoading(prev => ({ ...prev, leaderboard: false }));
+                }
+            };
+            fetchLeaderboard();
+        }
+    }, [selectedGame, navigate]);
+
     // Start game session
     const startGameSession = async (game) => {
         if (game.locked || !game.canPlay) return;
@@ -174,15 +199,13 @@ export default function RFXGamesPage() {
                 body: JSON.stringify({
                     gameId: game.id,
                     title: game.title,
-                    path: game.path // Make sure to include the path if needed
+                    path: game.path
                 }),
             });
 
-            // Check if response has path to navigate to
             if (response.path) {
                 navigate(response.path);
             } else {
-                // Fallback to the game's path if not in response
                 navigate(game.path);
             }
         } catch (err) {
@@ -194,17 +217,15 @@ export default function RFXGamesPage() {
         }
     };
 
-    // Safe filtering of games
+    // Helper functions
     const filteredGames = selectedCategory === "All"
         ? games
         : games.filter(game => game.category === selectedCategory);
 
     const featuredGames = games.filter(game => game.featured);
 
-    // Helper function to safely get gradient classes
     const getGradientClasses = (bgColor = 'from-purple-500 to-blue-500') => {
         if (!bgColor) return 'from-purple-500 to-blue-500';
-
         try {
             return bgColor
                 .replace('to-', 'to-')
@@ -217,7 +238,6 @@ export default function RFXGamesPage() {
         }
     };
 
-    // Error color for consistency with RFXVerseInterface
     const getErrorColor = () => {
         if (!error) return '';
         switch (error.type) {
@@ -538,7 +558,10 @@ export default function RFXGamesPage() {
                                         </button>
                                         <button
                                             className="px-4 py-3 bg-gray-700 text-gray-300 rounded-xl hover:bg-gray-600 transition-all"
-                                            onClick={(e) => e.stopPropagation()}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setSelectedGame(game);
+                                            }}
                                         >
                                             <Trophy className="w-4 h-4" />
                                         </button>
@@ -602,7 +625,7 @@ export default function RFXGamesPage() {
                         <div className="flex items-start justify-between mb-6">
                             <div className="flex items-center space-x-4">
                                 <div className={`w-16 h-16 bg-gradient-to-br ${selectedGame.bgColor} rounded-2xl flex items-center justify-center`}>
-{React.createElement(categoryIcons[selectedGame.category] || categoryIcons.Default, { className: "w-10 h-10 text-black" })}
+                                    {React.createElement(categoryIcons[selectedGame.category] || categoryIcons.Default, { className: "w-10 h-10 text-black" })}
                                 </div>
                                 <div>
                                     <h2 className="text-2xl font-bold text-white">{selectedGame.title}</h2>
@@ -627,6 +650,62 @@ export default function RFXGamesPage() {
                         </div>
 
                         <p className="text-gray-300 mb-6">{selectedGame.description_long}</p>
+
+                        {/* Leaderboard Section */}
+                        {loading.leaderboard ? (
+                            <div className="mb-6 p-4 bg-gray-800/50 rounded-xl flex justify-center">
+                                <div className="animate-pulse text-gray-400">Loading leaderboard...</div>
+                            </div>
+                        ) : (
+                            <>
+                                {leaderboard && leaderboard.length > 0 && (
+                                    <div className="mb-6">
+                                        <h4 className="text-white font-semibold mb-3">Top Players</h4>
+                                        <div className="grid grid-cols-1 gap-3">
+                                            {leaderboard.map((player, index) => (
+                                                <div 
+                                                    key={player.userId._id} 
+                                                    className={`flex items-center space-x-3 p-3 rounded-xl ${index === 0 ? 'bg-gradient-to-r from-yellow-500/20 to-yellow-600/20' : 
+                                                        index === 1 ? 'bg-gradient-to-r from-gray-500/20 to-gray-600/20' : 
+                                                        index === 2 ? 'bg-gradient-to-r from-amber-600/20 to-amber-700/20' : 'bg-gray-800/50'}`}
+                                                >
+                                                    <div className={`w-8 h-8 flex items-center justify-center rounded-full font-bold ${index === 0 ? 'bg-yellow-400 text-black' : 
+                                                        index === 1 ? 'bg-gray-300 text-black' : 
+                                                        index === 2 ? 'bg-amber-600 text-white' : 'bg-gray-700 text-white'}`}>
+                                                        {index + 1}
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <div className="text-white font-medium">{player.userId.username}</div>
+                                                        <div className="text-gray-400 text-xs">Score: {player.score}</div>
+                                                    </div>
+                                                    {index === 0 && <Crown className="w-5 h-5 text-yellow-400" />}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {userRank && (
+                                    <div className="bg-gradient-to-r from-purple-500/20 to-blue-500/20 rounded-xl p-4 mb-6">
+                                        <h4 className="text-white font-semibold mb-2">Your Rank</h4>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center space-x-3">
+                                                <div className="w-10 h-10 bg-gradient-to-r from-purple-400 to-blue-500 rounded-full flex items-center justify-center font-bold">
+                                                    {userRank.rank}
+                                                </div>
+                                                <div>
+                                                    <div className="text-white font-medium">Your Best Score</div>
+                                                    <div className="text-gray-300">{userRank.score}</div>
+                                                </div>
+                                            </div>
+                                            <div className="text-gray-400 text-xs">
+                                                Played on {new Date(userRank.playedAt).toLocaleDateString()}
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
+                        )}
 
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                             <div className="bg-gray-800/50 rounded-xl p-3 text-center">
@@ -695,9 +774,27 @@ export default function RFXGamesPage() {
                                     </>
                                 )}
                             </button>
-                            <button className="px-6 py-4 bg-gray-700 text-gray-300 rounded-2xl hover:bg-gray-600 transition-all flex items-center space-x-2">
+                            <button 
+                                className="px-6 py-4 bg-gray-700 text-gray-300 rounded-2xl hover:bg-gray-600 transition-all flex items-center space-x-2"
+                                onClick={() => {
+                                    // Refresh leaderboard
+                                    const fetchLeaderboard = async () => {
+                                        setLoading(prev => ({ ...prev, leaderboard: true }));
+                                        try {
+                                            const response = await fetchWithAuth(`${BASE_URL}/games/${selectedGame.id}/leaderboard`);
+                                            setLeaderboard(response.scores.slice(0, 3));
+                                            setUserRank(response.userRank);
+                                        } catch (err) {
+                                            console.error('Error refreshing leaderboard:', err);
+                                        } finally {
+                                            setLoading(prev => ({ ...prev, leaderboard: false }));
+                                        }
+                                    };
+                                    fetchLeaderboard();
+                                }}
+                            >
                                 <Medal className="w-5 h-5" />
-                                <span>Leaderboard</span>
+                                <span>Refresh Leaderboard</span>
                             </button>
                         </div>
                     </div>
