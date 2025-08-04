@@ -1410,6 +1410,11 @@ app.post('/games/:id/score', authenticateToken, async (req, res) => {
     const gameId = req.params.id;
     const userId = req.user.userId;
 
+    // Validate score
+    if (typeof score !== 'number' || score < 0) {
+      return res.status(400).json({ message: 'Invalid score value' });
+    }
+
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
@@ -1442,30 +1447,13 @@ app.post('/games/:id/score', authenticateToken, async (req, res) => {
       userGame.totalXp += game.xpReward;
     }
 
-    // Add to game plays history
-    user.gamePlays.push({
-      gameId: game._id,
-      title: game.title,
-      score: score,
-      playedAt: new Date()
-    });
-
-    // Update player stats
-    user.playerStats.gamesPlayed += 1;
-    user.playerStats.tokensEarned += parseFloat(game.reward.replace('₿ ', '')) || 0;
-    
-    // Update XP and level
-    user.playerStats.xp += game.xpReward;
-    if (user.playerStats.xp >= user.playerStats.totalXp) {
-      user.playerStats.level += 1;
-      user.playerStats.xp = user.playerStats.xp - user.playerStats.totalXp;
-      user.playerStats.totalXp = Math.floor(user.playerStats.totalXp * 1.5);
-    }
-
     // Update leaderboard
     let leaderboard = await Leaderboard.findOne({ gameId });
     if (!leaderboard) {
-      leaderboard = new Leaderboard({ gameId, scores: [] });
+      leaderboard = new Leaderboard({ 
+        gameId, 
+        scores: [] 
+      });
     }
 
     // Check if user already has a score
@@ -1499,7 +1487,8 @@ app.post('/games/:id/score', authenticateToken, async (req, res) => {
       message: 'Score submitted successfully',
       newHighScore: userGame.highScore,
       xpEarned: game.xpReward,
-      tokensEarned: game.reward
+      tokensEarned: game.reward,
+      currentRank: leaderboard.scores.findIndex(s => s.userId.toString() === userId) + 1
     });
   } catch (err) {
     console.error('Submit score error:', err);
@@ -1512,21 +1501,37 @@ app.get('/games/:id/leaderboard', async (req, res) => {
   try {
     const gameId = req.params.id;
     const limit = parseInt(req.query.limit) || 10;
+    const page = parseInt(req.query.page) || 1;
+    const skip = (page - 1) * limit;
 
+    // Get leaderboard with populated user data
     const leaderboard = await Leaderboard.findOne({ gameId })
-      .populate('scores.userId', 'username avatar')
+      .populate({
+        path: 'scores.userId',
+        select: 'username avatar fullName',
+        model: 'User'
+      })
       .lean();
 
     if (!leaderboard) {
       return res.json({
         gameId,
         scores: [],
-        userRank: null
+        userRank: null,
+        pagination: {
+          total: 0,
+          page,
+          limit,
+          totalPages: 0
+        }
       });
     }
 
-    // Get top scores
-    const topScores = leaderboard.scores.slice(0, limit);
+    // Get paginated scores
+    const totalScores = leaderboard.scores.length;
+    const paginatedScores = leaderboard.scores
+      .sort((a, b) => b.score - a.score)
+      .slice(skip, skip + limit);
 
     // If authenticated, find user's rank
     let userRank = null;
@@ -1535,19 +1540,30 @@ app.get('/games/:id/leaderboard', async (req, res) => {
       const userScoreIndex = leaderboard.scores.findIndex(
         s => s.userId._id.toString() === userId
       );
+      
       if (userScoreIndex >= 0) {
         userRank = {
           rank: userScoreIndex + 1,
           score: leaderboard.scores[userScoreIndex].score,
-          playedAt: leaderboard.scores[userScoreIndex].playedAt
+          playedAt: leaderboard.scores[userScoreIndex].playedAt,
+          user: leaderboard.scores[userScoreIndex].userId
         };
       }
     }
 
     res.json({
       gameId,
-      scores: topScores,
-      userRank
+      scores: paginatedScores.map(score => ({
+        ...score,
+        rank: leaderboard.scores.indexOf(score) + 1
+      })),
+      userRank,
+      pagination: {
+        total: totalScores,
+        page,
+        limit,
+        totalPages: Math.ceil(totalScores / limit)
+      }
     });
   } catch (err) {
     console.error('Get leaderboard error:', err);
@@ -1961,6 +1977,7 @@ app.post('/campaigns/:id/join', authenticateToken, async (req, res) => {
 
 // Upload proof
 // Upload proof - modified for Cloudinary
+// In your server.js, update the proof upload endpoint
 app.post('/campaigns/:campaignId/tasks/:taskId/proof', [authenticateToken, upload.single('proof')], async (req, res) => {
     try {
         const { campaignId, taskId } = req.params;
@@ -1988,7 +2005,7 @@ app.post('/campaigns/:campaignId/tasks/:taskId/proof', [authenticateToken, uploa
         // Cloudinary provides the URL in req.file.path
         const proofUrl = req.file.path;
 
-        // Update user's task status
+        // Update user's task status to pending
         let userTask = user.tasks.find(t =>
             t.taskId.toString() === taskId &&
             t.campaignId.toString() === campaignId
@@ -2008,7 +2025,7 @@ app.post('/campaigns/:campaignId/tasks/:taskId/proof', [authenticateToken, uploa
             userTask.submittedAt = new Date();
         }
 
-        // Update campaign participant's task status
+        // Update campaign participant's task status to pending
         const participant = campaign.participantsList.find(p =>
             p.userId.toString() === userId
         );
@@ -2031,7 +2048,7 @@ app.post('/campaigns/:campaignId/tasks/:taskId/proof', [authenticateToken, uploa
             participantTask.submittedAt = new Date();
         }
 
-        // Update task's completedBy
+        // Update task's completedBy with pending status
         let completedByEntry = task.completedBy.find(entry =>
             entry.userId.toString() === userId
         );
@@ -2459,8 +2476,9 @@ app.get('/admin/campaigns/:id/proofs', [authenticateToken, adminAuth], async (re
 app.post('/admin/campaigns/:id/approve-proof', [authenticateToken, adminAuth], async (req, res) => {
     try {
         const { taskId, userId, approve } = req.body;
+        const campaignId = req.params.id;
 
-        const campaign = await Campaign.findById(req.params.id);
+        const campaign = await Campaign.findById(campaignId);
         if (!campaign) {
             return res.status(404).json({ message: 'Campaign not found' });
         }
@@ -2505,7 +2523,7 @@ app.post('/admin/campaigns/:id/approve-proof', [authenticateToken, adminAuth], a
             if (user) {
                 // Find user's campaign
                 const userCampaign = user.campaigns.find(c =>
-                    c.campaignId.toString() === req.params.id
+                    c.campaignId.toString() === campaignId
                 );
                 if (userCampaign) {
                     userCampaign.completed += 1;
@@ -2515,15 +2533,17 @@ app.post('/admin/campaigns/:id/approve-proof', [authenticateToken, adminAuth], a
                 // Find user's task
                 const userTask = user.tasks.find(t =>
                     t.taskId.toString() === taskId &&
-                    t.campaignId.toString() === req.params.id
+                    t.campaignId.toString() === campaignId
                 );
                 if (userTask) {
                     userTask.status = 'completed';
                     userTask.completedAt = new Date();
                 }
 
-                // Add reward
+                // Add reward and update CO2 saved
                 user.earnings += task.reward || 0;
+                const co2Saved = parseFloat(user.co2Saved || '0') + (task.co2Impact || 0.01); // Default 0.01 kg if not specified
+                user.co2Saved = co2Saved.toFixed(2);
 
                 // Create transaction
                 const transaction = new Transaction({

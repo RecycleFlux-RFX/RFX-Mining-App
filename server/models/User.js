@@ -149,6 +149,11 @@ const userSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+        co2Impact: {
+        type: Number,
+        default: 0.01, // Default to 0.01 kg CO2 saved per task
+        min: 0
+    },
     totalXp: {
         type: Number,
         default: 1000

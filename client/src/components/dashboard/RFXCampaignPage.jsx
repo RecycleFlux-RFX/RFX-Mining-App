@@ -543,50 +543,65 @@ const handleProofUpload = async (taskId, file) => {
         }
     };
 
-    const handleCompleteTask = async (campaignId, taskId) => {
-        try {
-            const response = await fetchWithAuth(`${BASE_URL}/campaigns/complete-task`, {
-                method: 'POST',
-                body: JSON.stringify({ campaignId, taskId }),
-            });
-            setTasks((prev) => prev.map((task) =>
-                task.id === taskId ? { ...task, status: 'completed', completed: true } : task
-            ));
-            setUserStats((prev) => ({
-                ...prev,
-                earnings: response.balance || prev.earnings,
-                co2Saved: response.co2Saved || prev.co2Saved
-            }));
-            setCampaigns((prev) => prev.map((c) =>
-                c.id === campaignId ? {
-                    ...c,
-                    completed: (c.completed || 0) + 1,
-                    userCompleted: (c.userCompleted || 0) + 1
-                } : c
-            ));
-            setUserCampaigns((prev) => prev.map((c) =>
-                c.id === campaignId ? {
-                    ...c,
-                    completed: (c.completed || 0) + 1,
-                    userCompleted: (c.userCompleted || 0) + 1
-                } : c
-            ));
-            setError({
-                type: 'success',
-                message: `Task completed! Earned ${response.reward || '0'} RFX`,
-            });
-        } catch (error) {
-            console.error('Complete task error:', {
-                message: error.message,
-                response: error.response?.data,
-                status: error.response?.status
-            });
-            setError({
-                type: 'error',
-                message: error.message || 'Failed to complete task',
-            });
+// In your RFXCampaignPage component
+const handleCompleteTask = async (campaignId, taskId) => {
+    try {
+        const task = tasks.find(t => t.id === taskId);
+        
+        // For proof-upload tasks, we just upload proof and set to pending
+        if (task.type === 'proof-upload') {
+            // This should be handled by the proof upload modal
+            return;
         }
-    };
+
+        // For other tasks, complete immediately
+        const response = await fetchWithAuth(`${BASE_URL}/campaigns/complete-task`, {
+            method: 'POST',
+            body: JSON.stringify({ campaignId, taskId }),
+        });
+        
+        setTasks(prev => prev.map(t => 
+            t.id === taskId ? { ...t, status: 'completed', completed: true } : t
+        ));
+        
+        setUserStats(prev => ({
+            ...prev,
+            earnings: response.balance || prev.earnings,
+            co2Saved: response.co2Saved || prev.co2Saved
+        }));
+        
+        setCampaigns(prev => prev.map(c => 
+            c.id === campaignId ? {
+                ...c,
+                completed: (c.completed || 0) + 1,
+                userCompleted: (c.userCompleted || 0) + 1
+            } : c
+        ));
+        
+        setUserCampaigns(prev => prev.map(c => 
+            c.id === campaignId ? {
+                ...c,
+                completed: (c.completed || 0) + 1,
+                userCompleted: (c.userCompleted || 0) + 1
+            } : c
+        ));
+        
+        setError({
+            type: 'success',
+            message: `Task completed! Earned ${response.reward || '0'} RFX`,
+        });
+    } catch (error) {
+        console.error('Complete task error:', {
+            message: error.message,
+            response: error.response?.data,
+            status: error.response?.status
+        });
+        setError({
+            type: 'error',
+            message: error.message || 'Failed to complete task',
+        });
+    }
+};
 
     useEffect(() => {
         const timer = setInterval(() => {
