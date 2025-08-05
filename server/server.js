@@ -11,7 +11,7 @@ const ethers = require('ethers');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs'); // Added for file system operations
-const Game = require('./models/game');
+const Game = require('./models/Game');
 const Campaign = require('./models/campaign');
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
@@ -252,71 +252,328 @@ app.post('/auth/admin/verify', authenticateToken, async (req, res) => {
 // Routes
 app.post('/auth/signup', async (req, res) => {
     try {
-        const { username, email, password, fullName, walletAddress } = req.body;
+        const { username, email, password, fullName, referralCode } = req.body;
 
+        // Validation
         if (!username || !email || !password || !fullName) {
-            return res.status(400).json({ message: 'Username, email, password, and full name are required' });
-        }
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-            return res.status(400).json({ message: 'Invalid email format' });
-        }
-        if (password.length < 8 || !/[a-zA-Z]/.test(password) || !/[0-9]/.test(password) || !/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-            return res.status(400).json({ message: 'Password must be at least 8 characters long and include letters, numbers, and symbols' });
-        }
-        if (fullName.length < 1) {
-            return res.status(400).json({ message: 'Full name is required' });
+            return res.status(400).json({ 
+                message: 'Validation failed',
+                details: 'All fields are required'
+            });
         }
 
+        // Email validation
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            return res.status(400).json({ 
+                message: 'Validation failed',
+                details: 'Invalid email format'
+            });
+        }
+
+        // Password validation
+        if (password.length < 8 || !/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+            return res.status(400).json({ 
+                message: 'Validation failed',
+                details: 'Password must be at least 8 characters with letters and numbers'
+            });
+        }
+
+        // Check for existing user
         const existingUser = await User.findOne({ $or: [{ email }, { username }] });
         if (existingUser) {
-            return res.status(400).json({ message: 'Username or email already exists' });
+            return res.status(409).json({ 
+                message: 'Account exists',
+                details: existingUser.email === email 
+                    ? 'Email already in use' 
+                    : 'Username taken'
+            });
         }
 
+        // Handle referral if provided
+        let referrer = null;
+        if (referralCode) {
+            referrer = await User.findById(referralCode);
+            if (!referrer) {
+                return res.status(400).json({ 
+                    message: 'Invalid referral',
+                    details: 'Referral code not found' 
+                });
+            }
+            
+            // Additional referral validation
+            if (!referrer.isActive) {
+                return res.status(400).json({ 
+                    message: 'Invalid referral',
+                    details: 'Referrer account is inactive' 
+                });
+            }
+        }
+
+        // Create user
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
-        const passkey = uuidv4();
-
-        const user = new User({
+        
+        const userData = {
             username,
             email,
             password: hashedPassword,
-            passkey,
+            passkey: uuidv4(),
             fullName,
-            walletAddress: walletAddress || ethers.Wallet.createRandom().address,
-            isAdmin: email === 'abubakar.nabil.210@gmail.com'
-        });
+            walletAddress: null,
+            isAdmin: email === process.env.ADMIN_EMAIL,
+            referredBy: referrer?._id,
+            referralStats: {
+                totalReferrals: 0,
+                activeReferrals: 0
+            }
+        };
 
+        const user = new User(userData);
         await user.save();
 
-// In your /auth/login route
-const token = jwt.sign(
-    { 
-        userId: user._id, 
-        email: user.email,
-        isAdmin: user.isAdmin,
-        isSuperAdmin: user.email === process.env.SUPER_ADMIN_EMAIL
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: '7d' }
-);
+        // Handle referral bonuses if applicable
+        if (referrer) {
+            try {
+                const newUserBonus = parseFloat(process.env.REFERRAL_BONUS_NEW_USER || '0.0001');
+                const referrerBonus = parseFloat(process.env.REFERRAL_BONUS_REFERRER || '0.0005');
+                
+                // Update referrer's data
+                referrer.referrals.push(user._id);
+                referrer.earnings += referrerBonus;
+                referrer.referralStats.totalReferrals += 1;
+                referrer.referralStats.activeReferrals += 1;
+                
+                // Update new user's data
+                user.earnings += newUserBonus;
+                
+                // Create transactions
+                const referrerTransaction = new Transaction({
+                    userId: referrer._id,
+                    amount: referrerBonus,
+                    type: 'referral',
+                    category: 'Bonus',
+                    activity: 'Referral Bonus',
+                    description: `Earned for referring ${user.username}`,
+                    timestamp: new Date()
+                });
+                
+                const newUserTransaction = new Transaction({
+                    userId: user._id,
+                    amount: newUserBonus,
+                    type: 'referral',
+                    category: 'Bonus',
+                    activity: 'Referral Welcome Bonus',
+                    description: `Received for signing up with referral`,
+                    timestamp: new Date()
+                });
+                
+                await Promise.all([
+                    referrer.save(),
+                    user.save(),
+                    referrerTransaction.save(),
+                    newUserTransaction.save()
+                ]);
+            } catch (referralError) {
+                console.error('Referral bonus error:', referralError);
+                // Don't fail signup if referral bonuses fail
+            }
+        }
+
+        // Generate token
+        const token = jwt.sign(
+            { 
+                userId: user._id, 
+                email: user.email,
+                isAdmin: user.isAdmin,
+                isSuperAdmin: user.email === process.env.SUPER_ADMIN_EMAIL
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
 
         res.status(201).json({
+            success: true,
+            message: 'Account created successfully',
             token,
             user: {
                 id: user._id,
                 username: user.username,
                 email: user.email,
                 fullName: user.fullName,
-                walletAddress: user.walletAddress,
-                isAdmin: user.isAdmin
+                isAdmin: user.isAdmin,
+                referralLink: `${process.env.FRONTEND_URL}/signup?ref=${user._id}`
             },
-            passkey
+            referralApplied: !!referrer
         });
-    } catch (err) {
-        console.error('Signup error:', err);
-        res.status(500).json({ message: 'Server error' });
+
+    } catch (error) {
+        console.error('Signup error:', error);
+        res.status(500).json({ 
+            success: false,
+            message: 'Account creation failed',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
     }
 });
+
+// Helper Functions
+
+function validateSignupInput(username, email, password, fullName) {
+    const errors = [];
+    
+    if (!username) errors.push('Username is required');
+    if (!email) errors.push('Email is required');
+    if (!password) errors.push('Password is required');
+    if (!fullName) errors.push('Full name is required');
+    
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        errors.push('Invalid email format');
+    }
+    
+    if (password) {
+        if (password.length < 8) errors.push('Password must be at least 8 characters');
+        if (!/[a-zA-Z]/.test(password)) errors.push('Password must contain letters');
+        if (!/[0-9]/.test(password)) errors.push('Password must contain numbers');
+        if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+            errors.push('Password must contain special characters');
+        }
+    }
+    
+    return errors;
+}
+
+async function processReferral(referralCode) {
+    if (!referralCode) return { valid: false, message: 'No referral code provided' };
+    
+    try {
+        const referrer = await User.findById(referralCode);
+        if (!referrer) {
+            return { 
+                valid: false, 
+                message: 'Referral code not found' 
+            };
+        }
+        
+        if (!referrer.isActive) {
+            return { 
+                valid: false, 
+                message: 'Referrer account is inactive' 
+            };
+        }
+        
+        return { 
+            valid: true, 
+            referrer,
+            message: 'Valid referral code' 
+        };
+    } catch (error) {
+        console.error('Referral processing error:', error);
+        return { 
+            valid: false, 
+            message: 'Error processing referral' 
+        };
+    }
+}
+
+async function createNewUser(username, email, password, fullName, referrer = null) {
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+    
+    const userData = {
+        username,
+        email,
+        password: hashedPassword,
+        passkey: uuidv4(),
+        fullName,
+        walletAddress: null,
+        isAdmin: email === process.env.ADMIN_EMAIL,
+        referredBy: referrer?._id,
+        referralStats: {
+            totalReferrals: 0,
+            activeReferrals: 0
+        }
+    };
+    
+    const user = new User(userData);
+    await user.save();
+    return user;
+}
+
+async function applyReferralBonuses(newUser, referrer) {
+    try {
+        const newUserBonus = parseFloat(process.env.REFERRAL_BONUS_NEW_USER || '0.0001');
+        const referrerBonus = parseFloat(process.env.REFERRAL_BONUS_REFERRER || '0.0005');
+        
+        // Update referrer's data
+        referrer.referrals.push(newUser._id);
+        referrer.earnings += referrerBonus;
+        referrer.referralStats.totalReferrals += 1;
+        referrer.referralStats.activeReferrals += 1;
+        
+        // Update new user's data
+        newUser.earnings += newUserBonus;
+        
+        // Create transactions for both users
+        const referrerTransaction = new Transaction({
+            userId: referrer._id,
+            amount: referrerBonus,
+            type: 'referral',
+            category: 'Bonus',
+            activity: 'Referral Bonus',
+            description: `Earned ${referrerBonus} for referring ${newUser.username}`,
+            timestamp: new Date()
+        });
+        
+        const newUserTransaction = new Transaction({
+            userId: newUser._id,
+            amount: newUserBonus,
+            type: 'referral',
+            category: 'Bonus',
+            activity: 'Referral Welcome Bonus',
+            description: `Received ${newUserBonus} for signing up with referral`,
+            timestamp: new Date()
+        });
+        
+        await Promise.all([
+            referrer.save(),
+            newUser.save(),
+            referrerTransaction.save(),
+            newUserTransaction.save()
+        ]);
+        
+    } catch (error) {
+        console.error('Failed to apply referral bonuses:', error);
+        // Don't fail the signup if bonuses fail
+    }
+}
+
+function generateAuthToken(user) {
+    return jwt.sign(
+        { 
+            userId: user._id, 
+            email: user.email,
+            isAdmin: user.isAdmin,
+            isSuperAdmin: user.email === process.env.SUPER_ADMIN_EMAIL
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: '7d' }
+    );
+}
+
+function formatUserResponse(user) {
+    return {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        fullName: user.fullName,
+        walletAddress: user.walletAddress,
+        isAdmin: user.isAdmin,
+        isSuperAdmin: user.email === process.env.SUPER_ADMIN_EMAIL,
+        earnings: user.earnings,
+        referralLink: `${process.env.FRONTEND_URL}/signup?ref=${user._id}`
+    };
+}
+
 
 app.post('/auth/login', async (req, res) => {
     try {
@@ -751,6 +1008,34 @@ app.get('/user/referral-link', authenticateToken, async (req, res) => {
         res.status(200).json({ referralLink });
     } catch (err) {
         console.error('Get referral link error:', err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+app.get('/user/referral-info', authenticateToken, async (req, res) => {
+    try {
+        const user = await User.findById(req.user.userId)
+            .select('username referrals referralEarnings')
+            .populate({
+                path: 'referrals',
+                select: 'username createdAt earnings',
+                options: { sort: { createdAt: -1 } }
+            });
+        
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        const referralLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/signup?ref=${user._id}`;
+        
+        res.status(200).json({ 
+            referralLink,
+            referralCount: user.referrals.length,
+            referralEarnings: user.referralEarnings || 0,
+            referrals: user.referrals
+        });
+    } catch (err) {
+        console.error('Get referral info error:', err);
         res.status(500).json({ message: 'Server error' });
     }
 });

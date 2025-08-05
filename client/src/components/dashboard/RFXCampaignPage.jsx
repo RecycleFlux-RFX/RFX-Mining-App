@@ -6,7 +6,7 @@ import {
     Home, MapPin, Gamepad2, Wallet, Settings,
     Recycle, Leaf, Target, Clock, Trophy, Star, Award, Globe,
     ArrowRight, CheckCircle, Play, Droplets, TreePine, Wind, Upload,
-    BookOpen, Link as LinkIcon
+    BookOpen, Link as LinkIcon, Users
 } from 'lucide-react';
 import {
     FaTwitter as Twitter,
@@ -270,13 +270,14 @@ export default function RFXCampaignPage() {
     }, [selectedCampaign]);
 
     useEffect(() => {
-        const navItems = [
-            { id: 'home', path: '/' },
-            { id: 'campaign', path: '/campaign' },
-            { id: 'games', path: '/games' },
-            { id: 'wallet', path: '/wallet' },
-            { id: 'settings', path: '/settings' },
-        ];
+const navItems = [
+    { icon: Home, label: 'Home', id: 'home', path: '/' },
+    { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
+    { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
+    { icon: Users, label: 'Referrals', id: 'referrals', path: '/referrals' },
+    { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
+    { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' },
+];
 
         const currentNavItem = navItems.find((item) => item.path === location.pathname);
         if (currentNavItem) {

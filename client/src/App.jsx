@@ -19,6 +19,7 @@ import AdminCampaignDashboard from './components/admin/adminCampaignDashboard';
 import TrivaInterface from './components/TriviaInterface';
 import SuperAdminDashboard from './components/admin/SuperAdminDashboard';
 import PasscodeVerify from './components/admin/PasscodeVerify';
+import ReferralsPage from './components/dashboard/ReferralsPage';
 
 // Admin Route Protection Component
 const ProtectedAdminRoute = ({ children, superAdminOnly = false }) => {
@@ -81,6 +82,9 @@ function App() {
                 <Route path="/campaign" element={<RFXCampaignPage />} />
                 <Route path="/settings" element={<RFXSettingsPage />} />
                 <Route path="/wallet" element={<RFXWalletPage />} />
+
+                {/* Referrals */}
+                <Route path="/referrals" element={<ReferralsPage />} />
 
                 {/* Admin Routes */}
                 <Route

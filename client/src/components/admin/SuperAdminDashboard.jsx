@@ -577,26 +577,13 @@ const SuperAdminDashboard = () => {
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <ErrorBoundary>
-                <AreaChart data={userGrowthData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-<Tooltip 
-  contentStyle={{ 
-    backgroundColor: '#fff', 
-    border: '1px solid #eee',
-    borderRadius: '4px',
-    padding: '8px'
-  }}
-  itemStyle={{ 
-    color: '#333',
-    fontSize: '12px'
-  }}
-  formatter={(value) => [value, value === 'active' ? 'Active Users' : 'New Users']}
-  labelFormatter={(label) => `Date: ${label}`}
-/>
-                  <Area type="monotone" dataKey="users" stroke="#8884d8" fill="#8884d8" />
-                </AreaChart>
+<AreaChart data={userGrowthData}>
+  <CartesianGrid strokeDasharray="3 3" />
+  <XAxis dataKey="name" />
+  <YAxis />
+  <Tooltip />
+  <Area type="monotone" dataKey="users" stroke="#8884d8" fill="#8884d8" />
+</AreaChart>
               </ErrorBoundary>
             </ResponsiveContainer>
           </div>
@@ -608,37 +595,24 @@ const SuperAdminDashboard = () => {
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <ErrorBoundary>
-                <PieChart>
-                  <Pie
-                    data={campaignStatusData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  >
-                    {campaignStatusData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-<Tooltip 
-  contentStyle={{ 
-    backgroundColor: '#fff', 
-    border: '1px solid #eee',
-    borderRadius: '4px',
-    padding: '8px'
-  }}
-  itemStyle={{ 
-    color: '#333',
-    fontSize: '12px'
-  }}
-  formatter={(value) => [value, value === 'active' ? 'Active Users' : 'New Users']}
-  labelFormatter={(label) => `Date: ${label}`}
-/>
-                  <Legend />
-                </PieChart>
+<PieChart>
+  <Pie
+    data={campaignStatusData}
+    cx="50%"
+    cy="50%"
+    labelLine={false}
+    outerRadius={80}
+    fill="#8884d8"
+    dataKey="value"
+    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
+  >
+    {campaignStatusData.map((entry, index) => (
+      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+    ))}
+  </Pie>
+  <Tooltip />
+  <Legend />
+</PieChart>
               </ErrorBoundary>
             </ResponsiveContainer>
           </div>
@@ -844,28 +818,15 @@ const SuperAdminDashboard = () => {
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <ErrorBoundary>
-              <BarChart data={campaignPerformanceData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-<Tooltip 
-  contentStyle={{ 
-    backgroundColor: '#fff', 
-    border: '1px solid #eee',
-    borderRadius: '4px',
-    padding: '8px'
-  }}
-  itemStyle={{ 
-    color: '#333',
-    fontSize: '12px'
-  }}
-  formatter={(value) => [value, value === 'active' ? 'Active Users' : 'New Users']}
-  labelFormatter={(label) => `Date: ${label}`}
-/>
-                <Legend />
-                <Bar dataKey="participants" fill="#8884d8" name="Participants" />
-                <Bar dataKey="completed" fill="#82ca9d" name="Completed" />
-              </BarChart>
+<BarChart data={campaignPerformanceData}>
+  <CartesianGrid strokeDasharray="3 3" />
+  <XAxis dataKey="name" />
+  <YAxis />
+  <Tooltip />
+  <Legend />
+  <Bar dataKey="participants" fill="#8884d8" name="Participants" />
+  <Bar dataKey="completed" fill="#82ca9d" name="Completed" />
+</BarChart>
             </ErrorBoundary>
           </ResponsiveContainer>
         </div>
@@ -1022,28 +983,15 @@ const SuperAdminDashboard = () => {
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <ErrorBoundary>
-              <LineChart data={userActivityData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-<Tooltip 
-  contentStyle={{ 
-    backgroundColor: '#fff', 
-    border: '1px solid #eee',
-    borderRadius: '4px',
-    padding: '8px'
-  }}
-  itemStyle={{ 
-    color: '#333',
-    fontSize: '12px'
-  }}
-  formatter={(value) => [value, value === 'active' ? 'Active Users' : 'New Users']}
-  labelFormatter={(label) => `Date: ${label}`}
-/>
-                <Legend />
-                <Line type="monotone" dataKey="active" stroke="#8884d8" activeDot={{ r: 8 }} />
-                <Line type="monotone" dataKey="new" stroke="#82ca9d" />
-              </LineChart>
+<LineChart data={userActivityData}>
+  <CartesianGrid strokeDasharray="3 3" />
+  <XAxis dataKey="name" />
+  <YAxis />
+  <Tooltip />
+  <Legend />
+  <Line type="monotone" dataKey="active" stroke="#8884d8" activeDot={{ r: 8 }} />
+  <Line type="monotone" dataKey="new" stroke="#82ca9d" />
+</LineChart>
             </ErrorBoundary>
           </ResponsiveContainer>
         </div>
@@ -1055,28 +1003,15 @@ const SuperAdminDashboard = () => {
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <ErrorBoundary>
-              <BarChart data={campaignPerformanceData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
-<Tooltip 
-  contentStyle={{ 
-    backgroundColor: '#fff', 
-    border: '1px solid #eee',
-    borderRadius: '4px',
-    padding: '8px'
-  }}
-  itemStyle={{ 
-    color: '#333',
-    fontSize: '12px'
-  }}
-  formatter={(value) => [value, value === 'active' ? 'Active Users' : 'New Users']}
-  labelFormatter={(label) => `Date: ${label}`}
-/>
-                <Legend />
-                <Bar dataKey="participants" fill="#8884d8" name="Participants" />
-                <Bar dataKey="completed" fill="#82ca9d" name="Completed" />
-              </BarChart>
+<BarChart data={campaignPerformanceData}>
+  <CartesianGrid strokeDasharray="3 3" />
+  <XAxis dataKey="name" />
+  <YAxis />
+  <Tooltip />
+  <Legend />
+  <Bar dataKey="participants" fill="#8884d8" name="Participants" />
+  <Bar dataKey="completed" fill="#82ca9d" name="Completed" />
+</BarChart>
             </ErrorBoundary>
           </ResponsiveContainer>
         </div>

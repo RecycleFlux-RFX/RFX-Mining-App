@@ -58,6 +58,16 @@ const userSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
     }],
+    referralEarnings: {
+    type: Number,
+    default: 0,
+    min: 0
+    },
+    referralStats: {
+    totalReferrals: { type: Number, default: 0 },
+    activeReferrals: { type: Number, default: 0 },
+    lastReferral: { type: Date }
+},
     lastClaim: {
         type: Date,
         default: null
@@ -181,6 +191,7 @@ const userSchema = new mongoose.Schema({
         gamesPlayed: { type: Number, default: 0 },
         tokensEarned: { type: Number, default: 0 }
     },
+        
     gamePlays: [{
         gameId: { type: mongoose.Schema.Types.ObjectId, ref: 'Game' },
         title: String,
@@ -191,5 +202,32 @@ const userSchema = new mongoose.Schema({
 
 userSchema.index({ 'campaigns.campaignId': 1 });
 userSchema.index({ 'tasks.campaignId': 1, 'tasks.taskId': 1 });
+// Add this to your user schema (before the model is created)
+userSchema.post('save', async function(user) {
+    // If user has earnings and was referred
+    if (user.earnings > 0 && user.referredBy) {
+        const referrer = await User.findById(user.referredBy);
+        if (referrer) {
+            const commission = user.earnings * 0.2; // 20% commission
+            
+            referrer.referralEarnings += commission;
+            referrer.earnings += commission;
+            
+            // Create transaction for referrer
+            const transaction = new Transaction({
+                userId: referrer._id,
+                amount: commission,
+                type: 'earn',
+                category: 'Referral',
+                activity: 'Referral Commission',
+                description: `Commission from ${user.username}'s earnings`,
+                color: 'purple',
+                timestamp: new Date()
+            });
+            
+            await Promise.all([referrer.save(), transaction.save()]);
+        }
+    }
+});
 
 module.exports = mongoose.model('User', userSchema);

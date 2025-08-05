@@ -1,21 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Eye, EyeOff, Lock, User, Gift, CheckCircle, AlertCircle, Mail } from 'lucide-react';
-import { Link } from 'react-router-dom';
-import api from '../api/api'; // Import the Axios instance
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import api from '../api/api';
 
 export default function Signup() {
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [success, setSuccess] = useState(null);
     const [passkey, setPasskey] = useState(null);
+    const [referralStatus, setReferralStatus] = useState(null);
+    const location = useLocation();
+    const navigate = useNavigate();
+    
     const [formData, setFormData] = useState({
         username: '',
         email: '',
-        fullName: '', // Added fullName field
+        fullName: '',
         password: '',
-        confirmPassword: ''
+        confirmPassword: '',
+        referralCode: ''
     });
+
+    // Extract referral code from URL if present
+    useEffect(() => {
+        const params = new URLSearchParams(location.search);
+        const refCode = params.get('ref');
+        if (refCode) {
+            setFormData(prev => ({ ...prev, referralCode: refCode }));
+            setReferralStatus({
+                code: refCode,
+                valid: null,
+                message: 'Referral code detected'
+            });
+        }
+    }, [location.search]);
 
     const handleInputChange = (field, value) => {
         setFormData(prev => ({ ...prev, [field]: value }));
@@ -58,6 +78,7 @@ export default function Signup() {
         e.preventDefault();
         setIsLoading(true);
         setError(null);
+        setSuccess(null);
         setPasskey(null);
 
         if (!validateForm()) {
@@ -66,33 +87,90 @@ export default function Signup() {
         }
 
         try {
-            console.log('Sending signup request with payload:', {
+            // Prepare the data to send, excluding empty referral code
+            const payload = {
                 username: formData.username,
                 email: formData.email,
-                fullName: formData.fullName, // Include fullName in payload
-                password: formData.password
-            });
-            const response = await api.post('/auth/signup', {
-                username: formData.username,
-                email: formData.email,
-                fullName: formData.fullName, // Include fullName in request
-                password: formData.password
-            });
-            console.log('Signup response:', response.data);
+                fullName: formData.fullName,
+                password: formData.password,
+                ...(formData.referralCode && { referralCode: formData.referralCode })
+            };
 
-            const { token, user, passkey: generatedPasskey } = response.data;
+            const response = await api.post('/auth/signup', payload);
 
+            const { token, user, passkey: generatedPasskey, referralApplied } = response.data;
+
+            // Store auth data
             localStorage.setItem('authToken', token);
             localStorage.setItem('rememberedKey', generatedPasskey);
             localStorage.setItem('user', JSON.stringify(user));
 
+            // Show success message
             setPasskey(generatedPasskey);
-            console.log('Signup successful:', user);
-            // Redirect to dashboard after successful signup
-            window.location.href = '/dashboard';
+            setSuccess('Account created successfully!');
+            
+            // Update referral status if applicable
+            if (referralApplied) {
+                setReferralStatus(prev => ({
+                    ...prev,
+                    valid: true,
+                    message: 'Referral bonus applied!'
+                }));
+            }
+
+            // Redirect after a short delay
+            setTimeout(() => {
+                navigate('/', { replace: true });
+            }, 2000);
+
         } catch (err) {
             console.error('Signup error:', err.response?.data);
-            setError(err.response?.data?.message || 'Signup failed. Please try again.');
+            
+            // Handle referral-specific errors
+            if (err.response?.data?.message === 'Invalid referral') {
+                const shouldContinue = window.confirm(
+                    `${err.response.data.details}. Would you like to continue without the referral?`
+                );
+                
+                if (shouldContinue) {
+                    // Retry without referral code
+                    try {
+                        const retryResponse = await api.post('/auth/signup', {
+                            username: formData.username,
+                            email: formData.email,
+                            fullName: formData.fullName,
+                            password: formData.password
+                        });
+
+                        const { token, user, passkey: generatedPasskey } = retryResponse.data;
+                        
+                        localStorage.setItem('authToken', token);
+                        localStorage.setItem('rememberedKey', generatedPasskey);
+                        localStorage.setItem('user', JSON.stringify(user));
+                        
+                        setPasskey(generatedPasskey);
+                        setSuccess('Account created successfully!');
+                        setReferralStatus(null);
+                        
+                        setTimeout(() => {
+                            navigate('/', { replace: true });
+                        }, 2000);
+                        
+                        return;
+                    } catch (retryError) {
+                        console.error('Retry signup error:', retryError);
+                        setError(retryError.response?.data?.message || 'Signup failed. Please try again.');
+                    }
+                } else {
+                    setReferralStatus(prev => ({
+                        ...prev,
+                        valid: false,
+                        message: err.response.data.details
+                    }));
+                }
+            } else {
+                setError(err.response?.data?.message || 'Signup failed. Please try again.');
+            }
         } finally {
             setIsLoading(false);
         }
@@ -117,6 +195,7 @@ export default function Signup() {
                         </p>
                     </div>
 
+                    {/* Error Message */}
                     {error && (
                         <div className="flex items-center space-x-2 p-4 bg-red-50 rounded-xl text-red-600 mb-6">
                             <AlertCircle className="w-5 h-5" />
@@ -124,17 +203,40 @@ export default function Signup() {
                         </div>
                     )}
 
-                    {passkey && (
+                    {/* Success Message */}
+                    {success && (
                         <div className="flex items-center space-x-2 p-4 bg-green-50 rounded-xl text-green-600 mb-6">
                             <CheckCircle className="w-5 h-5" />
+                            <span className="text-sm">{success}</span>
+                        </div>
+                    )}
+
+                    {/* Passkey Display */}
+                    {passkey && (
+                        <div className="flex items-start space-x-2 p-4 bg-blue-50 rounded-xl text-blue-600 mb-6">
+                            <Lock className="w-5 h-5 mt-0.5 flex-shrink-0" />
                             <div className="text-sm">
-                                <span>Use this passkey during login: </span>
-                                <span className="font-mono font-bold text-green-700">{passkey}</span>
+                                <p className="font-medium">Your passkey:</p>
+                                <p className="font-mono font-bold text-blue-700 break-all">{passkey}</p>
+                                <p className="text-blue-500 mt-1">Save this securely for login.</p>
                             </div>
                         </div>
                     )}
 
+                    {/* Referral Status */}
+                    {referralStatus && (
+                        <div className={`flex items-center space-x-2 p-4 rounded-xl mb-6 ${
+                            referralStatus.valid === true ? 'bg-green-50 text-green-600' :
+                            referralStatus.valid === false ? 'bg-yellow-50 text-yellow-600' :
+                            'bg-blue-50 text-blue-600'
+                        }`}>
+                            <Gift className="w-5 h-5" />
+                            <span className="text-sm">{referralStatus.message}</span>
+                        </div>
+                    )}
+
                     <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+                        {/* Username Field */}
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-700">Username</label>
                             <div className="relative">
@@ -151,6 +253,7 @@ export default function Signup() {
                             </div>
                         </div>
 
+                        {/* Full Name Field */}
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-700">Full Name</label>
                             <div className="relative">
@@ -167,6 +270,7 @@ export default function Signup() {
                             </div>
                         </div>
 
+                        {/* Email Field */}
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-700">Email</label>
                             <div className="relative">
@@ -183,6 +287,7 @@ export default function Signup() {
                             </div>
                         </div>
 
+                        {/* Password Field */}
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-700">Create Password</label>
                             <div className="relative">
@@ -210,6 +315,7 @@ export default function Signup() {
                             </p>
                         </div>
 
+                        {/* Confirm Password Field */}
                         <div className="space-y-2">
                             <label className="text-sm font-medium text-slate-700">Confirm Password</label>
                             <div className="relative">
@@ -234,6 +340,25 @@ export default function Signup() {
                             </div>
                         </div>
 
+                        {/* Referral Code Field (only shown if not from URL) */}
+                        {!location.search.includes('ref=') && (
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-slate-700">Referral Code (optional)</label>
+                                <div className="relative">
+                                    <Gift className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        value={formData.referralCode}
+                                        onChange={(e) => handleInputChange('referralCode', e.target.value)}
+                                        placeholder="Enter referral code if you have one"
+                                        className="w-full pl-10 pr-4 py-3 sm:py-4 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all text-slate-900 placeholder-slate-400"
+                                        aria-label="Referral code"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Terms Checkbox */}
                         <div className="flex items-start space-x-2">
                             <input
                                 type="checkbox"
@@ -253,13 +378,15 @@ export default function Signup() {
                             </span>
                         </div>
 
+                        {/* Submit Button */}
                         <button
                             type="submit"
                             disabled={isLoading}
-                            className={`w-full py-3 sm:py-4 px-4 rounded-xl font-semibold text-white transition-all ${isLoading
-                                ? 'bg-gray-400 cursor-not-allowed'
-                                : 'bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700 active:scale-95 shadow-lg'
-                                }`}
+                            className={`w-full py-3 sm:py-4 px-4 rounded-xl font-semibold text-white transition-all ${
+                                isLoading
+                                    ? 'bg-gray-400 cursor-not-allowed'
+                                    : 'bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-700 hover:to-teal-700 active:scale-95 shadow-lg'
+                            }`}
                         >
                             {isLoading ? (
                                 <div className="flex items-center justify-center space-x-2">
@@ -271,6 +398,8 @@ export default function Signup() {
                             )}
                         </button>
 
+                        
+                        {/* Login Link */}
                         <div className="text-center pt-4">
                             <span className="text-slate-600">Already have an account? </span>
                             <Link
@@ -282,6 +411,8 @@ export default function Signup() {
                         </div>
                     </form>
 
+                    
+                    {/* Footer */}
                     <div className="mt-8 pt-6 border-t border-slate-200">
                         <p className="text-xs text-slate-500 text-center">
                             © {new Date().getFullYear()} RecycleFlux. All rights reserved.
