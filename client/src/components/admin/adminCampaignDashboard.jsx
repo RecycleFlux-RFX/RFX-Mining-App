@@ -13,6 +13,7 @@ import 'react-tabs/style/react-tabs.css';
 import { format, addDays } from 'date-fns';
 import { toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import axios from 'axios';
 
 Modal.setAppElement('#root');
 
@@ -37,24 +38,6 @@ const AdminCampaignDashboard = () => {
         if (savedMode !== null) return savedMode === 'true';
         return window.matchMedia('(prefers-color-scheme: dark)').matches;
     });
-
-    // Check admin authentication on mount
-    useEffect(() => {
-        const isAdmin = localStorage.getItem('isAdmin') === 'true';
-        const isAuthenticated = localStorage.getItem('adminAuthenticated') === 'true';
-        
-        if (!isAdmin || !isAuthenticated) {
-            navigate('/login');
-        }
-    }, [navigate]);
-
-    const handleLogout = () => {
-        // Clear all admin auth flags
-        localStorage.removeItem('isAdmin');
-        localStorage.removeItem('adminAuthenticated');
-        localStorage.removeItem('token'); // Clear token as well
-        navigate('/login');
-    };
 
     // Toggle dark mode and save preference
     const toggleDarkMode = () => {
@@ -113,38 +96,41 @@ const AdminCampaignDashboard = () => {
 
     // Fetch campaigns on mount
     useEffect(() => {
-        const fetchCampaigns = async () => {
-            setLoading(true);
-            try {
-                const token = localStorage.getItem('token');
-                if (!token) {
-                    throw new Error('No authentication token found. Please log in.');
-                }
+// AdminCampaignDashboard.jsx
+const fetchCampaigns = async () => {
+    setLoading(true);
+    try {
+        const token = localStorage.getItem('authToken');
+        const isAdmin = localStorage.getItem('isAdmin');
+        
+        if (!token || !isAdmin) {
+            throw new Error('Admin not authenticated. Please log in.');
+        }
 
-                const response = await api.get('/admin/campaigns', {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        'Content-Type': 'application/json',
-                    },
-                    params: {
-                        createdByMe: showMyCampaigns,
-                    },
-                });
-                setCampaigns(Array.isArray(response.data) ? response.data : []);
-            } catch (error) {
-                console.error('Error fetching campaigns:', error);
-                setError(error.response?.data?.message || error.message);
-                setCampaigns([]);
-                toast.error('Failed to fetch campaigns: ' + (error.response?.data?.message || error.message));
-                
-                // If unauthorized, redirect to login
-                if (error.response?.status === 401) {
-                    handleLogout();
-                }
-            } finally {
-                setLoading(false);
-            }
-        };
+        const response = await api.get('/admin/campaigns', {
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            params: {
+                createdByMe: showMyCampaigns,
+            },
+        });
+        setCampaigns(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+        console.error('Error fetching campaigns:', error);
+        setError(error.response?.data?.message || error.message);
+        setCampaigns([]);
+        toast.error('Failed to fetch campaigns: ' + (error.response?.data?.message || error.message));
+        
+        // Redirect to login if not authenticated
+        if (error.response?.status === 401 || error.message.includes('authenticated')) {
+            navigate('/admin/login');
+        }
+    } finally {
+        setLoading(false);
+    }
+};
 
         fetchCampaigns();
     }, [showMyCampaigns]);
@@ -154,12 +140,7 @@ const AdminCampaignDashboard = () => {
         if (selectedCampaign) {
             const fetchCampaignDetails = async () => {
                 try {
-                    const token = localStorage.getItem('token');
-                    if (!token) {
-                        handleLogout();
-                        return;
-                    }
-
+                    const token = localStorage.getItem('authToken');
                     const response = await api.get(`/admin/campaigns/${selectedCampaign._id}`, {
                         headers: {
                             Authorization: `Bearer ${token}`,
@@ -183,9 +164,6 @@ const AdminCampaignDashboard = () => {
                 } catch (err) {
                     setError(err.response?.data?.message || 'Failed to fetch campaign details');
                     toast.error(err.response?.data?.message || 'Failed to fetch campaign details');
-                    if (err.response?.status === 401) {
-                        handleLogout();
-                    }
                 }
             };
 
@@ -241,12 +219,7 @@ const AdminCampaignDashboard = () => {
         setLoading(true);
 
         try {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                handleLogout();
-                return;
-            }
-
+            const token = localStorage.getItem('authToken');
             const formPayload = new FormData();
 
             // Append all form data
@@ -310,10 +283,6 @@ const AdminCampaignDashboard = () => {
                 'Failed to save campaign';
             setError(errorMsg);
             toast.error(errorMsg);
-            
-            if (err.response?.status === 401) {
-                handleLogout();
-            }
         } finally {
             setLoading(false);
         }
@@ -325,12 +294,7 @@ const AdminCampaignDashboard = () => {
         setLoading(true);
 
         try {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                handleLogout();
-                return;
-            }
-
+            const token = localStorage.getItem('authToken');
             let contentUrl = taskForm.contentUrl;
 
             // Handle file upload if present
@@ -383,10 +347,6 @@ const AdminCampaignDashboard = () => {
             const errorMsg = err.response?.data?.message || 'Failed to add task';
             setError(errorMsg);
             toast.error(errorMsg);
-            
-            if (err.response?.status === 401) {
-                handleLogout();
-            }
         } finally {
             setLoading(false);
         }
@@ -399,12 +359,7 @@ const AdminCampaignDashboard = () => {
         }
 
         try {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                handleLogout();
-                return;
-            }
-
+            const token = localStorage.getItem('authToken');
             await api.delete(
                 `/admin/campaigns/${id}`,
                 {
@@ -428,22 +383,13 @@ const AdminCampaignDashboard = () => {
             const errorMsg = err.response?.data?.message || 'Failed to delete campaign';
             setError(errorMsg);
             toast.error(errorMsg);
-            
-            if (err.response?.status === 401) {
-                handleLogout();
-            }
         }
     };
 
     // Approve/reject proof
     const handleApproveProof = async (taskId, userId, approve) => {
         try {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                handleLogout();
-                return;
-            }
-
+            const token = localStorage.getItem('authToken');
             await api.post(
                 `/admin/campaigns/${selectedCampaign._id}/approve-proof`,
                 { taskId, userId, approve },
@@ -501,10 +447,6 @@ const AdminCampaignDashboard = () => {
             const errorMsg = err.response?.data?.message || 'Failed to update proof status';
             setError(errorMsg);
             toast.error(errorMsg);
-            
-            if (err.response?.status === 401) {
-                handleLogout();
-            }
         }
     };
 
@@ -512,12 +454,7 @@ const AdminCampaignDashboard = () => {
         if (selectedProofs.length === 0) return;
 
         try {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                handleLogout();
-                return;
-            }
-
+            const token = localStorage.getItem('authToken');
             await Promise.all(selectedProofs.map(async ({ taskId, userId }) => {
                 await api.post(
                     `/admin/campaigns/${selectedCampaign._id}/approve-proof`,
@@ -557,10 +494,6 @@ const AdminCampaignDashboard = () => {
             const errorMsg = err.response?.data?.message || 'Failed to bulk update proofs';
             setError(errorMsg);
             toast.error(errorMsg);
-            
-            if (err.response?.status === 401) {
-                handleLogout();
-            }
         }
     };
 
@@ -800,11 +733,11 @@ const AdminCampaignDashboard = () => {
                                 {darkMode ? <Sun size={18} /> : <Moon size={18} />}
                             </button>
                             <button
-                                onClick={handleLogout}
+                                onClick={() => navigate('/admin')}
                                 className={`flex items-center space-x-2 ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'bg-gray-100 hover:bg-gray-200'} px-4 py-2 rounded-xl transition-all duration-200`}
                             >
                                 <Settings size={18} />
-                                <span className="font-medium">Logout</span>
+                                <span className="font-medium">Admin Dashboard</span>
                             </button>
                         </div>
                     </div>

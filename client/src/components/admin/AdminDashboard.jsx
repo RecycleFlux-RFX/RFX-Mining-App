@@ -5,12 +5,14 @@ import { LogOut, List } from 'react-feather'; // Import List icon for campaigns
 const AdminDashboard = () => {
     const navigate = useNavigate();
 
-    const handleLogout = () => {
-        // Clear all admin auth flags
-        localStorage.removeItem('isAdmin');
-        localStorage.removeItem('adminAuthenticated');
-        navigate('/login');
-    };
+// AdminDashboard.jsx
+const handleLogout = () => {
+    // Clear all auth flags
+    localStorage.removeItem('isAdmin');
+    localStorage.removeItem('adminAuthenticated');
+    localStorage.removeItem('token'); // Add this
+    navigate('/login');
+};
 
     return (
         <div className="min-h-screen bg-gray-100">
