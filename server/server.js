@@ -2785,7 +2785,7 @@ app.post('/admin/campaigns/:id/approve-proof', [authenticateToken, adminAuth], a
         const { taskId, userId, approve } = req.body;
         const campaignId = req.params.id;
 
-        const campaign = await Campaign.findById(campaignId);
+        const campaign = await Campaign.findById(campaignId); 
         if (!campaign) {
             return res.status(404).json({ message: 'Campaign not found' });
         }
@@ -3009,6 +3009,167 @@ app.delete('/admin/campaigns/:id', [authenticateToken, adminAuth], async (req, r
     } catch (err) {
         console.error('Delete campaign error:', err);
         res.status(500).json({ message: 'Failed to delete campaign' });
+    }
+});
+
+
+app.get('/admin/campaigns/:id/tasks/:taskId', [authenticateToken, adminAuth], async (req, res) => {
+    try {
+        const { id: campaignId, taskId } = req.params;
+
+        const campaign = await Campaign.findById(campaignId);
+        if (!campaign) {
+            return res.status(404).json({ message: 'Campaign not found' });
+        }
+
+        const task = campaign.tasksList.id(taskId);
+        if (!task) {
+            return res.status(404).json({ message: 'Task not found' });
+        }
+
+        res.json(task);
+    } catch (err) {
+        console.error('Get task error:', err);
+        res.status(500).json({ message: 'Failed to get task' });
+    }
+});
+
+// Create a new task in a campaign
+app.post('/admin/campaigns/:id/tasks', [authenticateToken, adminAuth, upload.single('contentFile')], async (req, res) => {
+    try {
+        const { id: campaignId } = req.params;
+        const { day, title, description, type, platform, reward, requirements, contentUrl } = req.body;
+
+        // Validate required fields
+        if (!day || !title || !description || !type || !reward) {
+            return res.status(400).json({ message: 'Missing required fields' });
+        }
+
+        const campaign = await Campaign.findById(campaignId);
+        if (!campaign) {
+            return res.status(404).json({ message: 'Campaign not found' });
+        }
+
+        // Handle file upload
+        let finalContentUrl = contentUrl || null;
+        if (req.file) {
+            finalContentUrl = req.file.path;
+        }
+
+        const newTask = {
+            day: parseInt(day),
+            title,
+            description,
+            type,
+            platform: platform || null,
+            reward: parseFloat(reward),
+            requirements: requirements ? requirements.split(',').map(r => r.trim()) : [],
+            contentUrl: finalContentUrl,
+            completedBy: []
+        };
+
+        campaign.tasksList.push(newTask);
+        await campaign.save();
+
+        res.status(201).json({
+            message: 'Task created successfully',
+            task: campaign.tasksList[campaign.tasksList.length - 1]
+        });
+    } catch (err) {
+        console.error('Create task error:', err);
+        res.status(500).json({ message: 'Failed to create task' });
+    }
+});
+
+// Update a specific task in a campaign
+app.put('/admin/campaigns/:id/tasks/:taskId', [authenticateToken, adminAuth, upload.single('contentFile')], async (req, res) => {
+    try {
+        const { id: campaignId, taskId } = req.params;
+        const { day, title, description, type, platform, reward, requirements, contentUrl } = req.body;
+
+        // Validate required fields
+        if (!day || !title || !description || !type || !reward) {
+            return res.status(400).json({ message: 'Missing required fields' });
+        }
+
+        const campaign = await Campaign.findById(campaignId);
+        if (!campaign) {
+            return res.status(404).json({ message: 'Campaign not found' });
+        }
+
+        const task = campaign.tasksList.id(taskId);
+        if (!task) {
+            return res.status(404).json({ message: 'Task not found' });
+        }
+
+        // Handle file upload
+        let finalContentUrl = contentUrl || task.contentUrl;
+        if (req.file) {
+            finalContentUrl = req.file.path;
+        }
+
+        // Update task fields
+        task.day = parseInt(day);
+        task.title = title;
+        task.description = description;
+        task.type = type;
+        task.platform = platform || null;
+        task.reward = parseFloat(reward);
+        task.requirements = requirements ? requirements.split(',').map(r => r.trim()) : task.requirements;
+        task.contentUrl = finalContentUrl;
+
+        await campaign.save();
+
+        res.json({
+            message: 'Task updated successfully',
+            task
+        });
+    } catch (err) {
+        console.error('Update task error:', err);
+        res.status(500).json({ message: 'Failed to update task' });
+    }
+});
+
+// Delete a specific task in a campaign
+app.delete('/admin/campaigns/:id/tasks/:taskId', [authenticateToken, adminAuth], async (req, res) => {
+    try {
+        const { id: campaignId, taskId } = req.params;
+
+        const campaign = await Campaign.findById(campaignId);
+        if (!campaign) {
+            return res.status(404).json({ message: 'Campaign not found' });
+        }
+
+        const task = campaign.tasksList.id(taskId);
+        if (!task) {
+            return res.status(404).json({ message: 'Task not found' });
+        }
+
+        // Check if task has any proofs submitted
+        if (task.completedBy.length > 0) {
+            return res.status(400).json({ message: 'Cannot delete task with submitted proofs' });
+        }
+
+        // Remove task from campaign
+        campaign.tasksList.pull(taskId);
+
+        // Remove task from participants
+        campaign.participantsList.forEach(participant => {
+            participant.tasks = participant.tasks.filter(t => t.taskId.toString() !== taskId);
+        });
+
+        await campaign.save();
+
+        // Remove task from users
+        await User.updateMany(
+            { 'tasks.taskId': taskId },
+            { $pull: { tasks: { taskId: taskId } } }
+        );
+
+        res.json({ message: 'Task deleted successfully' });
+    } catch (err) {
+        console.error('Delete task error:', err);
+        res.status(500).json({ message: 'Failed to delete task' });
     }
 });
 

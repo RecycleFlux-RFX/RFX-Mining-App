@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import Modal from 'react-modal';
-import { ethers } from 'ethers';
 import {
     Home, MapPin, Gamepad2, Wallet, Settings,
     Recycle, Leaf, Target, Clock, Trophy, Star, Award, Globe,
@@ -18,9 +17,8 @@ import {
     FaLinkedin as LinkedIn,
     FaTiktok as TikTok
 } from 'react-icons/fa';
-
-import axios from 'axios'
-
+import axios from 'axios';
+/* import ethers from 'ethers'; */
 // Bind modal to app element
 Modal.setAppElement('#root');
 
@@ -42,15 +40,14 @@ export default function RFXCampaignPage() {
     const [selectedCampaign, setSelectedCampaign] = useState(null);
     const [tasks, setTasks] = useState([]);
     const [uploading, setUploading] = useState(false);
-    const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-    const [walletConnected, setWalletConnected] = useState(false);
-    const [isConnecting, setIsConnecting] = useState(false);
-    const containerRef = useRef(null);
     const [currentDay, setCurrentDay] = useState(1);
     const [dayTimeLeft, setDayTimeLeft] = useState({ hours: 23, minutes: 59, seconds: 59 });
     const [dailyTasks, setDailyTasks] = useState([]);
     const [globalImpact, setGlobalImpact] = useState('0.00');
     const [yourContribution, setYourContribution] = useState('0.00');
+
+    // Flag to include pending tasks in progress calculation (configurable)
+    const includePendingInProgress = true;
 
     const iconMap = {
         Ocean: Droplets,
@@ -150,7 +147,6 @@ export default function RFXCampaignPage() {
         }
     };
 
-    
     const connectWallet = async () => {
         if (typeof window.ethereum === 'undefined') {
             setError({
@@ -161,7 +157,7 @@ export default function RFXCampaignPage() {
             return;
         }
 
-        setIsConnecting(true);
+        setUploading(true);
         try {
             const provider = new ethers.BrowserProvider(window.ethereum);
             const accounts = await provider.send('eth_requestAccounts', []);
@@ -170,8 +166,6 @@ export default function RFXCampaignPage() {
                 const address = await signer.getAddress();
 
                 setUserStats(prev => ({ ...prev, walletAddress: address }));
-                setWalletConnected(true);
-
                 await fetchWithAuth(`${BASE_URL}/update-wallet`, {
                     method: 'PATCH',
                     body: JSON.stringify({ walletAddress: address }),
@@ -189,32 +183,26 @@ export default function RFXCampaignPage() {
                 message: err.message || 'Failed to connect wallet',
             });
         } finally {
-            setIsConnecting(false);
+            setUploading(false);
         }
     };
 
-    useEffect(() => {
-        const fetchImpactData = async () => {
-            try {
-                // Fetch Global Impact
-                const networkStatsResponse = await axios.get(`${BASE_URL}/user/network-stats`, {
-                    headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
-                });
-                setGlobalImpact(networkStatsResponse.data.totalRecycled);
+    const fetchImpactData = async () => {
+        try {
+            const networkStatsResponse = await axios.get(`${BASE_URL}/user/network-stats`, {
+                headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
+            });
+            setGlobalImpact(networkStatsResponse.data.totalRecycled);
 
-                // Fetch Your Contribution
-                const userResponse = await axios.get(`${BASE_URL}/user/user`, {
-                    headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
-                });
-                setYourContribution(userResponse.data.co2Saved);
-            } catch (err) {
-                console.error('Fetch impact data error:', err);
-                setError({ type: 'error', message: 'Failed to load impact data' });
-            }
-        };
-
-        fetchImpactData();
-    }, []);
+            const userResponse = await axios.get(`${BASE_URL}/user/user`, {
+                headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
+            });
+            setYourContribution(userResponse.data.co2Saved);
+        } catch (err) {
+            console.error('Fetch impact data error:', err);
+            setError({ type: 'error', message: 'Failed to load impact data' });
+        }
+    };
 
     const calculateDayProgress = (campaign) => {
         if (!campaign || !campaign.startDate || !campaign.duration) {
@@ -256,10 +244,10 @@ export default function RFXCampaignPage() {
 
     useEffect(() => {
         if (selectedCampaign && tasks.length > 0) {
-            console.log('Filtering tasks for day:', currentDay, 'Tasks:', tasks);
-            const filteredTasks = tasks.filter(task => task.day === currentDay || (isNaN(currentDay) && task.day === 1));
-            console.log('Filtered daily tasks:', filteredTasks);
-            setDailyTasks(filteredTasks);
+            console.log('Campaign Start Date:', selectedCampaign.startDate);
+            console.log('Current Day:', currentDay);
+            console.log('Tasks for Current Day:', tasks.filter(task => task.day === currentDay));
+            setDailyTasks(tasks.filter(task => task.day === currentDay || (isNaN(currentDay) && task.day === 1)));
         } else {
             console.log('No selected campaign or tasks:', { selectedCampaign, tasks });
             setDailyTasks([]);
@@ -295,14 +283,14 @@ export default function RFXCampaignPage() {
     }, [selectedCampaign]);
 
     useEffect(() => {
-const navItems = [
-    { icon: Home, label: 'Home', id: 'home', path: '/' },
-    { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
-    { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
-    { icon: Users, label: 'Referrals', id: 'referrals', path: '/referrals' },
-    { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
-    { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' },
-];
+        const navItems = [
+            { icon: Home, label: 'Home', id: 'home', path: '/' },
+            { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
+            { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
+            { icon: Users, label: 'Referrals', id: 'referrals', path: '/referrals' },
+            { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
+            { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' },
+        ];
 
         const currentNavItem = navItems.find((item) => item.path === location.pathname);
         if (currentNavItem) {
@@ -328,7 +316,7 @@ const navItems = [
                 if (!data.valid) {
                     throw new Error(data.message || 'Invalid token');
                 }
-                await fetchInitialData();
+                await Promise.all([fetchInitialData(), fetchImpactData()]);
             } catch (error) {
                 console.error('Authentication check failed:', error.message);
                 localStorage.removeItem('authToken');
@@ -341,185 +329,216 @@ const navItems = [
         checkAuth();
     }, [navigate]);
 
-const fetchInitialData = async () => {
-    setLoading(true);
-    try {
-        const [userResponse, rankResponse, networkResponse, campaignsResponse] = await Promise.all([
-            fetchWithAuth(`${BASE_URL}/user/user`).catch(error => {
-                if (error.message.includes('404')) return { username: '', email: '', campaigns: [] };
-                throw error;
-            }),
-            fetchWithAuth(`${BASE_URL}/wallet/rank`).catch(error => {
-                if (error.message.includes('404')) return { rank: 'N/A' };
-                throw error;
-            }),
-            fetchWithAuth(`${BASE_URL}/user/network-stats`).catch(error => {
-                if (error.message.includes('404')) return { totalRecycled: '0.00', activeUsers: 0 };
-                throw error;
-            }),
-            fetchWithAuth(`${BASE_URL}/campaigns`).catch(error => {
-                if (error.message.includes('404')) return { data: [] };
-                throw error;
-            }),
-        ]);
-
-        // Get detailed user campaigns data with better error handling
-        let userCampaignsData = [];
+    const fetchInitialData = async () => {
+        setLoading(true);
         try {
-            const userCampaignsResponse = await fetchWithAuth(`${BASE_URL}/user/campaigns`);
-            userCampaignsData = Array.isArray(userCampaignsResponse) ? userCampaignsResponse : [];
-        } catch (error) {
-            console.error('Error fetching user campaigns:', error);
-            // If we fail to get user campaigns, try to reconstruct from userResponse.campaigns
-            userCampaignsData = (userResponse.campaigns || []).map(c => ({
-                ...c,
-                id: c.campaignId?.toString(),
-                _id: c.campaignId,
-                userJoined: true,
-                userCompleted: c.completed || 0,
-                progress: 0 // Default progress if we can't calculate
-            }));
-        }
+            const [userResponse, rankResponse, networkResponse, campaignsResponse] = await Promise.all([
+                fetchWithAuth(`${BASE_URL}/user/user`).catch(error => {
+                    if (error.message.includes('404')) return { username: '', email: '', campaigns: [] };
+                    throw error;
+                }),
+                fetchWithAuth(`${BASE_URL}/wallet/rank`).catch(error => {
+                    if (error.message.includes('404')) return { rank: 'N/A' };
+                    throw error;
+                }),
+                fetchWithAuth(`${BASE_URL}/user/network-stats`).catch(error => {
+                    if (error.message.includes('404')) return { totalRecycled: '0.00', activeUsers: 0 };
+                    throw error;
+                }),
+                fetchWithAuth(`${BASE_URL}/campaigns`).catch(error => {
+                    if (error.message.includes('404')) return { data: [] };
+                    throw error;
+                }),
+            ]);
 
-        const campaignsData = campaignsResponse.data || campaignsResponse;
-        
-        const mappedCampaigns = (campaignsData || []).map((c) => {
-            const userCampaign = userCampaignsData.find(uc => 
-                uc._id?.toString() === c._id?.toString() || 
-                uc.id?.toString() === c._id?.toString()
-            ) || null;
-            
-            // Calculate proper progress based on user's completed tasks vs total tasks
-            const userProgress = userCampaign && c.tasksList 
-                ? (userCampaign.userCompleted / c.tasksList.length) * 100 
-                : 0;
-            
-            const globalProgress = c.tasksList && c.participants > 0
-                ? (c.completedTasks / (c.tasksList.length * c.participants)) * 100
-                : 0;
-
-            return {
-                ...c,
-                id: c._id?.toString() || c.id,
-                tasks: c.tasksList ? c.tasksList.length : 0,
-                completed: c.completedTasks || 0,
-                participants: c.participants || 0,
-                progress: userCampaign ? userProgress : globalProgress,
-                reward: c.reward ? `${c.reward} RFX` : '0 RFX',
-                duration: c.duration ? `${c.duration} days` : 'N/A',
-                userJoined: !!userCampaign,
-                userCompleted: userCampaign ? userCampaign.userCompleted || 0 : 0,
-                startDate: c.startDate ? new Date(c.startDate).toISOString() : new Date().toISOString(),
-            };
-        });
-
-        setCampaigns(mappedCampaigns);
-        setUserCampaigns(mappedCampaigns.filter(c => c.userJoined));
-        setUserStats({
-            earnings: userResponse.earnings || 0,
-            co2Saved: userResponse.co2Saved || '0.00',
-            walletAddress: userResponse.walletAddress || '',
-            fullName: userResponse.fullName || ''
-        });
-        setUserRank(rankResponse.rank || 'N/A');
-        setNetworkStats({
-            totalRecycled: networkResponse.totalRecycled || '0.00',
-            activeUsers: networkResponse.activeUsers || 0
-        });
-    } catch (error) {
-        console.error('Fetch data error:', {
-            message: error.message,
-            response: error.response?.data,
-            status: error.response?.status
-        });
-        setError({
-            type: 'error',
-            message: error.message || 'Failed to fetch data',
-        });
-        if (error.message === 'User not found' || error.message.includes('Invalid token') || error.status === 401) {
-            localStorage.removeItem('authToken');
-            navigate('/login');
-        }
-    } finally {
-        setLoading(false);
-    }
-};
-const fetchCampaignDetails = async (campaignId) => {
-    try {
-        console.log('Fetching campaign details for ID:', campaignId);
-        const response = await fetchWithAuth(`${BASE_URL}/campaigns/${campaignId}/user`);
-        console.log('Campaign details response:', response);
-
-        const mappedTasks = (response.tasksList || []).map((task) => {
-            const userTask = response.participantsList
-                ?.find(p => p.userId.toString() === localStorage.getItem('userId'))
-                ?.tasks?.find(t => t.taskId.toString() === task._id) || {};
-            return {
-                ...task,
-                id: task._id || `temp-${Math.random()}`,
-                status: userTask.status || 'open',
-                reward: task.reward ? `${task.reward} RFX` : '0 RFX',
-                completed: userTask.status === 'completed',
-                proof: userTask.proof || null,
-                day: task.day || 1, // Fallback to day 1 if undefined
-            };
-        });
-
-        console.log('Mapped tasks:', mappedTasks);
-        setTasks(mappedTasks);
-        setSelectedCampaign({
-            ...response,
-            id: response._id,
-            tasks: mappedTasks.length,
-            reward: response.reward ? `${response.reward} RFX` : '0 RFX',
-            duration: response.duration ? `${response.duration} days` : '1 day',
-            startDate: response.startDate ? new Date(response.startDate).toISOString() : new Date().toISOString(),
-            currentDay: response.currentDay || 1,
-            dayTimeLeft: response.dayTimeLeft || { hours: 23, minutes: 59, seconds: 59 }
-        });
-        setCurrentDay(response.currentDay || 1);
-        setDayTimeLeft(response.dayTimeLeft || { hours: 23, minutes: 59, seconds: 59 });
-    } catch (error) {
-        console.error('Fetch campaign error:', {
-            message: error.message,
-            response: error.response?.data,
-            status: error.response?.status
-        });
-        setError({
-            type: 'error',
-            message: error.message || 'Failed to load campaign details',
-        });
-    }
-};
-
-const handleProofUpload = async (taskId, file) => {
-    if (!selectedCampaign || !selectedCampaign.id) {
-        throw new Error('No campaign selected');
-    }
-
-    try {
-        const formData = new FormData();
-        formData.append('proof', file);
-
-        const response = await axios.post(
-            `${BASE_URL}/campaigns/${selectedCampaign.id}/tasks/${taskId}/proof`,
-            formData,
-            {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                    Authorization: `Bearer ${localStorage.getItem('authToken')}`,
-                },
+            let userCampaignsData = [];
+            try {
+                const userCampaignsResponse = await fetchWithAuth(`${BASE_URL}/user/campaigns`);
+                userCampaignsData = Array.isArray(userCampaignsResponse) ? userCampaignsResponse : [];
+            } catch (error) {
+                console.error('Error fetching user campaigns:', error);
+                userCampaignsData = (userResponse.campaigns || []).map(c => ({
+                    ...c,
+                    id: c.campaignId?.toString(),
+                    _id: c.campaignId,
+                    userJoined: true,
+                    userCompleted: c.completed || 0,
+                    progress: 0
+                }));
             }
-        );
 
-        console.log('Proof uploaded:', response.data);
-        await fetchCampaignDetails(selectedCampaign.id);
-        return response.data;
-    } catch (error) {
-        console.error('Upload proof error:', error);
-        throw error;
-    }
-};
+            const campaignsData = campaignsResponse.data || campaignsResponse;
+
+            const mappedCampaigns = (campaignsData || []).map((c) => {
+                const userCampaign = userCampaignsData.find(uc => 
+                    uc._id?.toString() === c._id?.toString() || 
+                    uc.id?.toString() === c._id?.toString()
+                ) || null;
+
+                const userProgress = userCampaign && c.tasksList && c.tasksList.length > 0 
+                    ? (userCampaign.userCompleted / c.tasksList.length) * 100 
+                    : 0;
+
+                const userCompletedWithPending = userCampaign && c.tasksList 
+                    ? userResponse.tasks.filter(t => 
+                        t.campaignId.toString() === c._id.toString() && 
+                        (t.status === 'completed' || (includePendingInProgress && t.status === 'pending'))
+                    ).length
+                    : userCampaign?.userCompleted || 0;
+
+                const userProgressWithPending = c.tasksList && c.tasksList.length > 0 
+                    ? (userCompletedWithPending / c.tasksList.length) * 100 
+                    : 0;
+
+                const globalProgress = c.tasksList && c.participants > 0
+                    ? (c.completedTasks / (c.tasksList.length * c.participants)) * 100
+                    : 0;
+
+                return {
+                    ...c,
+                    id: c._id?.toString() || c.id,
+                    tasks: c.tasksList ? c.tasksList.length : 0,
+                    completed: c.completedTasks || 0,
+                    participants: c.participants || 0,
+                    progress: userCampaign ? (includePendingInProgress ? userProgressWithPending : userProgress) : globalProgress,
+                    reward: c.reward ? `${c.reward} RFX` : '0 RFX',
+                    duration: c.duration ? `${c.duration} days` : 'N/A',
+                    userJoined: !!userCampaign,
+                    userCompleted: userCampaign ? userCampaign.userCompleted || 0 : 0,
+                    startDate: c.startDate ? new Date(c.startDate).toISOString() : new Date().toISOString(),
+                };
+            });
+
+            setCampaigns(mappedCampaigns);
+            setUserCampaigns(mappedCampaigns.filter(c => c.userJoined));
+            setUserStats({
+                earnings: userResponse.earnings || 0,
+                co2Saved: userResponse.co2Saved || '0.00',
+                walletAddress: userResponse.walletAddress || '',
+                fullName: userResponse.fullName || ''
+            });
+            setUserRank(rankResponse.rank || 'N/A');
+            setNetworkStats({
+                totalRecycled: networkResponse.totalRecycled || '0.00',
+                activeUsers: networkResponse.activeUsers || 0
+            });
+        } catch (error) {
+            console.error('Fetch data error:', {
+                message: error.message,
+                response: error.response?.data,
+                status: error.response?.status
+            });
+            setError({
+                type: 'error',
+                message: error.message || 'Failed to fetch data',
+            });
+            if (error.message === 'User not found' || error.message.includes('Invalid token') || error.status === 401) {
+                localStorage.removeItem('authToken');
+                navigate('/login');
+            }
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchCampaignDetails = async (campaignId) => {
+        try {
+            console.log('Fetching campaign details for ID:', campaignId);
+            const response = await fetchWithAuth(`${BASE_URL}/campaigns/${campaignId}/user`);
+            console.log('Campaign details response:', response);
+
+            const mappedTasks = (response.tasksList || []).map((task) => {
+                const userTask = response.participantsList
+                    ?.find(p => p.userId.toString() === localStorage.getItem('userId'))
+                    ?.tasks?.find(t => t.taskId.toString() === task._id) || {};
+                return {
+                    ...task,
+                    id: task._id || `temp-${Math.random()}`,
+                    status: userTask.status || 'open',
+                    reward: task.reward ? `${task.reward} RFX` : '0 RFX',
+                    completed: userTask.status === 'completed',
+                    proof: userTask.proof || null,
+                    day: task.day || 1,
+                };
+            });
+
+            console.log('Mapped tasks:', mappedTasks);
+            setTasks(mappedTasks);
+            setSelectedCampaign({
+                ...response,
+                id: response._id,
+                tasks: mappedTasks.length,
+                reward: response.reward ? `${response.reward} RFX` : '0 RFX',
+                duration: response.duration ? `${response.duration} days` : '1 day',
+                startDate: response.startDate ? new Date(response.startDate).toISOString() : new Date().toISOString(),
+                currentDay: response.currentDay || 1,
+                dayTimeLeft: response.dayTimeLeft || { hours: 23, minutes: 59, seconds: 59 }
+            });
+            setCurrentDay(response.currentDay || 1);
+            setDayTimeLeft(response.dayTimeLeft || { hours: 23, minutes: 59, seconds: 59 });
+        } catch (error) {
+            console.error('Fetch campaign error:', {
+                message: error.message,
+                response: error.response?.data,
+                status: error.response?.status
+            });
+            setError({
+                type: 'error',
+                message: error.message || 'Failed to load campaign details',
+            });
+        }
+    };
+
+    const handleCompleteTask = async (campaignId, taskId) => {
+        try {
+            const task = tasks.find(t => t.id === taskId);
+            if (!task) throw new Error('Task not found');
+            if (task.type === 'proof-upload') {
+                setError({ type: 'info', message: 'Proof-upload tasks require proof submission' });
+                return;
+            }
+            const response = await fetchWithAuth(`${BASE_URL}/campaigns/${campaignId}/tasks/${taskId}/complete`, {
+                method: 'POST',
+            });
+            setTasks(prev => prev.map(t => 
+                t.id === taskId ? { ...t, status: 'completed', completed: true } : t
+            ));
+            await Promise.all([
+                fetchInitialData(),
+                fetchCampaignDetails(campaignId)
+            ]);
+            setError({ type: 'success', message: `Task completed! Earned ${response.reward || '0'} RFX` });
+        } catch (error) {
+            console.error('Complete task error:', error);
+            setError({ type: 'error', message: error.message || 'Failed to complete task' });
+        }
+    };
+
+    const handleProofUpload = async (campaignId, taskId, file) => {
+        try {
+            if (!file) throw new Error('No file selected');
+            setUploading(true);
+            const formData = new FormData();
+            formData.append('proof', file);
+            const response = await fetchWithAuth(`${BASE_URL}/campaigns/${campaignId}/tasks/${taskId}/proof`, {
+                method: 'POST',
+                body: formData,
+            });
+            setTasks(prev => prev.map(t => 
+                t.id === taskId ? { ...t, status: 'pending', proof: response.proofUrl } : t
+            ));
+            await Promise.all([
+                fetchInitialData(),
+                fetchCampaignDetails(campaignId)
+            ]);
+            setError({ type: 'success', message: 'Proof uploaded successfully, pending verification' });
+        } catch (error) {
+            console.error('Proof upload error:', error);
+            setError({ type: 'error', message: error.message || 'Failed to upload proof' });
+        } finally {
+            setUploading(false);
+        }
+    };
 
     const handleJoinCampaign = async (campaignId) => {
         setLoading(true);
@@ -569,68 +588,6 @@ const handleProofUpload = async (taskId, file) => {
         }
     };
 
-// In your RFXCampaignPage component
-const handleCompleteTask = async (campaignId, taskId) => {
-    try {
-        const task = tasks.find(t => t.id === taskId);
-        if (!task) {
-            throw new Error('Task not found');
-        }
-
-        if (task.type === 'proof-upload') {
-            setError({ type: 'info', message: 'Proof-upload tasks require proof submission' });
-            return;
-        }
-
-        const response = await fetchWithAuth(`${BASE_URL}/campaigns/${campaignId}/tasks/${taskId}/complete`, {
-            method: 'POST',
-        });
-
-        setTasks(prev => prev.map(t => 
-            t.id === taskId ? { ...t, status: 'completed', completed: true } : t
-        ));
-
-        setUserStats(prev => ({
-            ...prev,
-            earnings: response.balance || prev.earnings,
-            co2Saved: response.co2Saved || prev.co2Saved
-        }));
-
-        setYourContribution(response.co2Saved || yourContribution);
-
-        setCampaigns(prev => prev.map(c => 
-            c.id === campaignId ? {
-                ...c,
-                completed: (c.completed || 0) + 1,
-                userCompleted: (c.userCompleted || 0) + 1
-            } : c
-        ));
-
-        setUserCampaigns(prev => prev.map(c => 
-            c.id === campaignId ? {
-                ...c,
-                completed: (c.completed || 0) + 1,
-                userCompleted: (c.userCompleted || 0) + 1
-            } : c
-        ));
-
-        setError({
-            type: 'success',
-            message: `Task completed! Earned ${response.reward || '0'} RFX${response.penalty ? ` (${response.penalty})` : ''}`,
-        });
-    } catch (error) {
-        console.error('Complete task error:', {
-            message: error.message,
-            response: error.response?.data,
-            status: error.response?.status
-        });
-        setError({
-            type: 'error',
-            message: error.message || 'Failed to complete task',
-        });
-    }
-};
-
     useEffect(() => {
         const timer = setInterval(() => {
             setTimeLeft((prev) => {
@@ -641,21 +598,6 @@ const handleCompleteTask = async (campaignId, taskId) => {
             });
         }, 1000);
         return () => clearInterval(timer);
-    }, []);
-
-    useEffect(() => {
-        const handleMouse = (e) => {
-            if (containerRef.current) {
-                const rect = containerRef.current.getBoundingClientRect();
-                setMousePosition({
-                    x: e.clientX - rect.left,
-                    y: e.clientY - rect.top,
-                });
-            }
-        };
-
-        window.addEventListener('mousemove', handleMouse);
-        return () => window.removeEventListener('mousemove', handleMouse);
     }, []);
 
     const activeCampaigns = campaigns.filter((c) => c.status === 'active');
@@ -686,33 +628,7 @@ const handleCompleteTask = async (campaignId, taskId) => {
     }
 
     return (
-        <div className="w-full min-h-screen bg-gradient-to-br from-black via-gray-900 to-black overflow-hidden relative" ref={containerRef}>
-            <div
-                className="absolute w-4 h-4 bg-green-400 rounded-full pointer-events-none opacity-50"
-                style={{
-                    left: mousePosition.x,
-                    top: mousePosition.y,
-                    transform: 'translate(-50%, -50%)',
-                    transition: 'all 0.1s ease',
-                }}
-            ></div>
-            <div className="absolute inset-0">
-                <div className="absolute inset-0 bg-gradient-to-t from-green-500/10 via-transparent to-transparent"></div>
-                <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl animate-pulse"></div>
-                <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-400/20 rounded-full blur-3xl animate-pulse"></div>
-                {[...Array(15)].map((_, i) => (
-                    <div
-                        key={i}
-                        className="absolute w-1 h-1 bg-blue-400 rounded-full animate-float"
-                        style={{
-                            left: `${Math.random() * 100}%`,
-                            top: `${Math.random() * 100}%`,
-                            animationDelay: `${Math.random() * 5}s`,
-                            animationDuration: `${10 + Math.random() * 10}s`,
-                        }}
-                    ></div>
-                ))}
-            </div>
+        <div className="w-full min-h-screen bg-gradient-to-br from-black via-gray-900 to-black overflow-hidden relative">
             <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 pb-24">
                 <div className="flex flex-col sm:flex-row items-center justify-between mb-8 pt-4 space-y-4 sm:space-y-0">
                     <div className="flex items-center space-x-3">
@@ -730,7 +646,7 @@ const handleCompleteTask = async (campaignId, taskId) => {
                         </div>
                     </div>
                     <div className="flex items-center space-x-3">
-                        {walletConnected ? (
+                        {userStats.walletAddress ? (
                             <div className="flex items-center space-x-2 px-4 py-2 bg-gray-800/50 backdrop-blur-sm rounded-full border border-gray-700">
                                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
                                 <span className="text-gray-300 text-sm">Connected</span>
@@ -741,12 +657,12 @@ const handleCompleteTask = async (campaignId, taskId) => {
                         ) : (
                             <button
                                 onClick={connectWallet}
-                                disabled={isConnecting}
-                                className={`flex items-center space-x-2 px-4 py-2 rounded-full transition-all ${isConnecting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-green-400 to-green-600 hover:from-green-500 hover:to-green-700'}`}
+                                disabled={uploading}
+                                className={`flex items-center space-x-2 px-4 py-2 rounded-full transition-all ${uploading ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-green-400 to-green-600 hover:from-green-500 hover:to-green-700'}`}
                             >
                                 <Wallet className="w-5 h-5 text-black" />
                                 <span className="text-black text-sm font-semibold">
-                                    {isConnecting ? 'Connecting...' : 'Connect MetaMask Wallet'}
+                                    {uploading ? 'Connecting...' : 'Connect MetaMask Wallet'}
                                 </span>
                             </button>
                         )}
@@ -764,24 +680,24 @@ const handleCompleteTask = async (campaignId, taskId) => {
                         </div>
                     </div>
                 </div>
-{error && (
-  <div className={`mb-3 p-2 rounded-md ${getErrorColor()} max-w-xs mx-auto`}>
-    <p className="text-white text-xs text-center">{error.message}</p>
-  </div>
-)}
+                {error && (
+                    <div className={`mb-3 p-2 rounded-md ${getErrorColor()} max-w-xs mx-auto`}>
+                        <p className="text-white text-xs text-center">{error.message}</p>
+                    </div>
+                )}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                     {[
                         { label: 'Active Campaigns', value: activeCampaigns.length, icon: Target, color: 'green' },
                         { label: 'Total Earned', value: `₿ ${userStats.earnings.toFixed(5)}`, icon: Award, color: 'yellow' },
-                        { label: 'Global Impact', value: `${networkStats.totalRecycled} kg`, icon: Globe, color: 'blue' },
-                        { label: 'Your Contribution', value: `${userStats.co2Saved} kg`, icon: Leaf, color: 'purple' },
+                        { label: 'Global Impact', value: `${globalImpact} kg`, icon: Globe, color: 'blue' },
+                        { label: 'Your Contribution', value: `${yourContribution} kg`, icon: Leaf, color: 'purple' },
                     ].map((stat, index) => (
                         <div key={index} className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-lg p-4">
                             <div className="flex items-center justify-between mb-4">
                                 <stat.icon className={`w-5 h-5 ${stat.color === 'green' ? 'text-green-400' :
                                     stat.color === 'yellow' ? 'text-yellow-400' :
-                                        stat.color === 'blue' ? 'text-blue-500' : 'text-purple-400'
-                                    }`} />
+                                    stat.color === 'blue' ? 'text-blue-500' : 'text-purple-400'
+                                }`} />
                                 <span className="text-gray-500 text-sm font-medium">{stat.label}</span>
                             </div>
                             <span className="text-lg font-semibold text-white">{stat.value}</span>
@@ -839,18 +755,18 @@ const handleCompleteTask = async (campaignId, taskId) => {
                                                     <p className="text-gray-400 text-sm">{campaign.description}</p>
                                                 </div>
                                             </div>
-<div className="mb-4">
-    <div className="flex items-center justify-between mb-2">
-        <span className="text-gray-400 text-sm">Tasks Progress</span>
-        <span className="text-white text-sm font-semibold">{campaign.userCompleted}/{campaign.tasks}</span>
-    </div>
-    <div className="w-full bg-gray-700 rounded-full h-2">
-        <div
-            className={`h-2 rounded-full transition-all duration-1000 bg-gradient-to-r ${colors.button}`}
-            style={{ width: `${campaign.userJoined ? campaign.progress : campaign.globalProgress}%` }}
-        ></div>
-    </div>
-</div>
+                                            <div className="mb-4">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-gray-400 text-sm">Tasks Progress</span>
+                                                    <span className="text-white text-sm font-semibold">{campaign.userCompleted}/{campaign.tasks}</span>
+                                                </div>
+                                                <div className="w-full bg-gray-700 rounded-full h-2">
+                                                    <div
+                                                        className={`h-2 rounded-full transition-all duration-1000 bg-gradient-to-r ${colors.button}`}
+                                                        style={{ width: `${Math.min(100, Math.max(0, campaign.userJoined ? campaign.progress : campaign.globalProgress))}%` }}
+                                                    ></div>
+                                                </div>
+                                            </div>
                                             <div className="grid grid-cols-3 gap-4 mb-4 text-center">
                                                 <div>
                                                     <div className="text-green-400 font-bold">{campaign.reward}</div>
@@ -961,14 +877,14 @@ const handleCompleteTask = async (campaignId, taskId) => {
                                             </div>
                                             <div className="relative">
                                                 <div className="bg-gray-800/30 rounded-2xl p-6 backdrop-blur-sm">
-                                                    <div className="flex burgers items-center justify-between mb-4">
+                                                    <div className="flex items-center justify-between mb-4">
                                                         <span className="text-gray-400">Progress</span>
-                                                        <span className="text-white font-bold">{Math.round(featured.progress)}%</span>
+                                                        <span className="text-white font-bold">{Math.round(Math.min(100, Math.max(0, featured.progress)))}%</span>
                                                     </div>
                                                     <div className="w-full bg-gray-700 rounded-full h-3 mb-4">
                                                         <div
                                                             className={`bg-gradient-to-r ${colors.button} h-3 rounded-full transition-all duration-1000`}
-                                                            style={{ width: `${featured.progress}%` }}
+                                                            style={{ width: `${Math.min(100, Math.max(0, featured.progress))}%` }}
                                                         ></div>
                                                     </div>
                                                     <div className="grid grid-cols-3 gap-4 text-center">
@@ -1045,18 +961,18 @@ const handleCompleteTask = async (campaignId, taskId) => {
                                                     <p className="text-gray-400 text-sm">{campaign.description}</p>
                                                 </div>
                                             </div>
-<div className="mb-4">
-    <div className="flex items-center justify-between mb-2">
-        <span className="text-gray-400 text-sm">Tasks Progress</span>
-        <span className="text-white text-sm font-semibold">{campaign.userCompleted}/{campaign.tasks}</span>
-    </div>
-    <div className="w-full bg-gray-700 rounded-full h-2">
-        <div
-            className={`h-2 rounded-full transition-all duration-1000 bg-gradient-to-r ${colors.button}`}
-            style={{ width: `${campaign.userJoined ? campaign.progress : campaign.globalProgress}%` }}
-        ></div>
-    </div>
-</div>
+                                            <div className="mb-4">
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <span className="text-gray-400 text-sm">Tasks Progress</span>
+                                                    <span className="text-white text-sm font-semibold">{campaign.userCompleted}/{campaign.tasks}</span>
+                                                </div>
+                                                <div className="w-full bg-gray-700 rounded-full h-2">
+                                                    <div
+                                                        className={`h-2 rounded-full transition-all duration-1000 bg-gradient-to-r ${colors.button}`}
+                                                        style={{ width: `${Math.min(100, Math.max(0, campaign.userJoined ? campaign.progress : campaign.globalProgress))}%` }}
+                                                    ></div>
+                                                </div>
+                                            </div>
                                             <div className="grid grid-cols-3 gap-4 mb-4 text-center">
                                                 <div>
                                                     <div className="text-green-400 font-bold">{campaign.reward}</div>
@@ -1293,36 +1209,23 @@ const handleCompleteTask = async (campaignId, taskId) => {
                                                                     <div className="text-xs text-gray-500 mb-1">
                                                                         Upload proof:
                                                                     </div>
-                                                                            <input
-                                                                                type="file"
-                                                                                id={`file-${task.id}`}
-                                                                                className="hidden"
-                                                                                accept="image/*,video/*"
-                                                                                onChange={(e) => {
-                                                                                    if (e.target.files[0]) {
-                                                                                        handleProofUpload(task.id, e.target.files[0])
-                                                                                            .then(() => {
-                                                                                                // Refresh data or show success message
-                                                                                                setError({
-                                                                                                    type: 'success',
-                                                                                                    message: 'Proof uploaded successfully!'
-                                                                                                });
-                                                                                            })
-                                                                                            .catch(err => {
-                                                                                                setError({
-                                                                                                    type: 'error',
-                                                                                                    message: err.response?.data?.message || 'Failed to upload proof'
-                                                                                                });
-                                                                                            });
-                                                                                    }
-                                                                                }}
-                                                                            />
+                                                                    <input
+                                                                        type="file"
+                                                                        id={`file-${task.id}`}
+                                                                        className="hidden"
+                                                                        accept="image/*,video/*"
+                                                                        onChange={(e) => {
+                                                                            if (e.target.files[0]) {
+                                                                                handleProofUpload(selectedCampaign.id, task.id, e.target.files[0]);
+                                                                            }
+                                                                        }}
+                                                                    />
                                                                     <label
                                                                         htmlFor={`file-${task.id}`}
                                                                         className="flex items-center space-x-2 px-3 py-2 rounded-lg cursor-pointer transition-all bg-blue-400/20 text-blue-400 border border-blue-400/30 hover:bg-blue-400/30 text-sm"
                                                                     >
                                                                         <Upload className="w-4 h-4" />
-                                                                        <span>Upload proof</span>
+                                                                        <span>{uploading ? 'Uploading...' : 'Upload proof'}</span>
                                                                     </label>
                                                                 </div>
                                                             )}
