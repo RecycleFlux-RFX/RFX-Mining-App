@@ -210,17 +210,9 @@ const TrashSortGame = () => {
             );
 
             console.log('Score submitted:', response.data);
+            
             setGameState('gameOver');
             
-            timerRef.current = setTimeout(() => {
-                navigate('/games');
-            }, 5000);
-            
-            return () => {
-                if (timerRef.current) {
-                    clearTimeout(timerRef.current);
-                }
-            };
         } catch (error) {
             console.error('Error submitting score:', error);
             setError('Failed to submit score');

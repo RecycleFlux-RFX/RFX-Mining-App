@@ -359,114 +359,6 @@ app.post('/campaigns/upload-proof', [authenticateToken, upload.single('proof')],
     }
 });
 
-/* // Complete task (admin verification)
-app.post('/campaigns/complete-task', authenticateToken, async (req, res) => {
-    try {
-        const { campaignId, taskId } = req.body;
-        const userId = req.user.userId;
-
-        const campaign = await Campaign.findById(campaignId);
-        if (!campaign) {
-            return res.status(404).json({ message: 'Campaign not found' });
-        }
-
-        const task = campaign.tasksList.id(taskId);
-        if (!task) {
-            return res.status(404).json({ message: 'Task not found' });
-        }
-
-        const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-
-        // Find and update user task
-        const userTask = user.tasks.find(t =>
-            t.taskId.toString() === taskId &&
-            t.campaignId.toString() === campaignId
-        );
-
-        if (!userTask) {
-            return res.status(400).json({ message: 'Task not started' });
-        }
-
-        if (!task.startedAt) {
-  return res.status(400).json({ message: "Task not started" });
-}
-
-        
-        if (userTask.status === 'completed') {
-            return res.status(400).json({ message: 'Task already completed' });
-        }
-
-        // Calculate penalty for late completion
-        const currentDate = new Date();
-        const startDate = new Date(campaign.startDate);
-        const dayDiff = Math.floor((currentDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-        const daysLate = dayDiff - task.day;
-
-        let penaltyFactor = 1;
-        if (daysLate > 0) {
-            penaltyFactor = Math.max(0.5, 1 - (daysLate * 0.1)); // 10% penalty per day late
-        }
-
-        // Apply penalty to rewards
-        const baseReward = task.reward || 0;
-        const finalReward = baseReward * penaltyFactor;
-
-        // Update user task
-        userTask.status = 'completed';
-        userTask.completedAt = new Date();
-
-        // Update user campaign progress
-        const userCampaign = user.campaigns.find(c =>
-            c.campaignId.toString() === campaignId
-        );
-
-        if (userCampaign) {
-            userCampaign.completed += 1;
-        }
-
-        // Update campaign stats
-        campaign.completedTasks += 1;
-
-        const participant = campaign.participantsList.find(p =>
-            p.userId.toString() === userId
-        );
-
-        if (participant) {
-            participant.completed += 1;
-            participant.lastActivity = new Date();
-            const participantTask = participant.tasks.find(t => t.taskId.toString() === taskId);
-            if (participantTask) {
-                participantTask.status = 'completed';
-                participantTask.completedAt = new Date();
-            }
-        }
-
-        // Update task's completedBy
-        const completedByEntry = task.completedBy.find(entry => entry.userId.toString() === userId);
-        if (completedByEntry) {
-            completedByEntry.status = 'completed';
-            completedByEntry.completedAt = new Date();
-        }
-
-        // Add final reward to user
-        user.earnings += finalReward;
-
-        await Promise.all([user.save(), campaign.save()]);
-
-        res.json({
-            message: 'Task completed successfully',
-            reward: finalReward,
-            penalty: daysLate > 0 ? `${(1 - penaltyFactor) * 100}% penalty applied` : 'No penalty',
-            balance: user.earnings
-        });
-    } catch (err) {
-        res.status(500).json({ message: err.message });
-    }
-}); */
-
 
 // Add this route to start tasks
 app.post('/campaigns/start-task', authenticateToken, async (req, res) => {
@@ -1285,151 +1177,268 @@ app.post('/campaigns/upload-proof', [authenticateToken, upload.single('proof')],
 });
 
 // Complete task (admin verification)
+
 app.post('/campaigns/complete-task', authenticateToken, async (req, res) => {
     try {
         const { campaignId, taskId } = req.body;
         const userId = req.user.userId;
-
-        const campaign = await Campaign.findById(campaignId);
-        if (!campaign) {
-            return res.status(404).json({ message: 'Campaign not found' });
-        }
-
-        const task = campaign.tasksList.id(taskId);
-        if (!task) {
-            return res.status(404).json({ message: 'Task not found' });
-        }
-
-        // Check if task requires proof
-        if (task.type === 'proof-upload') {
+        console.log(req.body)
+        // Validate required fields
+        if (!campaignId || !taskId) {
             return res.status(400).json({ 
-                message: 'This task requires proof upload' 
+                message: 'campaignId and taskId are required' 
             });
         }
 
-        const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
+        // Find campaign and verify existence
+        const campaign = await Campaign.findById(campaignId);
+        if (!campaign) {
+            return res.status(404).json({ 
+                message: 'Campaign not found',
+                code: 'CAMPAIGN_NOT_FOUND'
+            });
         }
 
-        // Check if task is already completed
-        const userTask = user.tasks.find(t =>
+        // Find task and verify existence
+        const task = campaign.tasksList.id(taskId);
+        if (!task) {
+            return res.status(404).json({ 
+                message: 'Task not found',
+                code: 'TASK_NOT_FOUND'
+            });
+        }
+
+        // Check if task requires proof upload
+        if (task.type === 'proof-upload') {
+            return res.status(400).json({ 
+                message: 'This task requires proof upload',
+                code: 'PROOF_REQUIRED',
+                taskType: task.type
+            });
+        }
+
+        // Find user and verify existence
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ 
+                message: 'User not found',
+                code: 'USER_NOT_FOUND'
+            });
+        }
+
+        // Check if user has already completed this task
+        const existingTask = user.tasks.find(t =>
             t.taskId.toString() === taskId &&
             t.campaignId.toString() === campaignId
         );
 
-        if (userTask && userTask.status === 'completed') {
-            return res.status(400).json({ message: 'Task already completed' });
+        if (existingTask?.status === 'completed') {
+            return res.status(400).json({ 
+                message: 'Task already completed',
+                code: 'TASK_ALREADY_COMPLETED',
+                completedAt: existingTask.completedAt
+            });
         }
 
-        // Calculate reward (with potential penalty for late completion)
-        const currentDate = new Date();
-        const startDate = new Date(campaign.startDate);
-        const dayDiff = Math.floor((currentDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
-        const daysLate = dayDiff - task.day;
+        // Calculate reward with potential late penalty
+        const { finalReward, penaltyInfo } = calculateTaskReward(
+            campaign.startDate,
+            task.day,
+            task.reward
+        );
 
-        let penaltyFactor = 1;
-        if (daysLate > 0) {
-            penaltyFactor = Math.max(0.5, 1 - (daysLate * 0.1)); // 10% penalty per day late
+        // Update all relevant records in a transaction
+        const session = await mongoose.startSession();
+        session.startTransaction();
+
+        try {
+            // Update user records
+            await updateUserRecords(
+                user, 
+                campaignId, 
+                taskId, 
+                finalReward,
+                task.co2Impact,
+                session
+            );
+
+            // Update campaign records
+            await updateCampaignRecords(
+                campaign,
+                userId,
+                taskId,
+                session
+            );
+
+            // Create transaction record
+            await createTransactionRecord(
+                userId,
+                finalReward,
+                task.title,
+                campaign.title,
+                session
+            );
+
+            await session.commitTransaction();
+            
+            // Return success response
+            return res.json({
+                success: true,
+                message: 'Task completed successfully',
+                reward: finalReward,
+                co2Saved: user.co2Saved,
+                penalty: penaltyInfo,
+                balance: user.earnings
+            });
+
+        } catch (transactionError) {
+            await session.abortTransaction();
+            throw transactionError;
+        } finally {
+            session.endSession();
         }
 
-        const baseReward = task.reward || 0;
-        const finalReward = baseReward * penaltyFactor;
+    } catch (error) {
+        console.error('Complete task error:', {
+            error: error.message,
+            stack: error.stack,
+            userId: req.user?.userId,
+            campaignId: req.body?.campaignId,
+            taskId: req.body?.taskId
+        });
 
-        // Update user's task status
-        if (!userTask) {
-            user.tasks.push({
-                campaignId,
+        const statusCode = error.statusCode || 500;
+        res.status(statusCode).json({
+            success: false,
+            message: error.message || 'Failed to complete task',
+            code: error.code || 'INTERNAL_SERVER_ERROR',
+            ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+        });
+    }
+});
+
+
+// Helper function to calculate task reward with potential penalty
+function calculateTaskReward(startDate, taskDay, baseReward = 0) {
+    const currentDate = new Date();
+    const start = new Date(startDate);
+    const dayDiff = Math.floor((currentDate - start) / (1000 * 60 * 60 * 24)) + 1;
+    const daysLate = dayDiff - taskDay;
+
+    let penaltyFactor = 1;
+    let penaltyInfo = 'No penalty';
+
+    if (daysLate > 0) {
+        penaltyFactor = Math.max(0.5, 1 - (daysLate * 0.1)); // 10% penalty per day late
+        penaltyInfo = `${(1 - penaltyFactor) * 100}% penalty applied (${daysLate} days late)`;
+    }
+
+    return {
+        finalReward: baseReward * penaltyFactor,
+        penaltyInfo
+    };
+}
+
+// Helper function to update user records
+async function updateUserRecords(user, campaignId, taskId, reward, co2Impact, session) {
+    // Update or create task record
+    const userTask = user.tasks.find(t =>
+        t.taskId.toString() === taskId &&
+        t.campaignId.toString() === campaignId
+    );
+
+    if (!userTask) {
+        user.tasks.push({
+            campaignId,
+            taskId,
+            status: 'completed',
+            completedAt: new Date()
+        });
+    } else {
+        userTask.status = 'completed';
+        userTask.completedAt = new Date();
+    }
+
+    // Update campaign progress
+    const userCampaign = user.campaigns.find(c =>
+        c.campaignId.toString() === campaignId
+    );
+    if (userCampaign) {
+        userCampaign.completed += 1;
+        userCampaign.lastActivity = new Date();
+    }
+
+    // Update earnings and CO2 saved
+    user.earnings += reward;
+    const co2Saved = parseFloat(user.co2Saved || '0') + (co2Impact || 0.01);
+    user.co2Saved = co2Saved.toFixed(2);
+
+    await user.save({ session });
+}
+
+// Helper function to update campaign records
+async function updateCampaignRecords(campaign, userId, taskId, session) {
+    // Update task completion
+    const task = campaign.tasksList.id(taskId);
+    const completedByEntry = task.completedBy.find(entry =>
+        entry.userId.toString() === userId
+    );
+
+    if (!completedByEntry) {
+        task.completedBy.push({
+            userId,
+            status: 'completed',
+            completedAt: new Date()
+        });
+    } else {
+        completedByEntry.status = 'completed';
+        completedByEntry.completedAt = new Date();
+    }
+
+    // Update participant record
+    const participant = campaign.participantsList.find(p =>
+        p.userId.toString() === userId
+    );
+    if (participant) {
+        participant.completed += 1;
+        participant.lastActivity = new Date();
+
+        const participantTask = participant.tasks.find(t =>
+            t.taskId.toString() === taskId
+        );
+        if (!participantTask) {
+            participant.tasks.push({
                 taskId,
                 status: 'completed',
                 completedAt: new Date()
             });
         } else {
-            userTask.status = 'completed';
-            userTask.completedAt = new Date();
+            participantTask.status = 'completed';
+            participantTask.completedAt = new Date();
         }
-
-        // Update user campaign progress
-        const userCampaign = user.campaigns.find(c =>
-            c.campaignId.toString() === campaignId
-        );
-        if (userCampaign) {
-            userCampaign.completed += 1;
-            userCampaign.lastActivity = new Date();
-        }
-
-        // Update campaign stats
-        campaign.completedTasks += 1;
-
-        // Update campaign participant
-        const participant = campaign.participantsList.find(p =>
-            p.userId.toString() === userId
-        );
-        if (participant) {
-            participant.completed += 1;
-            participant.lastActivity = new Date();
-
-            const participantTask = participant.tasks.find(t =>
-                t.taskId.toString() === taskId
-            );
-            if (!participantTask) {
-                participant.tasks.push({
-                    taskId,
-                    status: 'completed',
-                    completedAt: new Date()
-                });
-            } else {
-                participantTask.status = 'completed';
-                participantTask.completedAt = new Date();
-            }
-        }
-
-        // Update task's completedBy
-        const completedByEntry = task.completedBy.find(entry =>
-            entry.userId.toString() === userId
-        );
-        if (!completedByEntry) {
-            task.completedBy.push({
-                userId: userId,
-                status: 'completed',
-                completedAt: new Date()
-            });
-        } else {
-            completedByEntry.status = 'completed';
-            completedByEntry.completedAt = new Date();
-        }
-
-        // Add reward to user and update CO2 saved
-        user.earnings += finalReward;
-        const co2Saved = parseFloat(user.co2Saved || '0') + (task.co2Impact || 0.01); // Default 0.01 kg if not specified
-        user.co2Saved = co2Saved.toFixed(2);
-
-        // Create transaction
-        const transaction = new Transaction({
-            userId: user._id,
-            amount: finalReward,
-            type: 'earn',
-            category: 'Campaign',
-            activity: `Completed task: ${task.title}`,
-            description: `Earned ${finalReward} RFX for completing task in ${campaign.title}`,
-            color: 'green',
-            timestamp: new Date()
-        });
-
-        await Promise.all([user.save(), campaign.save(), transaction.save()]);
-
-        res.json({
-            message: 'Task completed successfully',
-            reward: finalReward,
-            co2Saved: user.co2Saved,
-            penalty: daysLate > 0 ? `${(1 - penaltyFactor) * 100}% penalty applied` : 'No penalty',
-            balance: user.earnings
-        });
-    } catch (err) {
-        console.error('Complete task error:', err);
-        res.status(500).json({ message: 'Failed to complete task' });
     }
-});
+
+    // Update campaign stats
+    campaign.completedTasks += 1;
+    await campaign.save({ session });
+}
+
+// Helper function to create transaction record
+async function createTransactionRecord(userId, amount, taskTitle, campaignTitle, session) {
+    const transaction = new Transaction({
+        userId,
+        amount,
+        type: 'earn',
+        category: 'Campaign',
+        activity: `Completed task: ${taskTitle}`,
+        description: `Earned ${amount} RFX for completing task in ${campaignTitle}`,
+        color: 'green',
+        timestamp: new Date()
+    });
+
+    await transaction.save({ session });
+}
+
 
 
 // Add this route to start tasks

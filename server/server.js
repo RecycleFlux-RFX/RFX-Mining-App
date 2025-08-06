@@ -963,18 +963,35 @@ app.get('/user/validate-token', authenticateToken, async (req, res) => {
 
 app.get('/user/user', authenticateToken, async (req, res) => {
     try {
-        const user = await User.findById(req.user.userId).select('username email fullName walletAddress earnings co2Saved campaigns');
+        const user = await User.findById(req.user.userId)
+            .select('username email fullName walletAddress earnings co2Saved campaigns tasks')
+            .populate('tasks.taskId', 'co2Impact');
+        
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
+
+        let totalCO2Saved = 0;
+        user.tasks.forEach(task => {
+            if (task.status === 'completed' && task.taskId?.co2Impact) {
+                totalCO2Saved += parseFloat(task.taskId.co2Impact) || 0.01; // Default to 0.01 if co2Impact is missing
+            }
+        });
+
+        totalCO2Saved = parseFloat(totalCO2Saved.toFixed(2));
+        if (parseFloat(user.co2Saved || '0') !== totalCO2Saved) {
+            user.co2Saved = totalCO2Saved.toFixed(2);
+            await user.save();
+        }
+
         res.status(200).json({
             username: user.username,
             email: user.email,
-            fullName: user.fullName || '', // Ensure fullName is always a string
+            fullName: user.fullName || '',
             walletAddress: user.walletAddress || '',
             earnings: user.earnings || 0,
             co2Saved: user.co2Saved || '0.00',
-            campaigns: user.campaigns || [] // Ensure campaigns is always an array
+            campaigns: user.campaigns || []
         });
     } catch (err) {
         console.error('Get user data error:', err);
@@ -982,14 +999,25 @@ app.get('/user/user', authenticateToken, async (req, res) => {
     }
 });
 
+// In server.js
 app.get('/user/network-stats', authenticateToken, async (req, res) => {
     try {
         const totalRecycled = await User.aggregate([
-            { $group: { _id: null, total: { $sum: { $toDouble: "$co2Saved" } } } }
+            {
+                $group: {
+                    _id: null,
+                    total: { $sum: { $toDouble: { $ifNull: ["$co2Saved", "0"] } } }
+                }
+            }
         ]);
-        const activeUsers = await User.countDocuments();
+
+        const activeUsers = await User.countDocuments({
+            'tasks': { $elemMatch: { status: 'completed' } }
+        });
+
+        console.log(`Network stats: totalRecycled=${totalRecycled[0]?.total || 0}, activeUsers=${activeUsers}`);
         res.status(200).json({
-            totalRecycled: totalRecycled[0]?.total.toFixed(2) || '0.00',
+            totalRecycled: (totalRecycled[0]?.total || 0).toFixed(2),
             activeUsers
         });
     } catch (err) {
@@ -2472,9 +2500,11 @@ app.post('/campaigns/:id/tasks/:taskId/proof', [authenticateToken, upload.single
 });
 
 // Complete a task (for tasks that don't require proof)
+// In server.js
 app.post('/campaigns/:id/tasks/:taskId/complete', authenticateToken, async (req, res) => {
     try {
         const { id: campaignId, taskId } = req.params;
+        console.log(`Completing task ${taskId} for campaign ${campaignId} by user ${req.user.userId}`);
 
         const campaign = await Campaign.findById(campaignId);
         if (!campaign) {
@@ -2491,25 +2521,18 @@ app.post('/campaigns/:id/tasks/:taskId/complete', authenticateToken, async (req,
             return res.status(404).json({ message: 'User not found' });
         }
 
-        // Check if user has joined the campaign
-        const userCampaign = user.campaigns.find(c =>
-            c.campaignId.toString() === campaignId
-        );
+        const userCampaign = user.campaigns.find(c => c.campaignId.toString() === campaignId);
         if (!userCampaign) {
             return res.status(400).json({ message: 'Join the campaign first' });
         }
 
-        // Check if task is already completed
         const userTask = user.tasks.find(t =>
-            t.taskId.toString() === taskId &&
-            t.campaignId.toString() === campaignId
+            t.taskId.toString() === taskId && t.campaignId.toString() === campaignId
         );
-
         if (userTask && userTask.status === 'completed') {
             return res.status(400).json({ message: 'Task already completed' });
         }
 
-        // Calculate penalty for late completion
         const currentDate = new Date();
         const startDate = new Date(campaign.startDate);
         const dayDiff = Math.floor((currentDate - startDate) / (1000 * 60 * 60 * 24)) + 1;
@@ -2517,14 +2540,20 @@ app.post('/campaigns/:id/tasks/:taskId/complete', authenticateToken, async (req,
 
         let penaltyFactor = 1;
         if (daysLate > 0) {
-            penaltyFactor = Math.max(0.5, 1 - (daysLate * 0.1)); // 10% penalty per day late
+            penaltyFactor = Math.max(0.5, 1 - (daysLate * 0.1));
         }
 
-        // Apply penalty to rewards
         const baseReward = task.reward || 0;
         const finalReward = baseReward * penaltyFactor;
+        let co2Impact = parseFloat(task.co2Impact);
+        if (isNaN(co2Impact) || co2Impact <= 0.01) {
+            console.warn(`Invalid co2Impact (${task.co2Impact}) for task ${task.title}, updating to 2.0`);
+            task.co2Impact = 2.0;
+            await campaign.save(); // Save updated task
+        }
+        co2Impact = parseFloat(task.co2Impact) || 2.0;
+        console.log(`Applying co2Impact: ${co2Impact} for task ${task.title}`);
 
-        // Update user's task status
         if (!userTask) {
             user.tasks.push({
                 campaignId,
@@ -2537,24 +2566,17 @@ app.post('/campaigns/:id/tasks/:taskId/complete', authenticateToken, async (req,
             userTask.completedAt = new Date();
         }
 
-        // Update user campaign progress
         userCampaign.completed += 1;
         userCampaign.lastActivity = new Date();
 
-        // Update campaign stats
         campaign.completedTasks += 1;
 
-        // Update campaign participant
-        const participant = campaign.participantsList.find(p =>
-            p.userId.toString() === req.user.userId
-        );
+        const participant = campaign.participantsList.find(p => p.userId.toString() === req.user.userId);
         if (participant) {
             participant.completed += 1;
             participant.lastActivity = new Date();
 
-            const participantTask = participant.tasks.find(t =>
-                t.taskId.toString() === taskId
-            );
+            const participantTask = participant.tasks.find(t => t.taskId.toString() === taskId);
             if (!participantTask) {
                 participant.tasks.push({
                     taskId,
@@ -2567,10 +2589,7 @@ app.post('/campaigns/:id/tasks/:taskId/complete', authenticateToken, async (req,
             }
         }
 
-        // Update task's completedBy
-        const completedByEntry = task.completedBy.find(entry =>
-            entry.userId.toString() === req.user.userId
-        );
+        const completedByEntry = task.completedBy.find(entry => entry.userId.toString() === req.user.userId);
         if (!completedByEntry) {
             task.completedBy.push({
                 userId: req.user.userId,
@@ -2582,10 +2601,11 @@ app.post('/campaigns/:id/tasks/:taskId/complete', authenticateToken, async (req,
             completedByEntry.completedAt = new Date();
         }
 
-        // Add reward to user
         user.earnings += finalReward;
+        const newCo2Saved = (parseFloat(user.co2Saved || '0') + co2Impact).toFixed(2);
+        console.log(`Updating user.co2Saved: ${user.co2Saved} + ${co2Impact} = ${newCo2Saved}`);
+        user.co2Saved = newCo2Saved;
 
-        // Create transaction
         const transaction = new Transaction({
             userId: user._id,
             amount: finalReward,
@@ -2598,12 +2618,14 @@ app.post('/campaigns/:id/tasks/:taskId/complete', authenticateToken, async (req,
         });
 
         await Promise.all([user.save(), campaign.save(), transaction.save()]);
+        console.log(`Saved user with co2Saved: ${user.co2Saved}`);
 
         res.json({
             message: 'Task completed successfully',
             reward: finalReward,
             penalty: daysLate > 0 ? `${(1 - penaltyFactor) * 100}% penalty applied` : 'No penalty',
-            balance: user.earnings
+            balance: user.earnings,
+            co2Saved: user.co2Saved
         });
     } catch (err) {
         console.error('Complete task error:', err);
@@ -2768,32 +2790,21 @@ app.post('/admin/campaigns/:id/approve-proof', [authenticateToken, adminAuth], a
             return res.status(404).json({ message: 'Campaign not found' });
         }
 
-        // Find the task
         const task = campaign.tasksList.id(taskId);
         if (!task) {
             return res.status(404).json({ message: 'Task not found' });
         }
 
-        // Find the proof in task's completedBy
-        const proof = task.completedBy.find(p =>
-            p.userId.toString() === userId
-        );
+        const proof = task.completedBy.find(p => p.userId.toString() === userId);
         if (!proof) {
             return res.status(404).json({ message: 'Proof not found' });
         }
 
-        // Update proof status
         proof.status = approve ? 'completed' : 'rejected';
 
-        // Find participant in campaign
-        const participant = campaign.participantsList.find(p =>
-            p.userId.toString() === userId
-        );
+        const participant = campaign.participantsList.find(p => p.userId.toString() === userId);
         if (participant) {
-            // Find participant's task
-            const participantTask = participant.tasks.find(t =>
-                t.taskId.toString() === taskId
-            );
+            const participantTask = participant.tasks.find(t => t.taskId.toString() === taskId);
             if (participantTask) {
                 participantTask.status = approve ? 'completed' : 'rejected';
                 if (approve) {
@@ -2802,59 +2813,63 @@ app.post('/admin/campaigns/:id/approve-proof', [authenticateToken, adminAuth], a
             }
         }
 
-        // If approved, update user's task and reward them
+        let user;
         if (approve) {
-            const user = await User.findById(userId);
-            if (user) {
-                // Find user's campaign
-                const userCampaign = user.campaigns.find(c =>
-                    c.campaignId.toString() === campaignId
-                );
-                if (userCampaign) {
-                    userCampaign.completed += 1;
-                    userCampaign.lastActivity = new Date();
-                }
-
-                // Find user's task
-                const userTask = user.tasks.find(t =>
-                    t.taskId.toString() === taskId &&
-                    t.campaignId.toString() === campaignId
-                );
-                if (userTask) {
-                    userTask.status = 'completed';
-                    userTask.completedAt = new Date();
-                }
-
-                // Add reward and update CO2 saved
-                user.earnings += task.reward || 0;
-                const co2Saved = parseFloat(user.co2Saved || '0') + (task.co2Impact || 0.01); // Default 0.01 kg if not specified
-                user.co2Saved = co2Saved.toFixed(2);
-
-                // Create transaction
-                const transaction = new Transaction({
-                    userId: user._id,
-                    amount: task.reward || 0,
-                    type: 'earn',
-                    category: 'Campaign',
-                    activity: `Completed task: ${task.title}`,
-                    description: `Earned ${task.reward || 0} RFX for completing task in ${campaign.title}`,
-                    color: 'green',
-                    timestamp: new Date()
-                });
-
-                await transaction.save();
-                await user.save();
+            user = await User.findById(userId);
+            if (!user) {
+                return res.status(404).json({ message: 'User not found' });
             }
 
-            // Update campaign completed tasks count
-            campaign.completedTasks += 1;
+            const userCampaign = user.campaigns.find(c => c.campaignId.toString() === campaignId);
+            if (userCampaign) {
+                userCampaign.completed += 1;
+                userCampaign.lastActivity = new Date();
+            }
+
+            const userTask = user.tasks.find(t =>
+                t.taskId.toString() === taskId && t.campaignId.toString() === campaignId
+            );
+            if (userTask) {
+                userTask.status = 'completed';
+                userTask.completedAt = new Date();
+            }
+
+            let co2Impact = parseFloat(task.co2Impact);
+            if (isNaN(co2Impact) || co2Impact <= 0.01) {
+                console.warn(`Invalid co2Impact (${task.co2Impact}) for task ${task.title}, updating to 2.0`);
+                task.co2Impact = 2.0;
+                await campaign.save();
+            }
+            co2Impact = parseFloat(task.co2Impact) || 2.0;
+            console.log(`Applying co2Impact: ${co2Impact} for task ${task.title}`);
+            user.earnings += task.reward || 0;
+            const newCo2Saved = (parseFloat(user.co2Saved || '0') + co2Impact).toFixed(2);
+            console.log(`Updating user.co2Saved: ${user.co2Saved} + ${co2Impact} = ${newCo2Saved}`);
+            user.co2Saved = newCo2Saved;
+
+            const transaction = new Transaction({
+                userId: user._id,
+                amount: task.reward || 0,
+                type: 'earn',
+                category: 'Campaign',
+                activity: `Completed task: ${task.title}`,
+                description: `Earned ${task.reward || 0} RFX for completing task in ${campaign.title}`,
+                color: 'green',
+                timestamp: new Date()
+            });
+
+            await transaction.save();
+            await user.save();
+            console.log(`Saved user with co2Saved: ${user.co2Saved}`);
         }
 
+        campaign.completedTasks += 1;
         await campaign.save();
 
         res.json({
             message: `Proof ${approve ? 'approved' : 'rejected'} successfully`,
-            status: approve ? 'completed' : 'rejected'
+            status: approve ? 'completed' : 'rejected',
+            co2Saved: approve ? user.co2Saved : undefined
         });
     } catch (err) {
         console.error('Approve proof error:', err);

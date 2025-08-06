@@ -49,6 +49,8 @@ export default function RFXCampaignPage() {
     const [currentDay, setCurrentDay] = useState(1);
     const [dayTimeLeft, setDayTimeLeft] = useState({ hours: 23, minutes: 59, seconds: 59 });
     const [dailyTasks, setDailyTasks] = useState([]);
+    const [globalImpact, setGlobalImpact] = useState('0.00');
+    const [yourContribution, setYourContribution] = useState('0.00');
 
     const iconMap = {
         Ocean: Droplets,
@@ -190,6 +192,29 @@ export default function RFXCampaignPage() {
             setIsConnecting(false);
         }
     };
+
+    useEffect(() => {
+        const fetchImpactData = async () => {
+            try {
+                // Fetch Global Impact
+                const networkStatsResponse = await axios.get(`${BASE_URL}/user/network-stats`, {
+                    headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
+                });
+                setGlobalImpact(networkStatsResponse.data.totalRecycled);
+
+                // Fetch Your Contribution
+                const userResponse = await axios.get(`${BASE_URL}/user/user`, {
+                    headers: { Authorization: `Bearer ${localStorage.getItem('authToken')}` }
+                });
+                setYourContribution(userResponse.data.co2Saved);
+            } catch (err) {
+                console.error('Fetch impact data error:', err);
+                setError({ type: 'error', message: 'Failed to load impact data' });
+            }
+        };
+
+        fetchImpactData();
+    }, []);
 
     const calculateDayProgress = (campaign) => {
         if (!campaign || !campaign.startDate || !campaign.duration) {
@@ -548,29 +573,31 @@ const handleProofUpload = async (taskId, file) => {
 const handleCompleteTask = async (campaignId, taskId) => {
     try {
         const task = tasks.find(t => t.id === taskId);
-        
-        // For proof-upload tasks, we just upload proof and set to pending
+        if (!task) {
+            throw new Error('Task not found');
+        }
+
         if (task.type === 'proof-upload') {
-            // This should be handled by the proof upload modal
+            setError({ type: 'info', message: 'Proof-upload tasks require proof submission' });
             return;
         }
 
-        // For other tasks, complete immediately
-        const response = await fetchWithAuth(`${BASE_URL}/campaigns/complete-task`, {
+        const response = await fetchWithAuth(`${BASE_URL}/campaigns/${campaignId}/tasks/${taskId}/complete`, {
             method: 'POST',
-            body: JSON.stringify({ campaignId, taskId }),
         });
-        
+
         setTasks(prev => prev.map(t => 
             t.id === taskId ? { ...t, status: 'completed', completed: true } : t
         ));
-        
+
         setUserStats(prev => ({
             ...prev,
             earnings: response.balance || prev.earnings,
             co2Saved: response.co2Saved || prev.co2Saved
         }));
-        
+
+        setYourContribution(response.co2Saved || yourContribution);
+
         setCampaigns(prev => prev.map(c => 
             c.id === campaignId ? {
                 ...c,
@@ -578,7 +605,7 @@ const handleCompleteTask = async (campaignId, taskId) => {
                 userCompleted: (c.userCompleted || 0) + 1
             } : c
         ));
-        
+
         setUserCampaigns(prev => prev.map(c => 
             c.id === campaignId ? {
                 ...c,
@@ -586,10 +613,10 @@ const handleCompleteTask = async (campaignId, taskId) => {
                 userCompleted: (c.userCompleted || 0) + 1
             } : c
         ));
-        
+
         setError({
             type: 'success',
-            message: `Task completed! Earned ${response.reward || '0'} RFX`,
+            message: `Task completed! Earned ${response.reward || '0'} RFX${response.penalty ? ` (${response.penalty})` : ''}`,
         });
     } catch (error) {
         console.error('Complete task error:', {

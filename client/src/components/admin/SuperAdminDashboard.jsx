@@ -1,17 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Plus, Trash2, Lock, User, Users, BarChart2, PieChart, Calendar, Activity, 
   Shield, FileText, Settings, LogOut, ArrowUp, ArrowDown
 } from 'lucide-react';
 import { jwtDecode } from 'jwt-decode';
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  Pie, Cell, LineChart, Line, AreaChart, Area
-} from 'recharts';
+import { Chart, registerables } from 'chart.js';
+Chart.register(...registerables);
 
 // Error Boundary Component
-
 class ErrorBoundary extends React.Component {
   state = { hasError: false, error: null };
 
@@ -37,6 +34,34 @@ class ErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
+
+const ChartComponent = ({ type, data, options }) => {
+  const chartRef = useRef(null);
+  const chartInstance = useRef(null);
+
+  useEffect(() => {
+    if (chartRef.current) {
+      if (chartInstance.current) {
+        chartInstance.current.destroy();
+      }
+      
+      const ctx = chartRef.current.getContext('2d');
+      chartInstance.current = new Chart(ctx, {
+        type,
+        data,
+        options
+      });
+    }
+
+    return () => {
+      if (chartInstance.current) {
+        chartInstance.current.destroy();
+      }
+    };
+  }, [type, data, options]);
+
+  return <canvas ref={chartRef} />;
+};
 
 const SuperAdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -79,39 +104,164 @@ const SuperAdminDashboard = () => {
   const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
 
   // Sample data for charts (replace with real data from your API)
-  const userGrowthData = [
-    { name: 'Jan', users: 400 },
-    { name: 'Feb', users: 600 },
-    { name: 'Mar', users: 800 },
-    { name: 'Apr', users: 1000 },
-    { name: 'May', users: 1200 },
-    { name: 'Jun', users: 1500 },
-  ];
+  const userGrowthData = {
+    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+    datasets: [
+      {
+        label: 'Users',
+        data: [400, 600, 800, 1000, 1200, 1500],
+        backgroundColor: 'rgba(136, 132, 216, 0.2)',
+        borderColor: 'rgba(136, 132, 216, 1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.4
+      }
+    ]
+  };
 
-  const campaignPerformanceData = [
-    { name: 'Eco Challenge', participants: 400, completed: 240 },
-    { name: 'Recycle Rally', participants: 300, completed: 180 },
-    { name: 'Green Living', participants: 200, completed: 160 },
-    { name: 'Zero Waste', participants: 500, completed: 350 },
-    { name: 'Clean Energy', participants: 350, completed: 210 },
-  ];
+  const campaignPerformanceData = {
+    labels: ['Eco Challenge', 'Recycle Rally', 'Green Living', 'Zero Waste', 'Clean Energy'],
+    datasets: [
+      {
+        label: 'Participants',
+        data: [400, 300, 200, 500, 350],
+        backgroundColor: 'rgba(136, 132, 216, 0.5)',
+      },
+      {
+        label: 'Completed',
+        data: [240, 180, 160, 350, 210],
+        backgroundColor: 'rgba(130, 202, 157, 0.5)',
+      }
+    ]
+  };
 
-  const userActivityData = [
-    { name: 'Mon', active: 4000, new: 2400 },
-    { name: 'Tue', active: 3000, new: 1398 },
-    { name: 'Wed', active: 2000, new: 9800 },
-    { name: 'Thu', active: 2780, new: 3908 },
-    { name: 'Fri', active: 1890, new: 4800 },
-    { name: 'Sat', active: 2390, new: 3800 },
-    { name: 'Sun', active: 3490, new: 4300 },
-  ];
+  const userActivityData = {
+    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+    datasets: [
+      {
+        label: 'Active Users',
+        data: [4000, 3000, 2000, 2780, 1890, 2390, 3490],
+        borderColor: 'rgba(136, 132, 216, 1)',
+        backgroundColor: 'rgba(136, 132, 216, 0.1)',
+        borderWidth: 2,
+        tension: 0.4
+      },
+      {
+        label: 'New Users',
+        data: [2400, 1398, 9800, 3908, 4800, 3800, 4300],
+        borderColor: 'rgba(130, 202, 157, 1)',
+        backgroundColor: 'rgba(130, 202, 157, 0.1)',
+        borderWidth: 2,
+        tension: 0.4
+      }
+    ]
+  };
 
-  const campaignStatusData = [
-    { name: 'Active', value: 400 },
-    { name: 'Completed', value: 300 },
-    { name: 'Upcoming', value: 200 },
-    { name: 'Draft', value: 100 },
-  ];
+  const campaignStatusData = {
+    labels: ['Active', 'Completed', 'Upcoming', 'Draft'],
+    datasets: [
+      {
+        data: [400, 300, 200, 100],
+        backgroundColor: [
+          'rgba(0, 136, 254, 0.7)',
+          'rgba(0, 196, 159, 0.7)',
+          'rgba(255, 187, 40, 0.7)',
+          'rgba(255, 128, 66, 0.7)'
+        ],
+        borderWidth: 1
+      }
+    ]
+  };
+
+  const userLocationsData = {
+    labels: ['North America', 'Europe', 'Asia', 'Africa', 'South America', 'Oceania'],
+    datasets: [
+      {
+        data: [400, 300, 200, 100, 150, 50],
+        backgroundColor: [
+          'rgba(0, 136, 254, 0.7)',
+          'rgba(0, 196, 159, 0.7)',
+          'rgba(255, 187, 40, 0.7)',
+          'rgba(255, 128, 66, 0.7)',
+          'rgba(136, 132, 216, 0.7)',
+          'rgba(130, 202, 157, 0.7)'
+        ],
+        borderWidth: 1
+      }
+    ]
+  };
+
+  const userDevicesData = {
+    labels: ['Mobile', 'Desktop', 'Tablet'],
+    datasets: [
+      {
+        data: [600, 300, 100],
+        backgroundColor: [
+          'rgba(0, 136, 254, 0.7)',
+          'rgba(0, 196, 159, 0.7)',
+          'rgba(255, 187, 40, 0.7)'
+        ],
+        borderWidth: 1
+      }
+    ]
+  };
+
+  // Chart options
+  const areaChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false
+      }
+    },
+    scales: {
+      y: {
+        beginAtZero: true
+      }
+    }
+  };
+
+  const barChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      y: {
+        beginAtZero: true
+      }
+    }
+  };
+
+  const lineChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    scales: {
+      y: {
+        beginAtZero: true
+      }
+    }
+  };
+
+  const pieChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'right'
+      },
+      tooltip: {
+        callbacks: {
+          label: function(context) {
+            const label = context.label || '';
+            const value = context.raw || 0;
+            const total = context.dataset.data.reduce((acc, data) => acc + data, 0);
+            const percentage = Math.round((value / total) * 100);
+            return `${label}: ${percentage}% (${value})`;
+          }
+        }
+      }
+    }
+  };
 
   useEffect(() => {
     const verifySuperAdminStatus = async () => {
@@ -575,17 +725,13 @@ const SuperAdminDashboard = () => {
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-lg font-medium mb-4">User Growth</h3>
           <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <ErrorBoundary>
-<AreaChart data={userGrowthData}>
-  <CartesianGrid strokeDasharray="3 3" />
-  <XAxis dataKey="name" />
-  <YAxis />
-  <Tooltip />
-  <Area type="monotone" dataKey="users" stroke="#8884d8" fill="#8884d8" />
-</AreaChart>
-              </ErrorBoundary>
-            </ResponsiveContainer>
+            <ErrorBoundary>
+              <ChartComponent 
+                type="line" 
+                data={userGrowthData} 
+                options={areaChartOptions} 
+              />
+            </ErrorBoundary>
           </div>
         </div>
 
@@ -593,28 +739,13 @@ const SuperAdminDashboard = () => {
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-lg font-medium mb-4">Campaign Status</h3>
           <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <ErrorBoundary>
-<PieChart>
-  <Pie
-    data={campaignStatusData}
-    cx="50%"
-    cy="50%"
-    labelLine={false}
-    outerRadius={80}
-    fill="#8884d8"
-    dataKey="value"
-    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-  >
-    {campaignStatusData.map((entry, index) => (
-      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-    ))}
-  </Pie>
-  <Tooltip />
-  <Legend />
-</PieChart>
-              </ErrorBoundary>
-            </ResponsiveContainer>
+            <ErrorBoundary>
+              <ChartComponent 
+                type="pie" 
+                data={campaignStatusData} 
+                options={pieChartOptions} 
+              />
+            </ErrorBoundary>
           </div>
         </div>
       </div>
@@ -816,19 +947,13 @@ const SuperAdminDashboard = () => {
       <div className="bg-white p-6 rounded-lg shadow">
         <h3 className="text-lg font-medium mb-4">Campaign Performance</h3>
         <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <ErrorBoundary>
-<BarChart data={campaignPerformanceData}>
-  <CartesianGrid strokeDasharray="3 3" />
-  <XAxis dataKey="name" />
-  <YAxis />
-  <Tooltip />
-  <Legend />
-  <Bar dataKey="participants" fill="#8884d8" name="Participants" />
-  <Bar dataKey="completed" fill="#82ca9d" name="Completed" />
-</BarChart>
-            </ErrorBoundary>
-          </ResponsiveContainer>
+          <ErrorBoundary>
+            <ChartComponent 
+              type="bar" 
+              data={campaignPerformanceData} 
+              options={barChartOptions} 
+            />
+          </ErrorBoundary>
         </div>
       </div>
     </div>
@@ -981,19 +1106,13 @@ const SuperAdminDashboard = () => {
       <div className="bg-white p-6 rounded-lg shadow">
         <h3 className="text-lg font-medium mb-4">User Activity</h3>
         <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <ErrorBoundary>
-<LineChart data={userActivityData}>
-  <CartesianGrid strokeDasharray="3 3" />
-  <XAxis dataKey="name" />
-  <YAxis />
-  <Tooltip />
-  <Legend />
-  <Line type="monotone" dataKey="active" stroke="#8884d8" activeDot={{ r: 8 }} />
-  <Line type="monotone" dataKey="new" stroke="#82ca9d" />
-</LineChart>
-            </ErrorBoundary>
-          </ResponsiveContainer>
+          <ErrorBoundary>
+            <ChartComponent 
+              type="line" 
+              data={userActivityData} 
+              options={lineChartOptions} 
+            />
+          </ErrorBoundary>
         </div>
       </div>
 
@@ -1001,19 +1120,13 @@ const SuperAdminDashboard = () => {
       <div className="bg-white p-6 rounded-lg shadow">
         <h3 className="text-lg font-medium mb-4">Campaign Participation</h3>
         <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <ErrorBoundary>
-<BarChart data={campaignPerformanceData}>
-  <CartesianGrid strokeDasharray="3 3" />
-  <XAxis dataKey="name" />
-  <YAxis />
-  <Tooltip />
-  <Legend />
-  <Bar dataKey="participants" fill="#8884d8" name="Participants" />
-  <Bar dataKey="completed" fill="#82ca9d" name="Completed" />
-</BarChart>
-            </ErrorBoundary>
-          </ResponsiveContainer>
+          <ErrorBoundary>
+            <ChartComponent 
+              type="bar" 
+              data={campaignPerformanceData} 
+              options={barChartOptions} 
+            />
+          </ErrorBoundary>
         </div>
       </div>
 
@@ -1022,93 +1135,26 @@ const SuperAdminDashboard = () => {
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-lg font-medium mb-4">User Locations</h3>
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <ErrorBoundary>
-                <PieChart>
-                  <Pie
-                    data={[
-                      { name: 'North America', value: 400 },
-                      { name: 'Europe', value: 300 },
-                      { name: 'Asia', value: 200 },
-                      { name: 'Africa', value: 100 },
-                      { name: 'South America', value: 150 },
-                      { name: 'Oceania', value: 50 },
-                    ]}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  >
-                    {[1, 2, 3, 4, 5, 6].map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-<Tooltip 
-  contentStyle={{ 
-    backgroundColor: '#fff', 
-    border: '1px solid #eee',
-    borderRadius: '4px',
-    padding: '8px'
-  }}
-  itemStyle={{ 
-    color: '#333',
-    fontSize: '12px'
-  }}
-  formatter={(value) => [value, value === 'active' ? 'Active Users' : 'New Users']}
-  labelFormatter={(label) => `Date: ${label}`}
-/>
-                  <Legend />
-                </PieChart>
-              </ErrorBoundary>
-            </ResponsiveContainer>
+            <ErrorBoundary>
+              <ChartComponent 
+                type="pie" 
+                data={userLocationsData} 
+                options={pieChartOptions} 
+              />
+            </ErrorBoundary>
           </div>
         </div>
 
         <div className="bg-white p-6 rounded-lg shadow">
           <h3 className="text-lg font-medium mb-4">User Devices</h3>
           <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <ErrorBoundary>
-                <PieChart>
-                  <Pie
-                    data={[
-                      { name: 'Mobile', value: 600 },
-                      { name: 'Desktop', value: 300 },
-                      { name: 'Tablet', value: 100 },
-                    ]}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                    label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                  >
-                    {[1, 2, 3].map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-<Tooltip 
-  contentStyle={{ 
-    backgroundColor: '#fff', 
-    border: '1px solid #eee',
-    borderRadius: '4px',
-    padding: '8px'
-  }}
-  itemStyle={{ 
-    color: '#333',
-    fontSize: '12px'
-  }}
-  formatter={(value) => [value, value === 'active' ? 'Active Users' : 'New Users']}
-  labelFormatter={(label) => `Date: ${label}`}
-/>
-                  <Legend />
-                </PieChart>
-              </ErrorBoundary>
-            </ResponsiveContainer>
+            <ErrorBoundary>
+              <ChartComponent 
+                type="pie" 
+                data={userDevicesData} 
+                options={pieChartOptions} 
+              />
+            </ErrorBoundary>
           </div>
         </div>
       </div>

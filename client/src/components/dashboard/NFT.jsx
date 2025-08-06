@@ -23,10 +23,10 @@ export default function RFXVerseInterface() {
         activeUsers: 0,
     });
     const [referralInfo, setReferralInfo] = useState({
-    referralCount: 0,
-    referralEarnings: 0,
-    referrals: []
-});
+        referralCount: 0,
+        referralEarnings: 0,
+        referrals: []
+    });
     const [referralLink, setReferralLink] = useState('');
     const [isAnimating, setIsAnimating] = useState(false);
     const [error, setError] = useState(null);
@@ -37,14 +37,14 @@ export default function RFXVerseInterface() {
 
     const BASE_URL = 'http://localhost:3000/user';
 
-const navItems = [
-    { icon: Home, label: 'Home', id: 'home', path: '/' },
-    { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
-    { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
-    { icon: Users, label: 'Referrals', id: 'referrals', path: '/referrals' },
-    { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
-    { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' },
-];
+    const navItems = [
+        { icon: Home, label: 'Home', id: 'home', path: '/' },
+        { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
+        { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
+        { icon: Users, label: 'Referrals', id: 'referrals', path: '/referrals' },
+        { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
+        { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' },
+    ];
 
     const fetchWithAuth = async (url, options = {}) => {
         const token = localStorage.getItem('authToken');
@@ -126,24 +126,23 @@ const navItems = [
     };
 
     useEffect(() => {
-    const fetchReferralInfo = async () => {
-        try {
-            const data = await fetchWithAuth(`${BASE_URL}/referral-info`);
-            setReferralInfo({
-                referralCount: data.referralCount,
-                referralEarnings: data.referralEarnings,
-                referrals: data.referrals,
-                referralLink: data.referralLink
-            });
-        } catch (error) {
-            console.error('Failed to fetch referral info:', error);
-        }
-    };
-    
-    fetchReferralInfo();
-}, []);
+        const fetchReferralInfo = async () => {
+            try {
+                const data = await fetchWithAuth(`${BASE_URL}/referral-info`);
+                setReferralInfo({
+                    referralCount: data.referralCount,
+                    referralEarnings: data.referralEarnings,
+                    referrals: data.referrals,
+                    referralLink: data.referralLink
+                });
+            } catch (error) {
+                console.error('Failed to fetch referral info:', error);
+            }
+        };
+        
+        fetchReferralInfo();
+    }, []);
 
-    
     useEffect(() => {
         const currentNavItem = navItems.find((item) => item.path === location.pathname);
         if (currentNavItem) {
@@ -176,34 +175,43 @@ const navItems = [
         checkAuth();
     }, [navigate]);
 
-    const fetchInitialData = async () => {
-        try {
-            const [userResponse, statsResponse, referralResponse] = await Promise.all([
-                fetchWithAuth(`${BASE_URL}/user`),
-                fetchWithAuth(`${BASE_URL}/network-stats`),
-                fetchWithAuth(`${BASE_URL}/referral-link`),
-            ]);
+const fetchInitialData = async () => {
+    try {
+        const [userResponse, statsResponse, referralResponse] = await Promise.all([
+            fetchWithAuth(`${BASE_URL}/user`),
+            fetchWithAuth(`${BASE_URL}/network-stats`),
+            fetchWithAuth(`${BASE_URL}/referral-link`),
+        ]);
 
-            setUserData({
-                earnings: userResponse.earnings || 0,
-                co2Saved: userResponse.co2Saved || '0.00',
-                walletAddress: userResponse.walletAddress || '',
-                fullName: userResponse.fullName || '',
-            });
-            setWalletConnected(!!userResponse.walletAddress);
-            setNetworkStats({
-                totalRecycled: statsResponse.totalRecycled || '0.00',
-                activeUsers: statsResponse.activeUsers || 0,
-            });
-            setReferralLink(referralResponse.referralLink || '');
-        } catch (error) {
-            console.error('Data fetch error:', error.message);
-            setError({
-                type: 'error',
-                message: error.message || 'Failed to load data',
-            });
-        }
-    };
+        console.log('User Response:', userResponse);
+        console.log('Network Stats Response:', statsResponse);
+        console.log('Referral Response:', referralResponse);
+
+        setUserData({
+            earnings: userResponse.earnings || 0,
+            co2Saved: userResponse.co2Saved || '0.00',
+            walletAddress: userResponse.walletAddress || '',
+            fullName: userResponse.fullName || '',
+            games: userResponse.games || []
+        });
+
+        setNetworkStats({
+            totalRecycled: statsResponse.totalRecycled || '0.00',
+            activeUsers: statsResponse.activeUsers || 0,
+        });
+
+        setReferralInfo((prev) => ({
+            ...prev,
+            referralLink: referralResponse.referralLink || ''
+        }));
+    } catch (error) {
+        console.error('Data fetch error:', error.message);
+        setErrorWithTimeout({
+            type: 'error',
+            message: error.message || 'Failed to load data. Please try again.',
+        });
+    }
+};
 
     const handleMouseMove = throttle((e) => {
         if (containerRef.current) {
@@ -272,10 +280,14 @@ const navItems = [
     };
 
     const handleActionClick = (title) => {
-        setError({
-            type: 'info',
-            message: `${title} feature coming soon!`,
-        });
+        if (title === 'Trash') {
+            navigate('/games'); // Redirect to games page when Trash Sort is clicked
+        } else {
+            setError({
+                type: 'info',
+                message: `${title} feature coming soon!`,
+            });
+        }
     };
 
     const handleNewsClick = (title) => {
@@ -284,6 +296,13 @@ const navItems = [
             message: `${title} - read more soon!`,
         });
     };
+
+    const calculateTreeEquivalent = (co2Kg) => {
+    // On average, a tree absorbs about 21 kg of CO₂ per year
+    const co2 = parseFloat(co2Kg) || 0;
+    const trees = (co2 / 21).toFixed(2);
+    return trees > 0 ? trees : '0';
+};
 
     const getErrorColor = () => {
         if (!error) return '';
@@ -418,40 +437,40 @@ const navItems = [
                                         <div className="mt-4 sm:mt-0">
                                             <div className="relative">
                                                 <div className="absolute inset-0 bg-gradient-to-r from-green-400 to-green-600 rounded-2xl blur animate-pulse"></div>
-<div className="relative bg-gray-900 rounded-2xl p-4 border border-green-400/50">
-    <div className="flex items-center space-x-2 mb-2">
-        <Users className="w-5 h-5 text-green-400" />
-        <span className="text-green-400 font-bold">INVITE & EARN</span>
-    </div>
-    <div className="text-gray-300 text-sm">
-        Get 20% commission on your referrals' earnings
-    </div>
-    <div className="flex items-center mt-2 space-x-2">
-        <div className="text-xs bg-green-900/50 text-green-400 px-2 py-1 rounded">
-            {referralInfo.referralCount} Friends Joined
-        </div>
-        <div className="text-xs bg-purple-900/50 text-purple-400 px-2 py-1 rounded">
-            ₿ {referralInfo.referralEarnings.toFixed(5)} Earned
-        </div>
-    </div>
-    <div className="mt-3">
-        <div className="text-xs text-gray-400 mb-1">Your Referral Link:</div>
-        <div className="flex items-center space-x-2">
-            <input 
-                type="text" 
-                value={referralInfo.referralLink || 'Loading...'} 
-                readOnly 
-                className="flex-1 bg-gray-800 text-gray-300 text-xs p-2 rounded truncate"
-            />
-            <button
-                onClick={handleCopyReferralLink}
-                className="px-3 py-2 bg-green-400 text-black rounded text-sm hover:bg-green-500 transition-colors"
-            >
-                Copy
-            </button>
-        </div>
-    </div>
-</div>
+                                                <div className="relative bg-gray-900 rounded-2xl p-4 border border-green-400/50">
+                                                    <div className="flex items-center space-x-2 mb-2">
+                                                        <Users className="w-5 h-5 text-green-400" />
+                                                        <span className="text-green-400 font-bold">INVITE & EARN</span>
+                                                    </div>
+                                                    <div className="text-gray-300 text-sm">
+                                                        Get 20% commission on your referrals' earnings
+                                                    </div>
+                                                    <div className="flex items-center mt-2 space-x-2">
+                                                        <div className="text-xs bg-green-900/50 text-green-400 px-2 py-1 rounded">
+                                                            {referralInfo.referralCount} Friends Joined
+                                                        </div>
+                                                        <div className="text-xs bg-purple-900/50 text-purple-400 px-2 py-1 rounded">
+                                                            ₿ {referralInfo.referralEarnings.toFixed(5)} Earned
+                                                        </div>
+                                                    </div>
+                                                    <div className="mt-3">
+                                                        <div className="text-xs text-gray-400 mb-1">Your Referral Link:</div>
+                                                        <div className="flex items-center space-x-2">
+                                                            <input 
+                                                                type="text" 
+                                                                value={referralInfo.referralLink || 'Loading...'} 
+                                                                readOnly 
+                                                                className="flex-1 bg-gray-800 text-gray-300 text-xs p-2 rounded truncate"
+                                                            />
+                                                            <button
+                                                                onClick={handleCopyReferralLink}
+                                                                className="px-3 py-2 bg-green-400 text-black rounded text-sm hover:bg-green-500 transition-colors"
+                                                            >
+                                                                Copy
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
@@ -472,35 +491,44 @@ const navItems = [
                     </div>
 
                     {/* Stats Panel */}
-                    <div className="space-y-4">
-                        <div className="bg-gradient-to-br from-purple-900/20 to-purple-800/20 rounded-2xl p-6 border border-purple-700/50 backdrop-blur-sm">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-white font-semibold">Network Stats</h3>
-                                <Star className="w-5 h-5 text-yellow-400" />
-                            </div>
-                            <div className="space-y-3">
-                                <div>
-                                    <div className="text-gray-400 text-sm">Total Recycled</div>
-                                    <div className="text-2xl font-bold text-white">{networkStats.totalRecycled} kg</div>
-                                </div>
-                                <div>
-                                    <div className="text-gray-400 text-sm">Active Users</div>
-                                    <div className="text-2xl font-bold text-white">{networkStats.activeUsers}</div>
-                                </div>
-                            </div>
-                        </div>
+<div className="space-y-4">
+    <div className="bg-gradient-to-br from-purple-900/20 to-purple-800/20 rounded-2xl p-6 border border-purple-700/50 backdrop-blur-sm">
+        <div className="flex items-center justify-between mb-4">
+            <h3 className="text-white font-semibold">Network Stats</h3>
+            <Star className="w-5 h-5 text-yellow-400" />
+        </div>
+        <div className="space-y-3">
+            <div>
+                <div className="text-gray-400 text-sm">Total CO₂ Saved</div>
+                <div className="text-2xl font-bold text-white">
+                    {networkStats.totalRecycled} kg
+                </div>
+            </div>
+            <div>
+                <div className="text-gray-400 text-sm">Active Recyclers</div>
+                <div className="text-2xl font-bold text-white">
+                    {networkStats.activeUsers.toLocaleString()}
+                </div>
+            </div>
+        </div>
+    </div>
 
-                        <div className="bg-gradient-to-br from-blue-900/20 to-blue-800/20 rounded-2xl p-6 border border-blue-700/50 backdrop-blur-sm">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-white font-semibold">Your Impact</h3>
-                                <Recycle className="w-5 h-5 text-green-400 animate-spin-slow" />
-                            </div>
-                            <div className="text-center">
-                                <div className="text-3xl font-bold text-green-400 mb-2">{userData.co2Saved} kg</div>
-                                <div className="text-gray-400 text-sm">CO₂ Saved</div>
-                            </div>
-                        </div>
-                    </div>
+    <div className="bg-gradient-to-br from-blue-900/20 to-blue-800/20 rounded-2xl p-6 border border-blue-700/50 backdrop-blur-sm">
+        <div className="flex items-center justify-between mb-4">
+            <h3 className="text-white font-semibold">Your Impact</h3>
+            <Recycle className="w-5 h-5 text-green-400 animate-spin-slow" />
+        </div>
+        <div className="text-center">
+            <div className="text-3xl font-bold text-green-400 mb-2">
+                {userData.co2Saved} kg
+            </div>
+            <div className="text-gray-400 text-sm">CO₂ Saved</div>
+            <div className="mt-3 text-xs text-gray-500">
+                Equivalent to {calculateTreeEquivalent(userData.co2Saved)} trees
+            </div>
+        </div>
+    </div>
+</div>
                 </div>
 
                 {/* Action Grid */}
@@ -544,30 +572,30 @@ const navItems = [
                     ))}
 
                     <div className="bg-gradient-to-br from-indigo-900/20 to-indigo-800/20 rounded-2xl p-6 border border-indigo-700/50 backdrop-blur-sm">
-    <div className="flex items-center justify-between mb-4">
-        <h3 className="text-white font-semibold">Referral Stats</h3>
-        <TrendingUp className="w-5 h-5 text-indigo-400" />
-    </div>
-    <div className="space-y-3">
-        <div>
-            <div className="text-gray-400 text-sm">Friends Joined</div>
-            <div className="text-2xl font-bold text-white">{referralInfo.referralCount}</div>
-        </div>
-        <div>
-            <div className="text-gray-400 text-sm">Total Earned</div>
-            <div className="text-2xl font-bold text-white">₿ {referralInfo.referralEarnings.toFixed(5)}</div>
-        </div>
-        <div className="pt-2">
-            <Link 
-                to="/referrals" 
-                className="text-indigo-400 text-sm hover:underline"
-                onClick={() => setActiveTab('referrals')}
-            >
-                View all referrals →
-            </Link>
-        </div>
-    </div>
-</div>
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-white font-semibold">Referral Stats</h3>
+                            <TrendingUp className="w-5 h-5 text-indigo-400" />
+                        </div>
+                        <div className="space-y-3">
+                            <div>
+                                <div className="text-gray-400 text-sm">Friends Joined</div>
+                                <div className="text-2xl font-bold text-white">{referralInfo.referralCount}</div>
+                            </div>
+                            <div>
+                                <div className="text-gray-400 text-sm">Total Earned</div>
+                                <div className="text-2xl font-bold text-white">₿ {referralInfo.referralEarnings.toFixed(5)}</div>
+                            </div>
+                            <div className="pt-2">
+                                <Link 
+                                    to="/referrals" 
+                                    className="text-indigo-400 text-sm hover:underline"
+                                    onClick={() => setActiveTab('referrals')}
+                                >
+                                    View all referrals →
+                                </Link>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 {/* News Section */}

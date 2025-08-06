@@ -40,6 +40,7 @@ const taskSchema = new mongoose.Schema({
         type: String,
         trim: true
     }],
+    co2Impact: { type: Number, default: 2.0, min: 0 },
     contentUrl: {
         type: String,
         trim: true,
