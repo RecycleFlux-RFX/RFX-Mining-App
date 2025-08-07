@@ -1,17 +1,18 @@
-import React, { useState, useEffect } from 'react'; // Added useEffect
-import { Link, useLocation, useNavigate } from 'react-router-dom'; // Added useNavigate
+import React, { useState, useEffect } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
     Home, MapPin, Gamepad2, Wallet, Settings,
     User, Shield, Bell, Globe, Moon, Sun,
     Volume2, VolumeX, Eye, EyeOff, Smartphone,
     Lock, CheckCircle, XCircle, AlertTriangle,
     Mail, Phone, Camera, Edit3, LogOut,
-    HelpCircle, FileText, MessageSquare, Star
+    HelpCircle, FileText, MessageSquare, Star,
+    Users // Added missing import
 } from 'lucide-react';
 
 export default function RFXSettingsPage() {
     const location = useLocation();
-    const navigate = useNavigate(); // Added for navigation
+    const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('settings');
     const [darkMode, setDarkMode] = useState(true);
     const [notifications, setNotifications] = useState(true);
@@ -19,18 +20,19 @@ export default function RFXSettingsPage() {
     const [biometricEnabled, setBiometricEnabled] = useState(false);
     const [showBalance, setShowBalance] = useState(true);
     const [language, setLanguage] = useState('English');
-    const [error, setError] = useState(null); // Added for error handling
+    const [error, setError] = useState(null);
+    const [isLoading, setIsLoading] = useState(false);
 
-    const BASE_URL = 'http://localhost:3000/user'; // Added for API calls
+    const BASE_URL = 'http://localhost:3000/user';
 
-const navItems = [
-    { icon: Home, label: 'Home', id: 'home', path: '/' },
-    { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
-    { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
-    { icon: Users, label: 'Referrals', id: 'referrals', path: '/referrals' },
-    { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
-    { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' },
-];
+    const navItems = [
+        { icon: Home, label: 'Home', id: 'home', path: '/' },
+        { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
+        { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
+        { icon: Users, label: 'Referrals', id: 'referrals', path: '/referrals' },
+        { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
+        { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' },
+    ];
 
     const userProfile = {
         name: 'Alex Rivera',
@@ -50,7 +52,7 @@ const navItems = [
         if (currentNavItem) {
             setActiveTab(currentNavItem.id);
         }
-    }, [location.pathname]);
+    }, [location.pathname, navItems]);
 
     // Redirect to login if no token
     useEffect(() => {
@@ -65,6 +67,7 @@ const navItems = [
     // Fetch user data
     useEffect(() => {
         const fetchData = async () => {
+            setIsLoading(true);
             const token = localStorage.getItem('authToken');
             if (!token) {
                 console.log('No auth token found, redirecting to login');
@@ -81,7 +84,7 @@ const navItems = [
                 };
 
                 const [userResponse, statsResponse, referralResponse] = await Promise.all([
-                    fetch(`${BASE_URL}/user`, {
+                    fetch(`${BASE_URL}`, { // Changed from `${BASE_URL}/user` to `${BASE_URL}`
                         method: 'GET',
                         headers,
                     }),
@@ -95,7 +98,6 @@ const navItems = [
                     }),
                 ]);
 
-                // Check response status for each request
                 if (!userResponse.ok) {
                     const errorData = await userResponse.json();
                     throw new Error(errorData.message || 'Failed to fetch user data');
@@ -109,7 +111,6 @@ const navItems = [
                     throw new Error(errorData.message || 'Failed to fetch referral link');
                 }
 
-                // Parse JSON responses
                 const userDataResult = await userResponse.json();
                 const statsDataResult = await statsResponse.json();
                 const referralDataResult = await referralResponse.json();
@@ -122,9 +123,11 @@ const navItems = [
                 setError(error.message || 'Failed to fetch data. Please try again.');
                 if (error.message.includes('Authentication') || error.message.includes('Invalid token')) {
                     console.log('Authentication error, redirecting to login');
-                    localStorage.removeItem('authToken'); // Clear invalid token
+                    localStorage.removeItem('authToken');
                     navigate('/login');
                 }
+            } finally {
+                setIsLoading(false);
             }
         };
 

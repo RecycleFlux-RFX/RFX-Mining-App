@@ -18,7 +18,6 @@ import {
     FaTiktok as TikTok
 } from 'react-icons/fa';
 import axios from 'axios';
-/* import ethers from 'ethers'; */
 // Bind modal to app element
 Modal.setAppElement('#root');
 
@@ -32,7 +31,7 @@ export default function RFXCampaignPage() {
     const [userCampaigns, setUserCampaigns] = useState([]);
     const [timeLeft, setTimeLeft] = useState({ hours: 23, minutes: 45, seconds: 12 });
     const [userRank, setUserRank] = useState(null);
-    const [userStats, setUserStats] = useState({ earnings: 0, co2Saved: '0.00', walletAddress: '', fullName: '' });
+    const [userStats, setUserStats] = useState({ earnings: 0, co2Saved: '0.00', fullName: '' });
     const [networkStats, setNetworkStats] = useState({ totalRecycled: '0.00', activeUsers: 0 });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -144,46 +143,6 @@ export default function RFXCampaignPage() {
                 navigate('/login');
             }
             throw error;
-        }
-    };
-
-    const connectWallet = async () => {
-        if (typeof window.ethereum === 'undefined') {
-            setError({
-                type: 'error',
-                message: 'MetaMask not detected. Please install MetaMask.',
-            });
-            window.open('https://metamask.io/download/', '_blank');
-            return;
-        }
-
-        setUploading(true);
-        try {
-            const provider = new ethers.BrowserProvider(window.ethereum);
-            const accounts = await provider.send('eth_requestAccounts', []);
-            if (accounts.length > 0) {
-                const signer = await provider.getSigner();
-                const address = await signer.getAddress();
-
-                setUserStats(prev => ({ ...prev, walletAddress: address }));
-                await fetchWithAuth(`${BASE_URL}/update-wallet`, {
-                    method: 'PATCH',
-                    body: JSON.stringify({ walletAddress: address }),
-                });
-
-                setError({
-                    type: 'success',
-                    message: 'Wallet connected successfully!',
-                });
-            }
-        } catch (err) {
-            console.error('Wallet connection error:', err);
-            setError({
-                type: 'error',
-                message: err.message || 'Failed to connect wallet',
-            });
-        } finally {
-            setUploading(false);
         }
     };
 
@@ -414,7 +373,6 @@ export default function RFXCampaignPage() {
             setUserStats({
                 earnings: userResponse.earnings || 0,
                 co2Saved: userResponse.co2Saved || '0.00',
-                walletAddress: userResponse.walletAddress || '',
                 fullName: userResponse.fullName || ''
             });
             setUserRank(rankResponse.rank || 'N/A');
@@ -646,26 +604,6 @@ export default function RFXCampaignPage() {
                         </div>
                     </div>
                     <div className="flex items-center space-x-3">
-                        {userStats.walletAddress ? (
-                            <div className="flex items-center space-x-2 px-4 py-2 bg-gray-800/50 backdrop-blur-sm rounded-full border border-gray-700">
-                                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                                <span className="text-gray-300 text-sm">Connected</span>
-                                <span className="text-gray-300 text-sm font-mono">
-                                    {userStats.walletAddress.slice(0, 6)}...{userStats.walletAddress.slice(-4)}
-                                </span>
-                            </div>
-                        ) : (
-                            <button
-                                onClick={connectWallet}
-                                disabled={uploading}
-                                className={`flex items-center space-x-2 px-4 py-2 rounded-full transition-all ${uploading ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-green-400 to-green-600 hover:from-green-500 hover:to-green-700'}`}
-                            >
-                                <Wallet className="w-5 h-5 text-black" />
-                                <span className="text-black text-sm font-semibold">
-                                    {uploading ? 'Connecting...' : 'Connect MetaMask Wallet'}
-                                </span>
-                            </button>
-                        )}
                         <div className="flex items-center space-x-2 px-4 py-2 bg-gray-800/50 backdrop-blur-sm rounded-full border border-gray-700">
                             <Clock className="w-4 h-4 text-orange-400" />
                             <span className="text-gray-300 text-sm font-mono">

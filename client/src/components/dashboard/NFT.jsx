@@ -6,7 +6,6 @@ import {
     Sparkles, Zap, Star, ArrowUp, Users, Coins
 } from 'lucide-react';
 import { throttle } from 'lodash';
-import { ethers } from 'ethers';
 
 export default function RFXVerseInterface() {
     const location = useLocation();
@@ -31,8 +30,6 @@ export default function RFXVerseInterface() {
     const [isAnimating, setIsAnimating] = useState(false);
     const [error, setError] = useState(null);
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
-    const [walletConnected, setWalletConnected] = useState(false);
-    const [isConnecting, setIsConnecting] = useState(false);
     const containerRef = useRef(null);
 
     const BASE_URL = 'http://localhost:3000/user';
@@ -81,47 +78,6 @@ export default function RFXVerseInterface() {
                 message: error.message || 'Failed to complete request',
             });
             throw error;
-        }
-    };
-
-    const connectWallet = async () => {
-        if (typeof window.ethereum === 'undefined') {
-            setError({
-                type: 'error',
-                message: 'MetaMask not detected. Please install MetaMask.',
-            });
-            window.open('https://metamask.io/download/', '_blank');
-            return;
-        }
-
-        setIsConnecting(true);
-        try {
-            const provider = new ethers.BrowserProvider(window.ethereum);
-            const accounts = await provider.send('eth_requestAccounts', []);
-            if (accounts.length > 0) {
-                const address = accounts[0];
-                setUserData((prev) => ({ ...prev, walletAddress: address }));
-                setWalletConnected(true);
-
-                // Update wallet address in backend
-                await fetchWithAuth(`${BASE_URL}/update-wallet`, {
-                    method: 'PATCH',
-                    body: JSON.stringify({ walletAddress: address }),
-                });
-
-                setError({
-                    type: 'success',
-                    message: 'MetaMask wallet connected successfully!',
-                });
-            }
-        } catch (err) {
-            console.error('Wallet connection error:', err);
-            setError({
-                type: 'error',
-                message: 'Failed to connect MetaMask wallet. Please try again.',
-            });
-        } finally {
-            setIsConnecting(false);
         }
     };
 
@@ -175,43 +131,43 @@ export default function RFXVerseInterface() {
         checkAuth();
     }, [navigate]);
 
-const fetchInitialData = async () => {
-    try {
-        const [userResponse, statsResponse, referralResponse] = await Promise.all([
-            fetchWithAuth(`${BASE_URL}/user`),
-            fetchWithAuth(`${BASE_URL}/network-stats`),
-            fetchWithAuth(`${BASE_URL}/referral-link`),
-        ]);
+    const fetchInitialData = async () => {
+        try {
+            const [userResponse, statsResponse, referralResponse] = await Promise.all([
+                fetchWithAuth(`${BASE_URL}/user`),
+                fetchWithAuth(`${BASE_URL}/network-stats`),
+                fetchWithAuth(`${BASE_URL}/referral-link`),
+            ]);
 
-        console.log('User Response:', userResponse);
-        console.log('Network Stats Response:', statsResponse);
-        console.log('Referral Response:', referralResponse);
+            console.log('User Response:', userResponse);
+            console.log('Network Stats Response:', statsResponse);
+            console.log('Referral Response:', referralResponse);
 
-        setUserData({
-            earnings: userResponse.earnings || 0,
-            co2Saved: userResponse.co2Saved || '0.00',
-            walletAddress: userResponse.walletAddress || '',
-            fullName: userResponse.fullName || '',
-            games: userResponse.games || []
-        });
+            setUserData({
+                earnings: userResponse.earnings || 0,
+                co2Saved: userResponse.co2Saved || '0.00',
+                walletAddress: userResponse.walletAddress || '',
+                fullName: userResponse.fullName || '',
+                games: userResponse.games || []
+            });
 
-        setNetworkStats({
-            totalRecycled: statsResponse.totalRecycled || '0.00',
-            activeUsers: statsResponse.activeUsers || 0,
-        });
+            setNetworkStats({
+                totalRecycled: statsResponse.totalRecycled || '0.00',
+                activeUsers: statsResponse.activeUsers || 0,
+            });
 
-        setReferralInfo((prev) => ({
-            ...prev,
-            referralLink: referralResponse.referralLink || ''
-        }));
-    } catch (error) {
-        console.error('Data fetch error:', error.message);
-        setErrorWithTimeout({
-            type: 'error',
-            message: error.message || 'Failed to load data. Please try again.',
-        });
-    }
-};
+            setReferralInfo((prev) => ({
+                ...prev,
+                referralLink: referralResponse.referralLink || ''
+            }));
+        } catch (error) {
+            console.error('Data fetch error:', error.message);
+            setError({
+                type: 'error',
+                message: error.message || 'Failed to load data. Please try again.',
+            });
+        }
+    };
 
     const handleMouseMove = throttle((e) => {
         if (containerRef.current) {
@@ -243,7 +199,7 @@ const fetchInitialData = async () => {
 
             setUserData((prev) => ({
                 ...prev,
-                earnings: data.newBalance ||     prev.earnings,
+                earnings: data.newBalance || prev.earnings,
             }));
 
             setError({
@@ -298,11 +254,11 @@ const fetchInitialData = async () => {
     };
 
     const calculateTreeEquivalent = (co2Kg) => {
-    // On average, a tree absorbs about 21 kg of CO₂ per year
-    const co2 = parseFloat(co2Kg) || 0;
-    const trees = (co2 / 21).toFixed(2);
-    return trees > 0 ? trees : '0';
-};
+        // On average, a tree absorbs about 21 kg of CO₂ per year
+        const co2 = parseFloat(co2Kg) || 0;
+        const trees = (co2 / 21).toFixed(2);
+        return trees > 0 ? trees : '0';
+    };
 
     const getErrorColor = () => {
         if (!error) return '';
@@ -359,29 +315,6 @@ const fetchInitialData = async () => {
                         <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-green-400 to-green-300 bg-clip-text text-transparent">
                             RFX Verse
                         </h1>
-                    </div>
-
-                    <div className="flex items-center space-x-3">
-                        {walletConnected ? (
-                            <div className="flex items-center space-x-2 px-4 py-2 bg-gray-800/50 backdrop-blur-sm rounded-full border border-gray-700">
-                                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                                <span className="text-gray-300 text-sm">Connected</span>
-                                <span className="text-gray-300 text-sm font-mono">
-                                    {userData.walletAddress.slice(0, 6)}...{userData.walletAddress.slice(-4)}
-                                </span>
-                            </div>
-                        ) : (
-                            <button
-                                onClick={connectWallet}
-                                disabled={isConnecting}
-                                className={`flex items-center space-x-2 px-4 py-2 rounded-full transition-all ${isConnecting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-green-400 to-green-600 hover:from-green-500 hover:to-green-700'}`}
-                            >
-                                <Wallet className="w-5 h-5 text-black" />
-                                <span className="text-black text-sm font-semibold">
-                                    {isConnecting ? 'Connecting...' : 'Connect MetaMask Wallet'}
-                                </span>
-                            </button>
-                        )}
                     </div>
                 </div>
 
@@ -491,44 +424,44 @@ const fetchInitialData = async () => {
                     </div>
 
                     {/* Stats Panel */}
-<div className="space-y-4">
-    <div className="bg-gradient-to-br from-purple-900/20 to-purple-800/20 rounded-2xl p-6 border border-purple-700/50 backdrop-blur-sm">
-        <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-semibold">Network Stats</h3>
-            <Star className="w-5 h-5 text-yellow-400" />
-        </div>
-        <div className="space-y-3">
-            <div>
-                <div className="text-gray-400 text-sm">Total CO₂ Saved</div>
-                <div className="text-2xl font-bold text-white">
-                    {networkStats.totalRecycled} kg
-                </div>
-            </div>
-            <div>
-                <div className="text-gray-400 text-sm">Active Recyclers</div>
-                <div className="text-2xl font-bold text-white">
-                    {networkStats.activeUsers.toLocaleString()}
-                </div>
-            </div>
-        </div>
-    </div>
+                    <div className="space-y-4">
+                        <div className="bg-gradient-to-br from-purple-900/20 to-purple-800/20 rounded-2xl p-6 border border-purple-700/50 backdrop-blur-sm">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-white font-semibold">Network Stats</h3>
+                                <Star className="w-5 h-5 text-yellow-400" />
+                            </div>
+                            <div className="space-y-3">
+                                <div>
+                                    <div className="text-gray-400 text-sm">Total CO₂ Saved</div>
+                                    <div className="text-2xl font-bold text-white">
+                                        {networkStats.totalRecycled} kg
+                                    </div>
+                                </div>
+                                <div>
+                                    <div className="text-gray-400 text-sm">Active Recyclers</div>
+                                    <div className="text-2xl font-bold text-white">
+                                        {networkStats.activeUsers.toLocaleString()}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
 
-    <div className="bg-gradient-to-br from-blue-900/20 to-blue-800/20 rounded-2xl p-6 border border-blue-700/50 backdrop-blur-sm">
-        <div className="flex items-center justify-between mb-4">
-            <h3 className="text-white font-semibold">Your Impact</h3>
-            <Recycle className="w-5 h-5 text-green-400 animate-spin-slow" />
-        </div>
-        <div className="text-center">
-            <div className="text-3xl font-bold text-green-400 mb-2">
-                {userData.co2Saved} kg
-            </div>
-            <div className="text-gray-400 text-sm">CO₂ Saved</div>
-            <div className="mt-3 text-xs text-gray-500">
-                Equivalent to {calculateTreeEquivalent(userData.co2Saved)} trees
-            </div>
-        </div>
-    </div>
-</div>
+                        <div className="bg-gradient-to-br from-blue-900/20 to-blue-800/20 rounded-2xl p-6 border border-blue-700/50 backdrop-blur-sm">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-white font-semibold">Your Impact</h3>
+                                <Recycle className="w-5 h-5 text-green-400 animate-spin-slow" />
+                            </div>
+                            <div className="text-center">
+                                <div className="text-3xl font-bold text-green-400 mb-2">
+                                    {userData.co2Saved} kg
+                                </div>
+                                <div className="text-gray-400 text-sm">CO₂ Saved</div>
+                                <div className="mt-3 text-xs text-gray-500">
+                                    Equivalent to {calculateTreeEquivalent(userData.co2Saved)} trees
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 {/* Action Grid */}
