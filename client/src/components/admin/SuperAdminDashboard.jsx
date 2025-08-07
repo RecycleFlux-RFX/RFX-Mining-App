@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Plus, Trash2, Lock, User, Users, BarChart2, PieChart, Calendar, Activity, 
-  Shield, FileText, Settings, LogOut, ArrowUp, ArrowDown
+  Shield, FileText, Settings, LogOut, ArrowUp, ArrowDown, RefreshCw
 } from 'lucide-react';
 import { jwtDecode } from 'jwt-decode';
 import { Chart, registerables } from 'chart.js';
@@ -72,7 +72,8 @@ const SuperAdminDashboard = () => {
     admins: true,
     users: true,
     campaigns: true,
-    stats: true
+    stats: true,
+    refreshing: false
   });
   const [stats, setStats] = useState({
     totalUsers: 0,
@@ -99,112 +100,6 @@ const SuperAdminDashboard = () => {
     totalPages: 1,
   });
   const navigate = useNavigate();
-
-  // Color palette for charts
-  const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'];
-
-  // Sample data for charts (replace with real data from your API)
-  const userGrowthData = {
-    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
-    datasets: [
-      {
-        label: 'Users',
-        data: [400, 600, 800, 1000, 1200, 1500],
-        backgroundColor: 'rgba(136, 132, 216, 0.2)',
-        borderColor: 'rgba(136, 132, 216, 1)',
-        borderWidth: 2,
-        fill: true,
-        tension: 0.4
-      }
-    ]
-  };
-
-  const campaignPerformanceData = {
-    labels: ['Eco Challenge', 'Recycle Rally', 'Green Living', 'Zero Waste', 'Clean Energy'],
-    datasets: [
-      {
-        label: 'Participants',
-        data: [400, 300, 200, 500, 350],
-        backgroundColor: 'rgba(136, 132, 216, 0.5)',
-      },
-      {
-        label: 'Completed',
-        data: [240, 180, 160, 350, 210],
-        backgroundColor: 'rgba(130, 202, 157, 0.5)',
-      }
-    ]
-  };
-
-  const userActivityData = {
-    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    datasets: [
-      {
-        label: 'Active Users',
-        data: [4000, 3000, 2000, 2780, 1890, 2390, 3490],
-        borderColor: 'rgba(136, 132, 216, 1)',
-        backgroundColor: 'rgba(136, 132, 216, 0.1)',
-        borderWidth: 2,
-        tension: 0.4
-      },
-      {
-        label: 'New Users',
-        data: [2400, 1398, 9800, 3908, 4800, 3800, 4300],
-        borderColor: 'rgba(130, 202, 157, 1)',
-        backgroundColor: 'rgba(130, 202, 157, 0.1)',
-        borderWidth: 2,
-        tension: 0.4
-      }
-    ]
-  };
-
-  const campaignStatusData = {
-    labels: ['Active', 'Completed', 'Upcoming', 'Draft'],
-    datasets: [
-      {
-        data: [400, 300, 200, 100],
-        backgroundColor: [
-          'rgba(0, 136, 254, 0.7)',
-          'rgba(0, 196, 159, 0.7)',
-          'rgba(255, 187, 40, 0.7)',
-          'rgba(255, 128, 66, 0.7)'
-        ],
-        borderWidth: 1
-      }
-    ]
-  };
-
-  const userLocationsData = {
-    labels: ['North America', 'Europe', 'Asia', 'Africa', 'South America', 'Oceania'],
-    datasets: [
-      {
-        data: [400, 300, 200, 100, 150, 50],
-        backgroundColor: [
-          'rgba(0, 136, 254, 0.7)',
-          'rgba(0, 196, 159, 0.7)',
-          'rgba(255, 187, 40, 0.7)',
-          'rgba(255, 128, 66, 0.7)',
-          'rgba(136, 132, 216, 0.7)',
-          'rgba(130, 202, 157, 0.7)'
-        ],
-        borderWidth: 1
-      }
-    ]
-  };
-
-  const userDevicesData = {
-    labels: ['Mobile', 'Desktop', 'Tablet'],
-    datasets: [
-      {
-        data: [600, 300, 100],
-        backgroundColor: [
-          'rgba(0, 136, 254, 0.7)',
-          'rgba(0, 196, 159, 0.7)',
-          'rgba(255, 187, 40, 0.7)'
-        ],
-        borderWidth: 1
-      }
-    ]
-  };
 
   // Chart options
   const areaChartOptions = {
@@ -263,6 +158,7 @@ const SuperAdminDashboard = () => {
     }
   };
 
+  // Verify super admin status on component mount
   useEffect(() => {
     const verifySuperAdminStatus = async () => {
       const token = localStorage.getItem('authToken');
@@ -301,41 +197,45 @@ const SuperAdminDashboard = () => {
     verifySuperAdminStatus();
   }, [navigate]);
 
+  // Fetch all initial data
   const fetchInitialData = async () => {
     try {
-      await Promise.all([
-        fetchAdmins(),
-        fetchUsers(),
-        fetchCampaigns(),
-        fetchStatistics()
+      setLoading({ admins: true, users: true, campaigns: true, stats: true });
+      
+      const token = localStorage.getItem('authToken');
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      };
+
+      const [adminsRes, usersRes, campaignsRes, statsRes] = await Promise.all([
+        fetch(`${import.meta.env.VITE_API_BASE_URL}/admin/admins`, { headers }),
+        fetch(`${import.meta.env.VITE_API_BASE_URL}/admin/users?page=1&limit=10`, { headers }),
+        fetch(`${import.meta.env.VITE_API_BASE_URL}/admin/campaigns`, { headers }),
+        fetch(`${import.meta.env.VITE_API_BASE_URL}/admin/stats`, { headers })
       ]);
+
+      if (!adminsRes.ok) throw new Error('Failed to fetch admins');
+      if (!usersRes.ok) throw new Error('Failed to fetch users');
+      if (!campaignsRes.ok) throw new Error('Failed to fetch campaigns');
+      if (!statsRes.ok) throw new Error('Failed to fetch stats');
+
+      const [adminsData, usersData, campaignsData, statsData] = await Promise.all([
+        adminsRes.json(),
+        usersRes.json(),
+        campaignsRes.json(),
+        statsRes.json()
+      ]);
+
+      setAdmins(adminsData);
+      setUsers(usersData.data);
+      setPagination(usersData.pagination);
+      setCampaigns(campaignsData);
+      setStats(statsData);
     } catch (err) {
       console.error('Error fetching initial data:', err);
       setError(err.message);
-    }
-  };
-
-  const fetchAdmins = async () => {
-    try {
-      setLoading(prev => ({ ...prev, admins: true }));
-      const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/admin/admins`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to fetch admins');
-      }
-
-      const data = await response.json();
-      setAdmins(data);
-    } catch (err) {
-      console.error('Fetch admins error:', err);
-      setError(err.message);
+      
       if (err.message.includes('401')) {
         localStorage.removeItem('authToken');
         navigate('/login', { state: { error: 'Session expired. Please log in again.' } });
@@ -343,122 +243,62 @@ const SuperAdminDashboard = () => {
         navigate('/admin/dashboard', { state: { error: 'Super admin access required' } });
       }
     } finally {
-      setLoading(prev => ({ ...prev, admins: false }));
+      setLoading({ admins: false, users: false, campaigns: false, stats: false });
     }
   };
 
-  const fetchUsers = async (page = 1, limit = 10) => {
+  // Refresh data for current tab
+  const refreshData = async () => {
     try {
-      setLoading(prev => ({ ...prev, users: true }));
+      setLoading(prev => ({ ...prev, refreshing: true }));
       const token = localStorage.getItem('authToken');
-      const response = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL}/admin/users?page=${page}&limit=${limit}`,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      };
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to fetch users');
+      let response;
+      switch (activeTab) {
+        case 'dashboard':
+          response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/admin/stats`, { headers });
+          if (!response.ok) throw new Error('Failed to refresh stats');
+          setStats(await response.json());
+          break;
+        case 'users':
+          response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/admin/users?page=${pagination.page}&limit=${pagination.limit}`, { headers });
+          if (!response.ok) throw new Error('Failed to refresh users');
+          const usersData = await response.json();
+          setUsers(usersData.data);
+          setPagination(usersData.pagination);
+          break;
+        case 'campaigns':
+          response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/admin/campaigns`, { headers });
+          if (!response.ok) throw new Error('Failed to refresh campaigns');
+          setCampaigns(await response.json());
+          break;
+        case 'admins':
+          response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/admin/admins`, { headers });
+          if (!response.ok) throw new Error('Failed to refresh admins');
+          setAdmins(await response.json());
+          break;
+        default:
+          break;
       }
-
-      const { data, pagination: paginationData } = await response.json();
-      setUsers(data);
-      setPagination(paginationData);
     } catch (err) {
-      console.error('Fetch users error:', err);
+      console.error('Refresh error:', err);
       setError(err.message);
-      if (err.message.includes('401')) {
-        localStorage.removeItem('authToken');
-        navigate('/login', { state: { error: 'Session expired. Please log in again.' } });
-      } else if (err.message.includes('403')) {
-        navigate('/admin/dashboard', { state: { error: 'Super admin access required' } });
-      }
     } finally {
-      setLoading(prev => ({ ...prev, users: false }));
+      setLoading(prev => ({ ...prev, refreshing: false }));
     }
   };
 
-  const fetchStatistics = async () => {
-    try {
-      setLoading(prev => ({ ...prev, stats: true }));
-      const token = localStorage.getItem('authToken');
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/admin/stats`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to fetch statistics');
-      }
-
-      const data = await response.json();
-      setStats(data);
-    } catch (err) {
-      console.error('Fetch statistics error:', err);
-      setError(err.message);
-      if (err.message.includes('401')) {
-        localStorage.removeItem('authToken');
-        navigate('/login', { state: { error: 'Session expired. Please log in again.' } });
-      } else if (err.message.includes('403')) {
-        navigate('/admin/dashboard', { state: { error: 'Super admin access required' } });
-      }
-    } finally {
-      setLoading(prev => ({ ...prev, stats: false }));
-    }
-  };
-
-  const fetchCampaigns = async () => {
-    try {
-      setLoading(prev => ({ ...prev, campaigns: true }));
-      const token = localStorage.getItem('authToken');
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
-
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/admin/campaigns`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        if (response.status === 403) {
-          setError('Access denied: Super admin access required');
-          navigate('/login', { state: { error: 'Super admin access required' } });
-          return;
-        }
-        throw new Error(errorData.message || 'Failed to fetch campaigns');
-      }
-
-      const data = await response.json();
-      setCampaigns(data);
-    } catch (err) {
-      console.error('Fetch campaigns error:', err);
-      setError(err.message);
-      if (err.message.includes('401')) {
-        localStorage.removeItem('authToken');
-        navigate('/login', { state: { error: 'Session expired. Please log in again.' } });
-      }
-    } finally {
-      setLoading(prev => ({ ...prev, campaigns: false }));
-    }
-  };
-
+  // Handle passcode verification
   const handleVerifyPasscode = async () => {
     if (!passcode) {
       setError('Passcode is required');
       return;
     }
+    
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/superadmin/verify`, {
@@ -487,6 +327,7 @@ const SuperAdminDashboard = () => {
     }
   };
 
+  // Handle creating a new admin
   const handleCreateAdmin = async (e) => {
     e.preventDefault();
     try {
@@ -516,6 +357,7 @@ const SuperAdminDashboard = () => {
     }
   };
 
+  // Handle resetting admin password
   const handleResetPassword = async (adminId) => {
     if (!window.confirm("Are you sure you want to reset this admin's password?")) return;
 
@@ -535,12 +377,14 @@ const SuperAdminDashboard = () => {
 
       const data = await response.json();
       alert(`Password reset successful! New temporary password: ${data.tempPassword}`);
+      await refreshData();
     } catch (err) {
       console.error('Reset password error:', err);
       setError(err.message);
     }
   };
 
+  // Handle deactivating an admin
   const handleDeactivateAdmin = async (adminId) => {
     if (!window.confirm('Are you sure you want to deactivate this admin?')) return;
 
@@ -558,7 +402,7 @@ const SuperAdminDashboard = () => {
         throw new Error(errorData.message || 'Failed to deactivate admin');
       }
 
-      await fetchAdmins();
+      await refreshData();
       alert('Admin deactivated successfully');
     } catch (err) {
       console.error('Deactivate admin error:', err);
@@ -566,6 +410,7 @@ const SuperAdminDashboard = () => {
     }
   };
 
+  // Handle deleting a campaign
   const handleDeleteCampaign = async (campaignId) => {
     if (!window.confirm('Are you sure you want to delete this campaign?')) return;
 
@@ -583,7 +428,7 @@ const SuperAdminDashboard = () => {
         throw new Error(errorData.message || 'Failed to delete campaign');
       }
 
-      await fetchCampaigns();
+      await refreshData();
       alert('Campaign deleted successfully');
     } catch (err) {
       console.error('Delete campaign error:', err);
@@ -591,65 +436,74 @@ const SuperAdminDashboard = () => {
     }
   };
 
-  const handleSuspendUser = async (userId) => {
-    if (!window.confirm('Are you sure you want to suspend this user?')) return;
+  // Handle suspending/activating a user
+  const handleSuspendUser = async (userId, isActive) => {
+    const action = isActive ? 'suspend' : 'activate';
+    if (!window.confirm(`Are you sure you want to ${action} this user?`)) return;
 
     try {
       const token = localStorage.getItem('authToken');
       const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/admin/users/${userId}/suspend`, {
         method: 'PUT',
         headers: {
+          'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
+        body: JSON.stringify({ isActive: !isActive }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to suspend user');
+        throw new Error(errorData.message || `Failed to ${action} user`);
       }
 
-      await fetchUsers();
-      alert('User suspended successfully');
+      await refreshData();
+      alert(`User ${action}ed successfully`);
     } catch (err) {
-      console.error('Suspend user error:', err);
+      console.error(`${action} user error:`, err);
       setError(err.message);
     }
   };
 
+  // Handle pagination for users
+  const handleUserPagination = async (page) => {
+    try {
+      setLoading(prev => ({ ...prev, users: true }));
+      const token = localStorage.getItem('authToken');
+      const response = await fetch(
+        `${import.meta.env.VITE_API_BASE_URL}/admin/users?page=${page}&limit=${pagination.limit}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to fetch users');
+      }
+
+      const { data, pagination: paginationData } = await response.json();
+      setUsers(data);
+      setPagination(paginationData);
+    } catch (err) {
+      console.error('Fetch users error:', err);
+      setError(err.message);
+    } finally {
+      setLoading(prev => ({ ...prev, users: false }));
+    }
+  };
+
+  // Handle logout
   const handleLogout = () => {
     localStorage.removeItem('authToken');
     localStorage.removeItem('isSuperAdmin');
     navigate('/login');
   };
 
-  if (needsVerification) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-          <h2 className="text-2xl font-bold mb-6 text-center">Super Admin Verification</h2>
-          {error && <p className="text-red-500 mb-4 text-center">{error}</p>}
-          <div className="mb-4">
-            <label className="block text-gray-700 mb-2">Enter Passcode</label>
-            <input
-              type="password"
-              className="w-full px-3 py-2 border border-gray-300 rounded-md"
-              placeholder="Super admin passcode"
-              value={passcode}
-              onChange={(e) => setPasscode(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleVerifyPasscode()}
-            />
-          </div>
-          <button
-            onClick={handleVerifyPasscode}
-            className="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700"
-          >
-            Verify
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+  // Render dashboard tab with real data
   const renderDashboardTab = () => (
     <div className="space-y-8">
       {/* Stats Overview */}
@@ -661,7 +515,7 @@ const SuperAdminDashboard = () => {
               <p className="text-2xl font-semibold">{stats.totalUsers}</p>
               <p className="text-sm text-green-500 flex items-center">
                 <ArrowUp className="w-4 h-4 mr-1" />
-                <span>12% from last month</span>
+                <span>{stats.dailySignups[stats.dailySignups.length - 1]?.count || 0} new today</span>
               </p>
             </div>
             <div className="bg-indigo-100 p-3 rounded-full">
@@ -677,7 +531,7 @@ const SuperAdminDashboard = () => {
               <p className="text-2xl font-semibold">{stats.activeUsers}</p>
               <p className="text-sm text-green-500 flex items-center">
                 <ArrowUp className="w-4 h-4 mr-1" />
-                <span>8% from last week</span>
+                <span>{Math.round((stats.activeUsers / stats.totalUsers) * 100)}% active</span>
               </p>
             </div>
             <div className="bg-green-100 p-3 rounded-full">
@@ -693,7 +547,7 @@ const SuperAdminDashboard = () => {
               <p className="text-2xl font-semibold">{stats.totalCampaigns}</p>
               <p className="text-sm text-green-500 flex items-center">
                 <ArrowUp className="w-4 h-4 mr-1" />
-                <span>5 new this month</span>
+                <span>{stats.activeCampaigns} active</span>
               </p>
             </div>
             <div className="bg-blue-100 p-3 rounded-full">
@@ -705,15 +559,15 @@ const SuperAdminDashboard = () => {
         <div className="bg-white p-6 rounded-lg shadow">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-500">Active Campaigns</p>
-              <p className="text-2xl font-semibold">{stats.activeCampaigns}</p>
-              <p className="text-sm text-red-500 flex items-center">
-                <ArrowDown className="w-4 h-4 mr-1" />
-                <span>2 ending soon</span>
+              <p className="text-sm font-medium text-gray-500">Total Admins</p>
+              <p className="text-2xl font-semibold">{stats.totalAdmins}</p>
+              <p className="text-sm text-green-500 flex items-center">
+                <ArrowUp className="w-4 h-4 mr-1" />
+                <span>1 super admin</span>
               </p>
             </div>
             <div className="bg-purple-100 p-3 rounded-full">
-              <Calendar className="text-purple-600 w-6 h-6" />
+              <Shield className="text-purple-600 w-6 h-6" />
             </div>
           </div>
         </div>
@@ -728,54 +582,67 @@ const SuperAdminDashboard = () => {
             <ErrorBoundary>
               <ChartComponent 
                 type="line" 
-                data={userGrowthData} 
+                data={{
+                  labels: stats.dailySignups.map(item => item.date),
+                  datasets: [{
+                    label: 'Users',
+                    data: stats.dailySignups.map(item => item.count),
+                    backgroundColor: 'rgba(136, 132, 216, 0.2)',
+                    borderColor: 'rgba(136, 132, 216, 1)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.4
+                  }]
+                }} 
                 options={areaChartOptions} 
               />
             </ErrorBoundary>
           </div>
         </div>
 
-        {/* Campaign Status Chart */}
+        {/* User Activity Chart */}
         <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-medium mb-4">Campaign Status</h3>
+          <h3 className="text-lg font-medium mb-4">User Activity</h3>
           <div className="h-80">
             <ErrorBoundary>
               <ChartComponent 
-                type="pie" 
-                data={campaignStatusData} 
-                options={pieChartOptions} 
+                type="line" 
+                data={{
+                  labels: stats.userActivity.map(item => item.date),
+                  datasets: [{
+                    label: 'Active Users',
+                    data: stats.userActivity.map(item => item.active),
+                    borderColor: 'rgba(136, 132, 216, 1)',
+                    backgroundColor: 'rgba(136, 132, 216, 0.1)',
+                    borderWidth: 2,
+                    tension: 0.4
+                  }]
+                }} 
+                options={lineChartOptions} 
               />
             </ErrorBoundary>
           </div>
         </div>
       </div>
-
-      {/* Recent Activity */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h3 className="text-lg font-medium mb-4">Recent Activity</h3>
-        <div className="space-y-4">
-          {[1, 2, 3, 4, 5].map((item) => (
-            <div key={item} className="flex items-start pb-4 border-b border-gray-100 last:border-0">
-              <div className="bg-indigo-100 p-2 rounded-full mr-4">
-                <User className="text-indigo-600 w-5 h-5" />
-              </div>
-              <div className="flex-1">
-                <p className="text-sm font-medium">New user registered</p>
-                <p className="text-sm text-gray-500">User #{item} signed up via email</p>
-                <p className="text-xs text-gray-400 mt-1">2 hours ago</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 
+  // Render users tab with real data
   const renderUsersTab = () => (
     <div className="bg-white rounded-lg shadow overflow-hidden">
-      <div className="px-6 py-4 border-b border-gray-200">
-        <h3 className="text-lg font-medium">User Management</h3>
-        <p className="text-sm text-gray-500">Manage all user accounts in the system</p>
+      <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+        <div>
+          <h3 className="text-lg font-medium">User Management</h3>
+          <p className="text-sm text-gray-500">Manage all user accounts in the system</p>
+        </div>
+        <button
+          onClick={refreshData}
+          disabled={loading.refreshing}
+          className="flex items-center px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+        >
+          <RefreshCw className={`w-4 h-4 mr-2 ${loading.refreshing ? 'animate-spin' : ''}`} />
+          Refresh
+        </button>
       </div>
       
       {loading.users ? (
@@ -822,14 +689,11 @@ const SuperAdminDashboard = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <button
-                      onClick={() => handleSuspendUser(user._id)}
+                      onClick={() => handleSuspendUser(user._id, user.isActive)}
                       className={`mr-4 ${user.isActive ? 'text-red-600 hover:text-red-900' : 'text-green-600 hover:text-green-900'}`}
                       title={user.isActive ? 'Suspend User' : 'Activate User'}
                     >
                       {user.isActive ? 'Suspend' : 'Activate'}
-                    </button>
-                    <button className="text-indigo-600 hover:text-indigo-900">
-                      View
                     </button>
                   </td>
                 </tr>
@@ -843,14 +707,14 @@ const SuperAdminDashboard = () => {
             </div>
             <div className="flex space-x-2">
               <button
-                onClick={() => fetchUsers(pagination.page - 1, pagination.limit)}
+                onClick={() => handleUserPagination(pagination.page - 1)}
                 disabled={pagination.page === 1}
                 className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               >
                 Previous
               </button>
               <button
-                onClick={() => fetchUsers(pagination.page + 1, pagination.limit)}
+                onClick={() => handleUserPagination(pagination.page + 1)}
                 disabled={pagination.page === pagination.totalPages}
                 className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               >
@@ -863,12 +727,23 @@ const SuperAdminDashboard = () => {
     </div>
   );
 
+  // Render campaigns tab with real data
   const renderCampaignsTab = () => (
     <div className="space-y-6">
       <div className="bg-white rounded-lg shadow overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-medium">Campaign Management</h3>
-          <p className="text-sm text-gray-500">Manage all campaigns in the system</p>
+        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+          <div>
+            <h3 className="text-lg font-medium">Campaign Management</h3>
+            <p className="text-sm text-gray-500">Manage all campaigns in the system</p>
+          </div>
+          <button
+            onClick={refreshData}
+            disabled={loading.refreshing}
+            className="flex items-center px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading.refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
         </div>
         
         {loading.campaigns ? (
@@ -925,9 +800,6 @@ const SuperAdminDashboard = () => {
                       <div>{new Date(campaign.endDate).toLocaleDateString()}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <button className="text-indigo-600 hover:text-indigo-900 mr-4">
-                        View
-                      </button>
                       <button 
                         onClick={() => handleDeleteCampaign(campaign._id)}
                         className="text-red-600 hover:text-red-900"
@@ -942,23 +814,10 @@ const SuperAdminDashboard = () => {
           </div>
         )}
       </div>
-
-      {/* Campaign Performance Chart */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h3 className="text-lg font-medium mb-4">Campaign Performance</h3>
-        <div className="h-80">
-          <ErrorBoundary>
-            <ChartComponent 
-              type="bar" 
-              data={campaignPerformanceData} 
-              options={barChartOptions} 
-            />
-          </ErrorBoundary>
-        </div>
-      </div>
     </div>
   );
 
+  // Render admins tab with real data
   const renderAdminsTab = () => (
     <div className="bg-white rounded-lg shadow overflow-hidden">
       <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
@@ -966,13 +825,23 @@ const SuperAdminDashboard = () => {
           <h3 className="text-lg font-medium">Admin Management</h3>
           <p className="text-sm text-gray-500">Manage all admin accounts in the system</p>
         </div>
-        <button
-          onClick={() => setShowCreateForm(!showCreateForm)}
-          className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
-        >
-          <Plus className="w-5 h-5 mr-2" />
-          {showCreateForm ? 'Cancel' : 'Add Admin'}
-        </button>
+        <div className="flex space-x-2">
+          <button
+            onClick={refreshData}
+            disabled={loading.refreshing}
+            className="flex items-center px-3 py-1 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading.refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+          <button
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            {showCreateForm ? 'Cancel' : 'Add Admin'}
+          </button>
+        </div>
       </div>
 
       {showCreateForm && (
@@ -1100,6 +969,7 @@ const SuperAdminDashboard = () => {
     </div>
   );
 
+  // Render analytics tab with real data
   const renderAnalyticsTab = () => (
     <div className="space-y-8">
       {/* User Activity Chart */}
@@ -1109,7 +979,17 @@ const SuperAdminDashboard = () => {
           <ErrorBoundary>
             <ChartComponent 
               type="line" 
-              data={userActivityData} 
+              data={{
+                labels: stats.userActivity.map(item => item.date),
+                datasets: [{
+                  label: 'Active Users',
+                  data: stats.userActivity.map(item => item.active),
+                  borderColor: 'rgba(136, 132, 216, 1)',
+                  backgroundColor: 'rgba(136, 132, 216, 0.1)',
+                  borderWidth: 2,
+                  tension: 0.4
+                }]
+              }} 
               options={lineChartOptions} 
             />
           </ErrorBoundary>
@@ -1123,43 +1003,49 @@ const SuperAdminDashboard = () => {
           <ErrorBoundary>
             <ChartComponent 
               type="bar" 
-              data={campaignPerformanceData} 
+              data={{
+                labels: campaigns.slice(0, 5).map(c => c.title),
+                datasets: [{
+                  label: 'Participants',
+                  data: campaigns.slice(0, 5).map(c => c.participants),
+                  backgroundColor: 'rgba(136, 132, 216, 0.5)',
+                }]
+              }} 
               options={barChartOptions} 
             />
           </ErrorBoundary>
         </div>
       </div>
-
-      {/* User Demographics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-medium mb-4">User Locations</h3>
-          <div className="h-64">
-            <ErrorBoundary>
-              <ChartComponent 
-                type="pie" 
-                data={userLocationsData} 
-                options={pieChartOptions} 
-              />
-            </ErrorBoundary>
-          </div>
-        </div>
-
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h3 className="text-lg font-medium mb-4">User Devices</h3>
-          <div className="h-64">
-            <ErrorBoundary>
-              <ChartComponent 
-                type="pie" 
-                data={userDevicesData} 
-                options={pieChartOptions} 
-              />
-            </ErrorBoundary>
-          </div>
-        </div>
-      </div>
     </div>
   );
+
+  if (needsVerification) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
+          <h2 className="text-2xl font-bold mb-6 text-center">Super Admin Verification</h2>
+          {error && <p className="text-red-500 mb-4 text-center">{error}</p>}
+          <div className="mb-4">
+            <label className="block text-gray-700 mb-2">Enter Passcode</label>
+            <input
+              type="password"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md"
+              placeholder="Super admin passcode"
+              value={passcode}
+              onChange={(e) => setPasscode(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleVerifyPasscode()}
+            />
+          </div>
+          <button
+            onClick={handleVerifyPasscode}
+            className="w-full bg-indigo-600 text-white py-2 px-4 rounded-md hover:bg-indigo-700"
+          >
+            Verify
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1215,15 +1101,6 @@ const SuperAdminDashboard = () => {
               >
                 <PieChart className="mr-3 h-5 w-5" />
                 Analytics
-              </button>
-              <button
-                onClick={() => setActiveTab('settings')}
-                className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md w-full ${
-                  activeTab === 'settings' ? 'bg-indigo-800 text-white' : 'text-indigo-100 hover:bg-indigo-600 hover:bg-opacity-75'
-                }`}
-              >
-                <Settings className="mr-3 h-5 w-5" />
-                Settings
               </button>
             </nav>
           </div>
@@ -1323,7 +1200,6 @@ const SuperAdminDashboard = () => {
                 {activeTab === 'campaigns' && 'Campaign Management'}
                 {activeTab === 'admins' && 'Admin Management'}
                 {activeTab === 'analytics' && 'Analytics'}
-                {activeTab === 'settings' && 'Settings'}
               </h1>
             </div>
             <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8">
@@ -1355,12 +1231,6 @@ const SuperAdminDashboard = () => {
               {activeTab === 'campaigns' && renderCampaignsTab()}
               {activeTab === 'admins' && renderAdminsTab()}
               {activeTab === 'analytics' && renderAnalyticsTab()}
-              {activeTab === 'settings' && (
-                <div className="bg-white p-6 rounded-lg shadow">
-                  <h3 className="text-lg font-medium mb-4">System Settings</h3>
-                  <p className="text-gray-500">Settings will be available soon</p>
-                </div>
-              )}
             </div>
           </div>
         </main>

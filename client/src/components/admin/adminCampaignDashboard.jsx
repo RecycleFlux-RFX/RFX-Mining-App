@@ -289,68 +289,153 @@ const fetchCampaigns = async () => {
     };
 
     // Add task to form
-    const handleAddTask = async (e) => {
-        e.preventDefault();
-        setLoading(true);
+// In your handleAddTask function:
+const handleAddTask = async (e) => {
+    e.preventDefault();
+    setLoading(true);
 
-        try {
-            const token = localStorage.getItem('authToken');
-            let contentUrl = taskForm.contentUrl;
+    try {
+        const token = localStorage.getItem('authToken');
+        const formPayload = new FormData();
 
-            // Handle file upload if present
-            if (taskForm.contentFile) {
-                const formData = new FormData();
-                formData.append('content', taskForm.contentFile);
-
-                const uploadRes = await api.post(
-                    '/upload',
-                    formData,
-                    {
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                            'Content-Type': 'multipart/form-data'
-                        }
-                    }
-                );
-                contentUrl = uploadRes.data.url;
-            }
-
-            const newTask = {
-                day: parseInt(taskForm.day),
-                title: taskForm.title,
-                description: taskForm.description,
-                type: taskForm.type,
-                platform: taskForm.platform,
-                reward: parseFloat(taskForm.reward),
-                requirements: taskForm.requirements.split(',').map(r => r.trim()),
-                contentUrl: contentUrl || null
-            };
-
-            setFormData(prev => ({
-                ...prev,
-                tasksList: [...prev.tasksList, newTask]
-            }));
-
-            // Reset task form but keep the same day and type for adding multiple tasks
-            setTaskForm(prev => ({
-                ...prev,
-                title: '',
-                description: '',
-                requirements: '',
-                contentUrl: '',
-                contentFile: null
-            }));
-
-            toast.success('Task added successfully');
-            setIsTaskModalOpen(false);
-        } catch (err) {
-            const errorMsg = err.response?.data?.message || 'Failed to add task';
-            setError(errorMsg);
-            toast.error(errorMsg);
-        } finally {
-            setLoading(false);
+        // Append all task data as FormData
+        formPayload.append('day', taskForm.day);
+        formPayload.append('title', taskForm.title);
+        formPayload.append('description', taskForm.description);
+        formPayload.append('type', taskForm.type);
+        formPayload.append('platform', taskForm.platform || '');
+        formPayload.append('reward', taskForm.reward);
+        formPayload.append('requirements', taskForm.requirements);
+        
+        if (taskForm.contentFile) {
+            formPayload.append('contentFile', taskForm.contentFile);
+        } else if (taskForm.contentUrl) {
+            formPayload.append('contentUrl', taskForm.contentUrl);
         }
-    };
+
+        const response = await api.post(
+            `/admin/campaigns/${selectedCampaign._id}/tasks`,
+            formPayload,
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'multipart/form-data'
+                }
+            }
+        );
+
+        // Update UI
+        setSelectedCampaign(prev => ({
+            ...prev,
+            tasksList: [...prev.tasksList, response.data.task]
+        }));
+
+        // Reset form
+        setTaskForm({
+            day: taskForm.day, // Keep same day
+            title: '',
+            description: '',
+            type: taskForm.type, // Keep same type
+            platform: taskForm.platform, // Keep same platform
+            reward: 0.001,
+            requirements: '',
+            contentUrl: '',
+            contentFile: null
+        });
+
+        toast.success('Task added successfully');
+        setIsTaskModalOpen(false);
+    } catch (err) {
+        const errorMsg = err.response?.data?.message || 'Failed to add task';
+        setError(errorMsg);
+        toast.error(errorMsg);
+    } finally {
+        setLoading(false);
+    }
+};
+
+// In your handleEditTask function:
+
+const handleEditTask = async (taskId, updatedTask) => {
+    setLoading(true);
+    try {
+        const token = localStorage.getItem('authToken');
+        const formPayload = new FormData();
+
+        // Append all updated task data
+        formPayload.append('day', updatedTask.day);
+        formPayload.append('title', updatedTask.title);
+        formPayload.append('description', updatedTask.description);
+        formPayload.append('type', updatedTask.type);
+        formPayload.append('platform', updatedTask.platform || '');
+        formPayload.append('reward', updatedTask.reward);
+        formPayload.append('requirements', updatedTask.requirements.join(','));
+        
+        if (updatedTask.contentFile) {
+            formPayload.append('contentFile', updatedTask.contentFile);
+        } else if (updatedTask.contentUrl) {
+            formPayload.append('contentUrl', updatedTask.contentUrl);
+        }
+
+        await api.put(
+            `/admin/campaigns/${selectedCampaign._id}/tasks/${taskId}`,
+            formPayload,
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'multipart/form-data'
+                }
+            }
+        );
+
+        // Update the selected campaign with the updated task
+        setSelectedCampaign(prev => ({
+            ...prev,
+            tasksList: prev.tasksList.map(task => 
+                task._id === taskId ? { ...task, ...updatedTask } : task
+            )
+        }));
+
+        toast.success('Task updated successfully');
+    } catch (err) {
+        const errorMsg = err.response?.data?.message || 'Failed to update task';
+        setError(errorMsg);
+        toast.error(errorMsg);
+    } finally {
+        setLoading(false);
+    }
+};
+
+const handleDeleteTask = async (taskId) => {
+    if (!window.confirm('Are you sure you want to delete this task? This action cannot be undone.')) {
+        return;
+    }
+
+    try {
+        const token = localStorage.getItem('authToken');
+        await api.delete(
+            `/admin/campaigns/${selectedCampaign._id}/tasks/${taskId}`,
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        // Update the selected campaign by removing the deleted task
+        setSelectedCampaign(prev => ({
+            ...prev,
+            tasksList: prev.tasksList.filter(task => task._id !== taskId)
+        }));
+
+        toast.success('Task deleted successfully');
+    } catch (err) {
+        const errorMsg = err.response?.data?.message || 'Failed to delete task';
+        setError(errorMsg);
+        toast.error(errorMsg);
+    }
+};
 
     // Delete campaign
     const handleDeleteCampaign = async (id) => {
@@ -1255,95 +1340,123 @@ const fetchCampaigns = async () => {
                                 </div>
                             </TabPanel>
 
-                            <TabPanel>
-                                <div className="p-6">
-                                    <div className="flex justify-between items-center mb-6">
-                                        <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                            Tasks ({selectedCampaign.tasksList?.length || 0})
-                                        </h3>
-                                        <button
-                                            onClick={() => setIsTaskModalOpen(true)}
-                                            className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-4 py-2 rounded-xl transition-all duration-200"
-                                        >
-                                            <Plus size={16} />
-                                            <span>Add Task</span>
-                                        </button>
-                                    </div>
+<TabPanel>
+    <div className="p-6">
+        <div className="flex justify-between items-center mb-6">
+            <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                Tasks ({selectedCampaign.tasksList?.length || 0})
+            </h3>
+            <button
+                onClick={() => setIsTaskModalOpen(true)}
+                className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-4 py-2 rounded-xl transition-all duration-200"
+            >
+                <Plus size={16} />
+                <span>Add Task</span>
+            </button>
+        </div>
 
-                                    {selectedCampaign.tasksList?.length > 0 ? (
-                                        <div className="space-y-4">
-                                            {selectedCampaign.tasksList.map((task, index) => (
-                                                <div key={task._id || index} className={`border rounded-xl p-6 hover:shadow-md transition-shadow ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
-                                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0">
-                                                        <div className="flex-1">
-                                                            <div className="flex items-center space-x-3 mb-2">
-                                                                <span className="bg-gradient-to-r from-blue-500 to-purple-500 text-white font-bold px-3 py-1 rounded-lg text-sm">
-                                                                    Day {task.day}
-                                                                </span>
-                                                                <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{task.title}</h4>
-                                                            </div>
-                                                            <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-3`}>{task.description}</p>
+        {selectedCampaign.tasksList?.length > 0 ? (
+            <div className="space-y-4">
+                {selectedCampaign.tasksList.map((task) => (
+                    <div key={task._id} className={`border rounded-xl p-6 hover:shadow-md transition-shadow ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0">
+                            <div className="flex-1">
+                                <div className="flex items-center space-x-3 mb-2">
+                                    <span className="bg-gradient-to-r from-blue-500 to-purple-500 text-white font-bold px-3 py-1 rounded-lg text-sm">
+                                        Day {task.day}
+                                    </span>
+                                    <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{task.title}</h4>
+                                </div>
+                                <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-3`}>{task.description}</p>
 
-                                                            {task.requirements?.length > 0 && (
-                                                                <div className="mb-3">
-                                                                    <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Requirements:</span>
-                                                                    <div className="flex flex-wrap gap-2 mt-1">
-                                                                        {task.requirements.map((req, i) => (
-                                                                            <span key={i} className={`px-2 py-1 rounded-md text-xs ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
-                                                                                {req}
-                                                                            </span>
-                                                                        ))}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
-
-                                                        <div className="text-right space-y-2">
-                                                            <div className={`text-xl font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>{task.reward} RFX</div>
-                                                            <div className="space-x-2">
-                                                                <span className={`px-2 py-1 rounded-md text-xs font-medium capitalize ${darkMode ? 'bg-blue-900/30 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
-                                                                    {task.type}
-                                                                </span>
-                                                                {task.platform && (
-                                                                    <span className={`px-2 py-1 rounded-md text-xs font-medium ${darkMode ? 'bg-purple-900/30 text-purple-300' : 'bg-purple-100 text-purple-700'}`}>
-                                                                        {task.platform}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    {task.contentUrl && (
-                                                        <div className={`mt-4 pt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
-                                                            <a
-                                                                href={task.contentUrl.startsWith('http') ? task.contentUrl : `/uploads/${task.contentUrl.split('uploads/')[1]}`}
-                                                                target="_blank"
-                                                                rel="noopener noreferrer"
-                                                                className={`inline-flex items-center font-medium ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}
-                                                            >
-                                                                <Eye size={16} className="mr-2" />
-                                                                View Content
-                                                            </a>
-                                                        </div>
-                                                    )}
-                                                </div>
+                                {task.requirements?.length > 0 && (
+                                    <div className="mb-3">
+                                        <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Requirements:</span>
+                                        <div className="flex flex-wrap gap-2 mt-1">
+                                            {task.requirements.map((req, i) => (
+                                                <span key={i} className={`px-2 py-1 rounded-md text-xs ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+                                                    {req}
+                                                </span>
                                             ))}
                                         </div>
-                                    ) : (
-                                        <div className="text-center py-12">
-                                            <div className={`text-6xl mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>📝</div>
-                                            <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>No tasks added yet</h3>
-                                            <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-6`}>Add tasks to make your campaign interactive</p>
-                                            <button
-                                                onClick={() => setIsTaskModalOpen(true)}
-                                                className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200"
-                                            >
-                                                Add First Task
-                                            </button>
-                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="text-right space-y-2">
+                                <div className={`text-xl font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>{task.reward} RFX</div>
+                                <div className="space-x-2">
+                                    <span className={`px-2 py-1 rounded-md text-xs font-medium capitalize ${darkMode ? 'bg-blue-900/30 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
+                                        {task.type}
+                                    </span>
+                                    {task.platform && (
+                                        <span className={`px-2 py-1 rounded-md text-xs font-medium ${darkMode ? 'bg-purple-900/30 text-purple-300' : 'bg-purple-100 text-purple-700'}`}>
+                                            {task.platform}
+                                        </span>
                                     )}
                                 </div>
-                            </TabPanel>
+                            </div>
+                        </div>
+
+                        {task.contentUrl && (
+                            <div className={`mt-4 pt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                                <a
+                                    href={task.contentUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className={`inline-flex items-center font-medium ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}
+                                >
+                                    <Eye size={16} className="mr-2" />
+                                    View Content
+                                </a>
+                            </div>
+                        )}
+
+                        <div className={`mt-4 pt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'} flex justify-end space-x-2`}>
+                            <button
+                                onClick={() => {
+                                    setTaskForm({
+                                        day: task.day.toString(),
+                                        title: task.title,
+                                        description: task.description,
+                                        type: task.type,
+                                        platform: task.platform || '',
+                                        reward: task.reward,
+                                        requirements: task.requirements?.join(',') || '',
+                                        contentUrl: task.contentUrl || '',
+                                        contentFile: null
+                                    });
+                                    setIsTaskModalOpen(true);
+                                }}
+                                className={`px-3 py-1 rounded-lg ${darkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white text-sm`}
+                            >
+                                Edit
+                            </button>
+                            <button
+                                onClick={() => handleDeleteTask(task._id)}
+                                className={`px-3 py-1 rounded-lg ${darkMode ? 'bg-red-600 hover:bg-red-700' : 'bg-red-500 hover:bg-red-600'} text-white text-sm`}
+                            >
+                                Delete
+                            </button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        ) : (
+            <div className="text-center py-12">
+                <div className={`text-6xl mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>📝</div>
+                <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>No tasks added yet</h3>
+                <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-6`}>Add tasks to make your campaign interactive</p>
+                <button
+                    onClick={() => setIsTaskModalOpen(true)}
+                    className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200"
+                >
+                    Add First Task
+                </button>
+            </div>
+        )}
+    </div>
+</TabPanel>
 
                             <TabPanel>
                                 <div className="p-6">
@@ -1834,226 +1947,229 @@ const fetchCampaigns = async () => {
             </Modal>
 
             {/* Enhanced Task Form Modal */}
-            <Modal
-                isOpen={isTaskModalOpen}
-                onRequestClose={() => setIsTaskModalOpen(false)}
-                className={`rounded-2xl shadow-2xl max-w-2xl w-full mx-auto my-8 overflow-y-auto max-h-[90vh] ${themeClasses.modal} transition-colors duration-200`}
-                overlayClassName={`fixed inset-0 ${themeClasses.modalOverlay} backdrop-blur-sm flex items-start justify-center p-4 z-50`}
-                contentLabel="Task Form"
+<Modal
+    isOpen={isTaskModalOpen}
+    onRequestClose={() => setIsTaskModalOpen(false)}
+    className={`rounded-2xl shadow-2xl max-w-2xl w-full mx-auto my-8 overflow-y-auto max-h-[90vh] ${themeClasses.modal} transition-colors duration-200`}
+    overlayClassName={`fixed inset-0 ${themeClasses.modalOverlay} backdrop-blur-sm flex items-start justify-center p-4 z-50`}
+    contentLabel="Task Form"
+>
+    <div className="p-8">
+        <div className="flex justify-between items-center mb-8">
+            <div>
+                <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                    {taskForm._id ? 'Edit Task' : 'Add New Task'}
+                </h2>
+                <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>Configure a task for your campaign</p>
+            </div>
+            <button
+                onClick={() => setIsTaskModalOpen(false)}
+                className={`p-2 ${darkMode ? 'text-gray-400 hover:text-gray-300 hover:bg-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'} rounded-lg transition-colors`}
             >
-                <div className="p-8">
-                    <div className="flex justify-between items-center mb-8">
-                        <div>
-                            <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                                Add New Task
-                            </h2>
-                            <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>Configure a new task for your campaign</p>
-                        </div>
-                        <button
-                            onClick={() => setIsTaskModalOpen(false)}
-                            className={`p-2 ${darkMode ? 'text-gray-400 hover:text-gray-300 hover:bg-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'} rounded-lg transition-colors`}
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </div>
+
+        <form onSubmit={taskForm._id ? (e) => {
+            e.preventDefault();
+            handleEditTask(taskForm._id, taskForm);
+        } : handleAddTask} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label htmlFor="task-day" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        Day Number *
+                    </label>
+                    <input
+                        type="number"
+                        id="task-day"
+                        name="day"
+                        value={taskForm.day}
+                        onChange={handleTaskChange}
+                        min="1"
+                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
+                        placeholder="1"
+                        required
+                    />
+                </div>
+
+                <div>
+                    <label htmlFor="task-reward" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        Reward (RFX) *
+                    </label>
+                    <input
+                        type="number"
+                        id="task-reward"
+                        name="reward"
+                        value={taskForm.reward}
+                        onChange={handleTaskChange}
+                        step="0.00001"
+                        min="0"
+                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
+                        placeholder="0.001"
+                        required
+                    />
+                </div>
+            </div>
+
+            <div>
+                <label htmlFor="task-title" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Task Title *
+                </label>
+                <input
+                    type="text"
+                    id="task-title"
+                    name="title"
+                    value={taskForm.title}
+                    onChange={handleTaskChange}
+                    className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
+                    placeholder="Enter task title"
+                    required
+                />
+            </div>
+
+            <div>
+                <label htmlFor="task-description" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Description *
+                </label>
+                <textarea
+                    id="task-description"
+                    name="description"
+                    value={taskForm.description}
+                    onChange={handleTaskChange}
+                    rows={3}
+                    className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none ${themeClasses.input}`}
+                    placeholder="Describe what participants need to do"
+                    required
+                />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label htmlFor="task-type" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                        Task Type *
+                    </label>
+                    <select
+                        id="task-type"
+                        name="type"
+                        value={taskForm.type}
+                        onChange={handleTaskChange}
+                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
+                        required
+                    >
+                        <option value="social-follow">📱 Social Follow</option>
+                        <option value="social-post">📝 Social Post</option>
+                        <option value="video-watch">🎥 Video Watch</option>
+                        <option value="article-read">📖 Article Read</option>
+                        <option value="discord-join">💬 Discord Join</option>
+                        <option value="proof-upload">📸 Proof Upload</option>
+                    </select>
+                </div>
+
+                {(taskForm.type === 'social-follow' || taskForm.type === 'social-post') && (
+                    <div>
+                        <label htmlFor="task-platform" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Platform *
+                        </label>
+                        <select
+                            id="task-platform"
+                            name="platform"
+                            value={taskForm.platform}
+                            onChange={handleTaskChange}
+                            className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
+                            required
                         >
-                            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </button>
+                            <option value="Twitter">🐦 Twitter</option>
+                            <option value="Facebook">📘 Facebook</option>
+                            <option value="Instagram">📷 Instagram</option>
+                            <option value="YouTube">📺 YouTube</option>
+                            <option value="Discord">💬 Discord</option>
+                            <option value="Telegram">✈️ Telegram</option>
+                            <option value="Reddit">🤖 Reddit</option>
+                            <option value="TikTok">🎵 TikTok</option>
+                            <option value="LinkedIn">💼 LinkedIn</option>
+                        </select>
+                    </div>
+                )}
+            </div>
+
+            {(taskForm.type === 'video-watch' || taskForm.type === 'article-read') && (
+                <div className="space-y-4">
+                    <div>
+                        <label htmlFor="task-contentUrl" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Content URL
+                        </label>
+                        <input
+                            type="url"
+                            id="task-contentUrl"
+                            name="contentUrl"
+                            value={taskForm.contentUrl}
+                            onChange={handleTaskChange}
+                            className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
+                            placeholder="https://example.com/content"
+                        />
+                        <p className={`mt-1 text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Or upload content file below</p>
                     </div>
 
-                    <form onSubmit={handleAddTask} className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label htmlFor="task-day" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                    Day Number *
-                                </label>
-                                <input
-                                    type="number"
-                                    id="task-day"
-                                    name="day"
-                                    value={taskForm.day}
-                                    onChange={handleTaskChange}
-                                    min="1"
-                                    className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
-                                    placeholder="1"
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <label htmlFor="task-reward" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                    Reward (RFX) *
-                                </label>
-                                <input
-                                    type="number"
-                                    id="task-reward"
-                                    name="reward"
-                                    value={taskForm.reward}
-                                    onChange={handleTaskChange}
-                                    step="0.00001"
-                                    min="0"
-                                    className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
-                                    placeholder="0.001"
-                                    required
-                                />
-                            </div>
-                        </div>
-
-                        <div>
-                            <label htmlFor="task-title" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                Task Title *
-                            </label>
-                            <input
-                                type="text"
-                                id="task-title"
-                                name="title"
-                                value={taskForm.title}
-                                onChange={handleTaskChange}
-                                className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
-                                placeholder="Enter task title"
-                                required
-                            />
-                        </div>
-
-                        <div>
-                            <label htmlFor="task-description" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                Description *
-                            </label>
-                            <textarea
-                                id="task-description"
-                                name="description"
-                                value={taskForm.description}
-                                onChange={handleTaskChange}
-                                rows={3}
-                                className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none ${themeClasses.input}`}
-                                placeholder="Describe what participants need to do"
-                                required
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                                <label htmlFor="task-type" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                    Task Type *
-                                </label>
-                                <select
-                                    id="task-type"
-                                    name="type"
-                                    value={taskForm.type}
-                                    onChange={handleTaskChange}
-                                    className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
-                                    required
-                                >
-                                    <option value="social-follow">📱 Social Follow</option>
-                                    <option value="social-post">📝 Social Post</option>
-                                    <option value="video-watch">🎥 Video Watch</option>
-                                    <option value="article-read">📖 Article Read</option>
-                                    <option value="discord-join">💬 Discord Join</option>
-                                    <option value="proof-upload">📸 Proof Upload</option>
-                                </select>
-                            </div>
-
-                            {(taskForm.type === 'social-follow' || taskForm.type === 'social-post') && (
-                                <div>
-                                    <label htmlFor="task-platform" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                        Platform *
-                                    </label>
-                                    <select
-                                        id="task-platform"
-                                        name="platform"
-                                        value={taskForm.platform}
-                                        onChange={handleTaskChange}
-                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
-                                        required
-                                    >
-                                        <option value="Twitter">🐦 Twitter</option>
-                                        <option value="Facebook">📘 Facebook</option>
-                                        <option value="Instagram">📷 Instagram</option>
-                                        <option value="YouTube">📺 YouTube</option>
-                                        <option value="Discord">💬 Discord</option>
-                                        <option value="Telegram">✈️ Telegram</option>
-                                        <option value="Reddit">🤖 Reddit</option>
-                                        <option value="TikTok">🎵 TikTok</option>
-                                        <option value="LinkedIn">💼 LinkedIn</option>
-                                    </select>
-                                </div>
-                            )}
-                        </div>
-
-                        {(taskForm.type === 'video-watch' || taskForm.type === 'article-read') && (
-                            <div className="space-y-4">
-                                <div>
-                                    <label htmlFor="task-contentUrl" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                        Content URL
-                                    </label>
-                                    <input
-                                        type="url"
-                                        id="task-contentUrl"
-                                        name="contentUrl"
-                                        value={taskForm.contentUrl}
-                                        onChange={handleTaskChange}
-                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
-                                        placeholder="https://example.com/content"
-                                    />
-                                    <p className={`mt-1 text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Or upload content file below</p>
-                                </div>
-
-                                <div>
-                                    <label htmlFor="task-contentFile" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                        Content File
-                                    </label>
-                                    <input
-                                        type="file"
-                                        id="task-contentFile"
-                                        name="contentFile"
-                                        onChange={handleTaskChange}
-                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${darkMode ? 'file:text-white file:bg-gray-700' : ''}`}
-                                        accept={taskForm.type === 'video-watch' ? 'video/*' : 'application/pdf,text/*'}
-                                    />
-                                </div>
-                            </div>
-                        )}
-
-                        <div>
-                            <label htmlFor="task-requirements" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                                Requirements (comma separated)
-                            </label>
-                            <input
-                                type="text"
-                                id="task-requirements"
-                                name="requirements"
-                                value={taskForm.requirements}
-                                onChange={handleTaskChange}
-                                className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
-                                placeholder="e.g., Twitter account, Email verification"
-                            />
-                            <p className={`mt-1 text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Optional requirements participants must meet</p>
-                        </div>
-
-                        <div className={`flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-4 pt-6 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                            <button
-                                type="button"
-                                onClick={() => setIsTaskModalOpen(false)}
-                                className={`px-6 py-3 border rounded-lg font-medium transition-colors ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium rounded-lg transition-all duration-200 disabled:opacity-50"
-                                disabled={loading}
-                            >
-                                {loading ? (
-                                    <div className="flex items-center space-x-2">
-                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                        <span>Adding...</span>
-                                    </div>
-                                ) : (
-                                    'Add Task'
-                                )}
-                            </button>
-                        </div>
-                    </form>
+                    <div>
+                        <label htmlFor="task-contentFile" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                            Content File
+                        </label>
+                        <input
+                            type="file"
+                            id="task-contentFile"
+                            name="contentFile"
+                            onChange={handleTaskChange}
+                            className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${darkMode ? 'file:text-white file:bg-gray-700' : ''}`}
+                            accept={taskForm.type === 'video-watch' ? 'video/*' : 'application/pdf,text/*'}
+                        />
+                    </div>
                 </div>
-            </Modal>
+            )}
+
+            <div>
+                <label htmlFor="task-requirements" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Requirements (comma separated)
+                </label>
+                <input
+                    type="text"
+                    id="task-requirements"
+                    name="requirements"
+                    value={taskForm.requirements}
+                    onChange={handleTaskChange}
+                    className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
+                    placeholder="e.g., Twitter account, Email verification"
+                />
+                <p className={`mt-1 text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Optional requirements participants must meet</p>
+            </div>
+
+            <div className={`flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-4 pt-6 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                <button
+                    type="button"
+                    onClick={() => setIsTaskModalOpen(false)}
+                    className={`px-6 py-3 border rounded-lg font-medium transition-colors ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                >
+                    Cancel
+                </button>
+                <button
+                    type="submit"
+                    className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium rounded-lg transition-all duration-200 disabled:opacity-50"
+                    disabled={loading}
+                >
+                    {loading ? (
+                        <div className="flex items-center space-x-2">
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            <span>{taskForm._id ? 'Updating...' : 'Adding...'}</span>
+                        </div>
+                    ) : (
+                        taskForm._id ? 'Update Task' : 'Add Task'
+                    )}
+                </button>
+            </div>
+        </form>
+    </div>
+</Modal>
         </div>
     );
 };

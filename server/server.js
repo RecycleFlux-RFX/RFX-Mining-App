@@ -3035,10 +3035,20 @@ app.get('/admin/campaigns/:id/tasks/:taskId', [authenticateToken, adminAuth], as
 });
 
 // Create a new task in a campaign
+// Create task endpoint
 app.post('/admin/campaigns/:id/tasks', [authenticateToken, adminAuth, upload.single('contentFile')], async (req, res) => {
     try {
         const { id: campaignId } = req.params;
-        const { day, title, description, type, platform, reward, requirements, contentUrl } = req.body;
+        const { 
+            day, 
+            title, 
+            description, 
+            type, 
+            platform = '', 
+            reward, 
+            requirements = '', 
+            contentUrl = '' 
+        } = req.body;
 
         // Validate required fields
         if (!day || !title || !description || !type || !reward) {
@@ -3051,9 +3061,9 @@ app.post('/admin/campaigns/:id/tasks', [authenticateToken, adminAuth, upload.sin
         }
 
         // Handle file upload
-        let finalContentUrl = contentUrl || null;
+        let finalContentUrl = contentUrl;
         if (req.file) {
-            finalContentUrl = req.file.path;
+            finalContentUrl = `/uploads/${req.file.filename}`; // Ensure proper path
         }
 
         const newTask = {
@@ -3077,15 +3087,24 @@ app.post('/admin/campaigns/:id/tasks', [authenticateToken, adminAuth, upload.sin
         });
     } catch (err) {
         console.error('Create task error:', err);
-        res.status(500).json({ message: 'Failed to create task' });
+        res.status(500).json({ message: 'Failed to create task: ' + err.message });
     }
 });
 
-// Update a specific task in a campaign
+// Update task endpoint
 app.put('/admin/campaigns/:id/tasks/:taskId', [authenticateToken, adminAuth, upload.single('contentFile')], async (req, res) => {
     try {
         const { id: campaignId, taskId } = req.params;
-        const { day, title, description, type, platform, reward, requirements, contentUrl } = req.body;
+        const { 
+            day, 
+            title, 
+            description, 
+            type, 
+            platform = '', 
+            reward, 
+            requirements = '', 
+            contentUrl = '' 
+        } = req.body;
 
         // Validate required fields
         if (!day || !title || !description || !type || !reward) {
@@ -3105,7 +3124,8 @@ app.put('/admin/campaigns/:id/tasks/:taskId', [authenticateToken, adminAuth, upl
         // Handle file upload
         let finalContentUrl = contentUrl || task.contentUrl;
         if (req.file) {
-            finalContentUrl = req.file.path;
+            finalContentUrl = `/uploads/${req.file.filename}`;
+            // Optionally delete old file if it exists
         }
 
         // Update task fields
@@ -3126,7 +3146,7 @@ app.put('/admin/campaigns/:id/tasks/:taskId', [authenticateToken, adminAuth, upl
         });
     } catch (err) {
         console.error('Update task error:', err);
-        res.status(500).json({ message: 'Failed to update task' });
+        res.status(500).json({ message: 'Failed to update task: ' + err.message });
     }
 });
 

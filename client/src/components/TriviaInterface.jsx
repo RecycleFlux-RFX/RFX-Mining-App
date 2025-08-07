@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
@@ -10,7 +10,6 @@ export default function TriviaInterface() {
     const [showAnimation, setShowAnimation] = useState(false);
     const [isAnswerCorrect, setIsAnswerCorrect] = useState(false);
     const [score, setScore] = useState(0);
-    const [xp, setXp] = useState(0);
     const [streak, setStreak] = useState(0);
     const [timeLeft, setTimeLeft] = useState(15);
     const [gameCompleted, setGameCompleted] = useState(false);
@@ -19,10 +18,22 @@ export default function TriviaInterface() {
     const [selectedQuestions, setSelectedQuestions] = useState([]);
     const [error, setError] = useState(null);
     const [highScore, setHighScore] = useState(0);
+    const [rewardTiers, setRewardTiers] = useState([]);
+    const [gameState, setGameState] = useState('menu');
 
-    const gameId = '688d176754cb10bba40ace71'; // Static ID for Trivia game
+    const gameId = '688d176754cb10bba40ace71';
     const BASE_URL = 'http://localhost:3000';
     const MAX_QUESTIONS = 10;
+    const timerRef = useRef(null);
+
+    const scoreRewards = [
+        { threshold: 500, xp: 10, tokens: 0.0001 },
+        { threshold: 1000, xp: 20, tokens: 0.0002 },
+        { threshold: 1500, xp: 30, tokens: 0.0003 },
+        { threshold: 2000, xp: 40, tokens: 0.0004 },
+        { threshold: 2500, xp: 50, tokens: 0.0005 },
+    ];
+
 
     const allTriviaQuestions = [
     {
@@ -1004,19 +1015,47 @@ export default function TriviaInterface() {
     
     
     // Initialize the game by selecting random questions
-    useEffect(() => {
-        startGame();
-        const shuffled = [...allTriviaQuestions].sort(() => 0.5 - Math.random());
-        setSelectedQuestions(shuffled.slice(0, MAX_QUESTIONS));
-    }, []);
+const calculateRewards = useCallback((finalScore) => {
+        let earnedXp = 0;
+        let earnedTokens = 0;
+        const achievedTiers = [];
 
-    const currentQuestionData = selectedQuestions[currentQuestion];
+        for (const tier of scoreRewards) {
+            if (finalScore >= tier.threshold) {
+                earnedXp += tier.xp;
+                earnedTokens += tier.tokens;
+                achievedTiers.push({
+                    threshold: tier.threshold,
+                    xp: tier.xp,
+                    tokens: tier.tokens,
+                });
+            }
+        }
+
+        const baseXp = Math.floor(finalScore / 20);
+        earnedXp += baseXp;
+
+        if (streak >= 5) {
+            earnedXp += 10;
+            achievedTiers.push({
+                description: "5+ Streak Bonus",
+                xp: 10,
+                tokens: 0,
+            });
+        }
+
+        return { xpEarned: earnedXp, tokensEarned: earnedTokens, achievedTiers };
+    }, [streak]);
 
     const startGame = async () => {
         try {
             const token = localStorage.getItem('authToken');
             if (!token) {
                 throw new Error('Please log in to play the game');
+            }
+
+            if (!/^[0-9a-fA-F]{24}$/.test(gameId)) {
+                throw new Error('Invalid game ID format');
             }
 
             const response = await axios.post(
@@ -1038,6 +1077,20 @@ export default function TriviaInterface() {
                 throw new Error(response.data.message || 'Failed to start game');
             }
 
+            const shuffled = [...allTriviaQuestions].sort(() => 0.5 - Math.random());
+            setSelectedQuestions(shuffled.slice(0, MAX_QUESTIONS));
+            setGameState('playing');
+            setScore(0);
+            setStreak(0);
+            setTimeLeft(15);
+            setCurrentQuestion(0);
+            setSelectedAnswer(null);
+            setShowResult(false);
+            setShowAnimation(false);
+            setQuestionsAnswered(0);
+            setRewards([]);
+            setRewardTiers([]);
+            setGameCompleted(false);
             setHighScore(response.data.highScore || 0);
             setError(null);
 
@@ -1068,57 +1121,45 @@ export default function TriviaInterface() {
                 throw new Error('Authentication missing');
             }
 
-            const xpEarned = Math.floor(score / 20);
+            const { xpEarned, tokensEarned, achievedTiers } = calculateRewards(score);
             const achievements = streak >= 5 ? ['Trivia Master'] : [];
 
             const response = await axios.post(
                 `${BASE_URL}/games/complete`,
-                { gameId, score, xpEarned, achievements },
+                {
+                    gameId,
+                    score,
+                    xpEarned,
+                    tokensEarned,
+                    achievements,
+                },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 
             setHighScore(response.data.newHighScore || score);
+            setRewardTiers(achievedTiers);
+            setGameCompleted(true);
         } catch (error) {
             console.error('Error submitting score:', error);
             setError('Failed to submit score');
         }
     };
 
-    // Timer effect
-    useEffect(() => {
-        if (questionsAnswered >= MAX_QUESTIONS || selectedQuestions.length === 0) {
-            setGameCompleted(true);
-            submitScore();
-            return;
-        }
-
-        const timer = timeLeft > 0 && setInterval(() => {
-            setTimeLeft(timeLeft - 1);
-        }, 1000);
-
-        if (timeLeft === 0) {
-            handleAnswerSelect(-1);
-        }
-
-        return () => clearInterval(timer);
-    }, [timeLeft, questionsAnswered, selectedQuestions]);
-
-    const handleAnswerSelect = (optionIndex) => {
+    const handleAnswerSelect = useCallback((optionIndex) => {
         if (!showResult && questionsAnswered < MAX_QUESTIONS && selectedQuestions.length > 0) {
+            const currentQuestionData = selectedQuestions[currentQuestion];
             setSelectedAnswer(optionIndex);
             const correct = optionIndex === currentQuestionData.correctAnswer;
             setIsAnswerCorrect(correct);
             setShowResult(true);
-            setQuestionsAnswered(questionsAnswered + 1);
+            setQuestionsAnswered(prev => prev + 1);
 
             if (correct) {
                 const timeBonus = Math.floor(timeLeft / 3);
                 const newScore = score + 100 + timeBonus;
-                const newXp = xp + 50 + timeBonus;
                 const newStreak = streak + 1;
 
                 setScore(newScore);
-                setXp(newXp);
                 setStreak(newStreak);
 
                 if (newStreak % 3 === 0) {
@@ -1141,39 +1182,38 @@ export default function TriviaInterface() {
 
                 if (currentQuestion < selectedQuestions.length - 1) {
                     setTimeout(() => {
-                        setCurrentQuestion(currentQuestion + 1);
+                        setCurrentQuestion(prev => prev + 1);
                         setSelectedAnswer(null);
                         setShowResult(false);
                     }, 300);
                 } else {
-                    setGameCompleted(true);
                     submitScore();
                 }
             }, 2000);
         }
-    };
+    }, [currentQuestion, questionsAnswered, score, showResult, streak, timeLeft, selectedQuestions, rewards]);
+
+    useEffect(() => {
+        if (gameState === 'playing' && timeLeft > 0) {
+            timerRef.current = setTimeout(() => {
+                setTimeLeft(prev => prev - 1);
+            }, 1000);
+            return () => clearTimeout(timerRef.current);
+        } else if (timeLeft === 0 && gameState === 'playing') {
+            handleAnswerSelect(-1);
+        }
+    }, [timeLeft, gameState, handleAnswerSelect]);
+
+    useEffect(() => {
+        return () => {
+            if (timerRef.current) {
+                clearTimeout(timerRef.current);
+            }
+        };
+    }, []);
 
     const handleRestart = async () => {
-        try {
-            await startGame();
-            const shuffled = [...allTriviaQuestions].sort(() => 0.5 - Math.random());
-            setSelectedQuestions(shuffled.slice(0, MAX_QUESTIONS));
-
-            setCurrentQuestion(0);
-            setSelectedAnswer(null);
-            setShowResult(false);
-            setShowAnimation(false);
-            setIsAnswerCorrect(false);
-            setScore(0);
-            setXp(xp => xp + 50);
-            setStreak(0);
-            setTimeLeft(15);
-            setGameCompleted(false);
-            setQuestionsAnswered(0);
-            setRewards([]);
-        } catch (error) {
-            console.error('Error restarting game:', error);
-        }
+        await startGame();
     };
 
     const handleExit = () => {
@@ -1197,77 +1237,110 @@ export default function TriviaInterface() {
         );
     }
 
-    if (selectedQuestions.length === 0 && !gameCompleted) {
-        return <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-700 flex items-center justify-center p-4">
-            <div className="text-white text-xl">Loading questions...</div>
-        </div>;
+    if (gameState === 'menu') {
+        return (
+            <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-700 flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-2xl p-8 text-center max-w-md w-full">
+                    <h1 className="text-4xl font-bold text-gray-800 mb-4">🧠 Trivia Challenge</h1>
+                    <p className="text-gray-600 mb-6">Test your knowledge of blockchain and recycling!</p>
+                    <div className="mb-6">
+                        <p className="text-sm text-gray-500">High Score</p>
+                        <p className="text-2xl font-bold text-green-600">{highScore}</p>
+                    </div>
+                    <button
+                        onClick={startGame}
+                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-lg text-xl transition-colors"
+                    >
+                        Start Game
+                    </button>
+                </div>
+            </div>
+        );
     }
 
     if (gameCompleted) {
         return (
-            <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-700 flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-8">
-                    <div className="text-center mb-8">
-                        <h1 className="text-3xl font-bold text-gray-800 mb-2">Game Completed!</h1>
-                        <div className="text-xl text-gray-600 mb-6">
-                            You answered {questionsAnswered} out of {MAX_QUESTIONS} questions
+            <div className="min-h-screen bg-gradient-to-br from-purple-400 via-pink-500 to-red-500 flex items-center justify-center p-4">
+                <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center">
+                    <div className="mb-6">
+                        <h1 className="text-4xl font-bold text-gray-800 mb-2">Game Over!</h1>
+                        <p className="text-gray-600">Your trivia results</p>
+                    </div>
+
+                    <div className="mb-8 space-y-4">
+                        <div className="bg-gradient-to-r from-purple-100 to-pink-100 rounded-xl p-4">
+                            <div className="text-3xl font-bold text-purple-600">{score}</div>
+                            <div className="text-sm text-gray-600">Final Score</div>
                         </div>
 
-                        <div className="bg-blue-50 rounded-lg p-6 mb-6">
-                            <h2 className="text-2xl font-semibold text-blue-800 mb-4">Your Results</h2>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="bg-white p-4 rounded-lg shadow">
-                                    <div className="text-gray-500">Score</div>
-                                    <div className="text-3xl font-bold text-blue-600">{score}</div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="bg-gray-50 rounded-lg p-3">
+                                <div className="text-2xl font-bold text-gray-700">{streak}x</div>
+                                <div className="text-xs text-gray-500">Highest Streak</div>
+                            </div>
+                            <div className="bg-gray-50 rounded-lg p-3">
+                                <div className="text-2xl font-bold text-gray-700">{highScore}</div>
+                                <div className="text-xs text-gray-500">High Score</div>
+                            </div>
+                        </div>
+
+                        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4">
+                            <h3 className="font-bold text-lg text-blue-800 mb-2">Rewards Earned</h3>
+                            <div className="space-y-2">
+                                <div className="flex justify-between">
+                                    <span className="text-gray-700">XP Earned:</span>
+                                    <span className="font-bold text-blue-600">
+                                        {rewardTiers.reduce((sum, tier) => sum + tier.xp, 0)} XP
+                                    </span>
                                 </div>
-                                <div className="bg-white p-4 rounded-lg shadow">
-                                    <div className="text-gray-500">XP Earned</div>
-                                    <div className="text-3xl font-bold text-green-600">{xp}</div>
-                                </div>
-                                <div className="bg-white p-4 rounded-lg shadow">
-                                    <div className="text-gray-500">High Score</div>
-                                    <div className="text-3xl font-bold text-purple-600">{highScore}</div>
-                                </div>
-                                <div className="bg-white p-4 rounded-lg shadow">
-                                    <div className="text-gray-500">Longest Streak</div>
-                                    <div className="text-3xl font-bold text-yellow-600">{streak}</div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-700">Tokens Earned:</span>
+                                    <span className="font-bold text-green-600">
+                                        ₿ {rewardTiers.reduce((sum, tier) => sum + tier.tokens, 0).toFixed(6)}
+                                    </span>
                                 </div>
                             </div>
                         </div>
 
-                        {rewards.length > 0 && (
-                            <div className="mb-6">
-                                <h3 className="text-lg font-semibold text-gray-700 mb-2">Rewards Earned</h3>
-                                <div className="space-y-2">
-                                    {rewards.map((reward, index) => (
-                                        <div key={index} className="bg-yellow-50 p-3 rounded-lg border border-yellow-200 flex items-center">
-                                            <span className="text-yellow-500 mr-2">🎁</span>
-                                            <span>{reward.message} +{reward.amount} XP</span>
-                                        </div>
+                        {rewardTiers.length > 0 && (
+                            <div className="bg-gradient-to-r from-green-50 to-teal-50 rounded-xl p-4">
+                                <h3 className="font-bold text-lg text-green-800 mb-2">Achievements</h3>
+                                <ul className="space-y-1 text-sm">
+                                    {rewardTiers.map((tier, index) => (
+                                        <li key={index} className="flex justify-between">
+                                            <span>
+                                                {tier.threshold ? `Score ${tier.threshold}+` : tier.description}
+                                            </span>
+                                            <span className="font-medium">
+                                                +{tier.xp} XP{tier.tokens > 0 ? ` +₿ ${tier.tokens.toFixed(6)}` : ''}
+                                            </span>
+                                        </li>
                                     ))}
-                                </div>
+                                </ul>
                             </div>
                         )}
+                    </div>
 
-                        <div className="flex justify-center space-x-4">
-                            <button
-                                onClick={handleRestart}
-                                className="px-8 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl"
-                            >
-                                Play Again
-                            </button>
-                            <button
-                                onClick={handleExit}
-                                className="px-8 py-3 bg-gray-600 hover:bg-gray-700 text-white rounded-xl font-semibold transition-all duration-200 shadow-lg hover:shadow-xl"
-                            >
-                                Back to Games
-                            </button>
-                        </div>
+                    <div className="flex justify-center space-x-4">
+                        <button
+                            onClick={handleRestart}
+                            className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-4 px-8 rounded-full text-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
+                        >
+                            Play Again
+                        </button>
+                        <button
+                            onClick={handleExit}
+                            className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-4 px-8 rounded-full text-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
+                        >
+                            Back to Games
+                        </button>
                     </div>
                 </div>
             </div>
         );
     }
+
+    const currentQuestionData = selectedQuestions[currentQuestion];
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-700 flex items-center justify-center p-4">
@@ -1296,37 +1369,25 @@ export default function TriviaInterface() {
                         <div className="bg-blue-100 px-3 py-1 rounded-full">
                             <span className="text-blue-800 font-semibold">Score: {score}</span>
                         </div>
-                        <div className="bg-green-100 px-3 py-1 rounded-full">
-                            <span className="text-green-800 font-semibold">XP: {xp}</span>
-                        </div>
                         {streak > 0 && (
                             <div className="bg-yellow-100 px-3 py-1 rounded-full">
                                 <span className="text-yellow-800 font-semibold">Streak: {streak}</span>
                             </div>
                         )}
-                    </div>
-                </div>
-
-                <div className="mb-4">
-                    <div className="w-full bg-gray-200 rounded-full h-2.5">
-                        <div
-                            className={`h-2.5 rounded-full ${timeLeft > 5 ? 'bg-green-500' : 'bg-red-500'}`}
-                            style={{ width: `${(timeLeft / 15) * 100}%` }}
-                        ></div>
-                    </div>
-                    <div className="text-right text-sm text-gray-600 mt-1">
-                        {timeLeft}s remaining
+                        <div className={`text-xl font-bold ${timeLeft <= 5 ? 'text-red-500' : 'text-gray-700'}`}>
+                            {timeLeft}s
+                        </div>
                     </div>
                 </div>
 
                 <div className="mb-8">
                     <h2 className="text-xl font-semibold text-gray-800 leading-relaxed">
-                        {currentQuestionData.question}
+                        {currentQuestionData?.question}
                     </h2>
                 </div>
 
                 <div className="space-y-3 mb-8">
-                    {currentQuestionData.options.map((option, index) => {
+                    {currentQuestionData?.options.map((option, index) => {
                         let buttonClass = "w-full p-4 text-left rounded-xl border-2 transition-all duration-200 font-medium";
 
                         if (!showResult) {

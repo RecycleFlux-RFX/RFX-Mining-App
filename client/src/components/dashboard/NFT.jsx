@@ -243,7 +243,7 @@ const fetchInitialData = async () => {
 
             setUserData((prev) => ({
                 ...prev,
-                earnings: data.newBalance || prev.earnings,
+                earnings: data.newBalance ||     prev.earnings,
             }));
 
             setError({

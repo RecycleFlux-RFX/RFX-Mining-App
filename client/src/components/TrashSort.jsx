@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Trash2, Recycle, Clock, Zap, Target } from 'lucide-react';
 import axios from 'axios';
@@ -80,6 +80,11 @@ const TrashSortGame = () => {
         return filteredItems[Math.floor(Math.random() * filteredItems.length)];
     }, [difficulty]);
 
+    const getAccuracy = useMemo(
+        () => (questionsAnswered > 0 ? Math.round((correctAnswers / questionsAnswered) * 100) : 0),
+        [questionsAnswered, correctAnswers]
+    );
+
     const calculateRewards = useCallback((finalScore) => {
         let earnedXp = 0;
         let earnedTokens = 0;
@@ -92,7 +97,7 @@ const TrashSortGame = () => {
                 achievedTiers.push({
                     threshold: tier.threshold,
                     xp: tier.xp,
-                    tokens: tier.tokens
+                    tokens: tier.tokens,
                 });
             }
         }
@@ -105,23 +110,21 @@ const TrashSortGame = () => {
             achievedTiers.push({
                 description: "7+ Streak Bonus",
                 xp: 5,
-                tokens: 0
+                tokens: 0,
             });
         }
 
-        const accuracy = getAccuracy();
-        if (accuracy >= 90) {
+        if (getAccuracy >= 90) {
             earnedXp += 10;
             achievedTiers.push({
                 description: "90%+ Accuracy Bonus",
                 xp: 10,
-                tokens: 0
+                tokens: 0,
             });
         }
 
-        setRewardTiers(achievedTiers);
-        return { xpEarned: earnedXp, tokensEarned: earnedTokens };
-    }, [streak]);
+        return { xpEarned: earnedXp, tokensEarned: earnedTokens, achievedTiers };
+    }, [streak, getAccuracy]);
 
     const startGame = async (selectedDifficulty = 1) => {
         try {
@@ -166,7 +169,6 @@ const TrashSortGame = () => {
             setShowInstructions(true);
             itemIdCounter.current = 0;
             setError(null);
-
         } catch (error) {
             console.error('Error starting game:', error);
             let errorMessage = error.response?.data?.message || error.message || 'Failed to start game';
@@ -187,14 +189,14 @@ const TrashSortGame = () => {
         }
     };
 
-    const submitScore = async () => {
+    const submitScore = useCallback(async () => {
         try {
             const token = localStorage.getItem('authToken');
             if (!token) {
                 throw new Error('Authentication missing');
             }
 
-            const { xpEarned, tokensEarned } = calculateRewards(score);
+            const { xpEarned, tokensEarned, achievedTiers } = calculateRewards(score);
             const achievements = streak >= 7 ? ['High Streak'] : [];
 
             const response = await axios.post(
@@ -204,20 +206,19 @@ const TrashSortGame = () => {
                     score,
                     xpEarned,
                     tokensEarned,
-                    achievements
+                    achievements,
                 },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 
             console.log('Score submitted:', response.data);
-            
+            setRewardTiers(achievedTiers);
             setGameState('gameOver');
-            
         } catch (error) {
             console.error('Error submitting score:', error);
             setError('Failed to submit score');
         }
-    };
+    }, [score, streak, calculateRewards, gameId]);
 
     const nextQuestion = useCallback(() => {
         setCurrentItem(getRandomItem());
@@ -268,13 +269,14 @@ const TrashSortGame = () => {
     };
 
     const handleTimeOut = useCallback(() => {
+        if (gameState !== 'playing') return;
         setStreak(0);
         setQuestionsAnswered((prev) => prev + 1);
         setScore((prev) => Math.max(0, prev - 5));
         setFeedback({
             type: 'timeout',
-            message: currentItem.hint 
-                ? `Time's up! ${currentItem.hint}` 
+            message: currentItem?.hint
+                ? `Time's up! ${currentItem.hint}`
                 : `Too slow! Correct answer: ${currentItem?.correct}`,
             streak: 0,
         });
@@ -286,14 +288,14 @@ const TrashSortGame = () => {
                 nextQuestion();
             }
         }, 1500);
-    }, [currentItem, questionsAnswered, nextQuestion]);
+    }, [currentItem, questionsAnswered, nextQuestion, submitScore, gameState]);
 
     useEffect(() => {
         if (gameState === 'playing' && timeLeft > 0 && !feedback) {
-            const timer = setTimeout(() => {
+            timerRef.current = setTimeout(() => {
                 setTimeLeft((prev) => prev - 1);
             }, 1000);
-            return () => clearTimeout(timer);
+            return () => clearTimeout(timerRef.current);
         } else if (timeLeft === 0 && !feedback && gameState === 'playing') {
             handleTimeOut();
         }
@@ -308,7 +310,6 @@ const TrashSortGame = () => {
     }, []);
 
     const getStreakMultiplier = () => Math.max(1, streak);
-    const getAccuracy = () => (questionsAnswered > 0 ? Math.round((correctAnswers / questionsAnswered) * 100) : 0);
 
     if (error) {
         return (
@@ -348,7 +349,7 @@ const TrashSortGame = () => {
                         </div>
                         <div className="flex items-center space-x-3">
                             <Clock className="w-5 h-5 text-red-500" />
-                            <span className="text-sm">Time decreases as game progresses</span>
+                            <span className="text-sm">Build streaks for bonus points</span>
                         </div>
                     </div>
 
@@ -381,8 +382,6 @@ const TrashSortGame = () => {
     }
 
     if (gameState === 'gameOver') {
-        const { xpEarned, tokensEarned } = calculateRewards(score);
-
         return (
             <div className="min-h-screen bg-gradient-to-br from-purple-400 via-pink-500 to-red-500 flex items-center justify-center p-4">
                 <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center">
@@ -403,7 +402,7 @@ const TrashSortGame = () => {
                                 <div className="text-xs text-gray-500">Correct</div>
                             </div>
                             <div className="bg-gray-50 rounded-lg p-3">
-                                <div className="text-2xl font-bold text-gray-700">{getAccuracy()}%</div>
+                                <div className="text-2xl font-bold text-gray-700">{getAccuracy}%</div>
                                 <div className="text-xs text-gray-500">Accuracy</div>
                             </div>
                         </div>
@@ -413,11 +412,11 @@ const TrashSortGame = () => {
                             <div className="space-y-2">
                                 <div className="flex justify-between">
                                     <span className="text-gray-700">XP Earned:</span>
-                                    <span className="font-bold text-blue-600">{xpEarned} XP</span>
+                                    <span className="font-bold text-blue-600">{rewardTiers.reduce((sum, tier) => sum + tier.xp, 0)} XP</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-gray-700">Tokens Earned:</span>
-                                    <span className="font-bold text-green-600">₿ {tokensEarned.toFixed(6)}</span>
+                                    <span className="font-bold text-green-600">₿ {rewardTiers.reduce((sum, tier) => sum + tier.tokens, 0).toFixed(6)}</span>
                                 </div>
                             </div>
                         </div>
@@ -499,8 +498,8 @@ const TrashSortGame = () => {
                     {feedback && (
                         <div className={`mb-6 p-4 rounded-xl ${feedback.type === 'correct' ? 'bg-green-100 text-green-700' :
                             feedback.type === 'wrong' ? 'bg-red-100 text-red-700' :
-                                'bg-yellow-100 text-yellow-700'
-                            }`}>
+                            'bg-yellow-100 text-yellow-700'
+                        }`}>
                             <div className="font-semibold">{feedback.message}</div>
                             {feedback.timeBonus && (
                                 <div className="text-sm mt-1">⚡ Speed bonus: +2 points!</div>
@@ -510,7 +509,7 @@ const TrashSortGame = () => {
 
                     {!feedback && (
                         <div className="grid grid-cols-2 gap-4">
-                            {Object.keys(binColors).map((bin) => (
+                            { Object.keys(binColors).map((bin) => (
                                 <button
                                     key={bin}
                                     onClick={() => handleAnswer(bin)}
