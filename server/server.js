@@ -1,3 +1,4 @@
+// server.js (rewritten part 1)
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -5,12 +6,13 @@ const dotenv = require('dotenv');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
-const { body, validationResult,query, param} = require('express-validator');
+const { body, validationResult } = require('express-validator');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
 const csrf = require('csurf');
 const morgan = require('morgan');
 const session = require('express-session');
+const cookieParser = require('cookie-parser');
 const User = require('./models/User');
 const Transaction = require('./models/Transaction');
 const ethers = require('ethers');
@@ -24,223 +26,205 @@ const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const Leaderboard = require('./models/leaderboard');
 
-// Load environment variables
 dotenv.config();
-
 const app = express();
 
-// Security middleware
+/**
+ * Basic security + logging
+ */
 app.use(helmet());
 app.use(morgan('combined'));
 
-// Rate limiting
+/**
+ * Rate limiter for API routes
+ */
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: 100,
   message: 'Too many requests from this IP, please try again later'
 });
 app.use('/api/', apiLimiter);
 
-// Session configuration with secure settings
+/**
+ * CORS - use FRONTEND_URL in env and allow credentials
+ */
+const FRONTEND_ORIGIN = process.env.FRONTEND_URL || 'http://localhost:5173';
+app.use(cors({
+  origin: FRONTEND_ORIGIN,
+  credentials: true,
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization','X-CSRF-Token','X-Requested-With','Accept']
+}));
+
+// Preflight quick response
+app.options('*', cors());
+
+/**
+ * Important: cookieParser must come BEFORE csrf({ cookie: true })
+ * and before any code that reads cookies (like auth from cookie).
+ */
+app.use(cookieParser());
+
+/**
+ * Session (optional) — kept but not strictly required for JWT/cookie approach.
+ * If you prefer stateless JWT-only, you can remove session usage.
+ */
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'your-secret-key',
+  secret: process.env.SESSION_SECRET || 'change-this-secret',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: process.env.NODE_ENV === 'production', // only send over HTTPS
+    secure: process.env.NODE_ENV === 'production',
     httpOnly: true,
     sameSite: 'strict',
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    maxAge: 24 * 60 * 60 * 1000
   }
 }));
 
-// CSRF protection
-// Modify your CSRF protection middleware
+/**
+ * Body parsing
+ */
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+/**
+ * CSRF protection — using cookie-based tokens.
+ * csurf will ignore safe methods (GET, HEAD, OPTIONS) by default.
+ * We'll also provide a /csrf-token endpoint so SPA can fetch token.
+ */
 const csrfProtection = csrf({
   cookie: {
+    httpOnly: true,             // secret cookie not accessible to JS
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    httpOnly: true
+    sameSite: 'strict'
+  }
+});
+app.use(csrfProtection);
+
+// Expose a route to get a readable CSRF token for SPA clients.
+// This sets a readable cookie 'XSRF-TOKEN' (non-httpOnly) for frameworks to consume,
+// and returns the token in JSON for immediate use.
+app.get('/csrf-token', (req, res) => {
+  try {
+    const token = req.csrfToken();
+    // set a cookie readable by JS so frontend frameworks (axios/fetch) can read
+    res.cookie('XSRF-TOKEN', token, {
+      httpOnly: false, // frontend can read this value
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 10 * 60 * 1000 // short lived
+    });
+    res.json({ csrfToken: token });
+  } catch (err) {
+    console.error('Error generating CSRF token:', err);
+    res.status(500).json({ message: 'Could not generate CSRF token' });
   }
 });
 
-// Skip CSRF for OPTIONS requests
-app.use((req, res, next) => {
-  if (req.method === 'OPTIONS') {
-    return next();
-  }
-  csrfProtection(req, res, next);
-});
-
-
-// Initialize Cloudinary
+/**
+ * Cloudinary configuration and multer storage
+ */
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// Debug logging
-console.log('SUPER_ADMIN_EMAIL:', process.env.SUPER_ADMIN_EMAIL);
-console.log('SUPER_ADMIN_PASSCODE:', process.env.SUPER_ADMIN_PASSCODE);
-console.log('JWT_SECRET:', process.env.JWT_SECRET);
-
-// CORS configuration
-// Update CORS configuration
-app.use(cors({
-  origin: 'http://localhost:5173',
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token']
-}));
-
-// Handle preflight requests
-app.options('*', cors());
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'http://localhost:5173');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, X-CSRF-Token');
-  
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-  
-  next();
-});
-
-// Body parsing middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Ensure uploads directory exists
+// Ensure local upload dir exists (if you store local fallback)
 const uploadDir = path.join(__dirname, 'uploads', 'campaigns');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
-// Configure multer for file uploads with improved filename handling
 const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
+  cloudinary,
   params: {
     folder: 'campaign-proofs',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'gif'],
+    allowed_formats: ['jpg','jpeg','png','gif'],
     transformation: [{ width: 800, height: 600, crop: 'limit' }]
   }
 });
 
 const upload = multer({
-  storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (req, file, cb) => {
-    const filetypes = /jpeg|jpg|png|gif/;
-    const mimetype = filetypes.test(file.mimetype);
-    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-
-    if (mimetype && extname) {
-      return cb(null, true);
-    }
-    cb(new Error('Only image files (JPEG, JPG, PNG, GIF) are allowed!'));
+    const allowed = /jpeg|jpg|png|gif/;
+    const mimetypeOk = allowed.test(file.mimetype);
+    const extOk = allowed.test(path.extname(file.originalname).toLowerCase());
+    if (mimetypeOk && extOk) return cb(null, true);
+    cb(new Error('Only image files (JPEG/JPG/PNG/GIF) are allowed'));
   }
 });
 
-// Serve static files from uploads directory
+// If you still want to serve any local uploads:
 app.use('/uploads', express.static(uploadDir));
 
-// JWT Authentication Middleware
+/**
+ * JWT authentication middleware — now supports cookie-based JWT (authToken)
+ * and falls back to Authorization header if needed.
+ */
 const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  if (!token) {
-    return res.status(401).json({ message: 'Authentication token required' });
-  }
-
   try {
+    // Prefer cookie
+    const cookieToken = req.cookies && req.cookies.authToken;
+    const authHeader = req.headers['authorization'];
+    const bearerToken = authHeader && authHeader.split(' ')[1];
+    const token = cookieToken || bearerToken;
+
+    if (!token) return res.status(401).json({ message: 'Authentication token required' });
+
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = decoded;
-    next();
+    return next();
   } catch (err) {
     console.error('Token verification error:', err);
     return res.status(401).json({ message: 'Invalid or expired token' });
   }
 };
 
-// Admin Authentication Middleware
+/**
+ * Admin & SuperAdmin middleware (use req.user from authenticateToken)
+ */
 const adminAuth = (req, res, next) => {
   try {
-    if (!req.user) {
-      return res.status(401).json({ message: 'Unauthorized: No user data found' });
-    }
-
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized: No user data found' });
     const isSuperAdmin = req.user.email === process.env.SUPER_ADMIN_EMAIL;
     const isAdmin = req.user.isAdmin === true;
-
-    if (!isSuperAdmin && !isAdmin) {
-      return res.status(403).json({ message: 'Not an admin account' });
-    }
-
+    if (!isSuperAdmin && !isAdmin) return res.status(403).json({ message: 'Not an admin account' });
     next();
-  } catch (error) {
-    console.error('Admin auth error:', error);
+  } catch (err) {
+    console.error('Admin auth error:', err);
     res.status(500).json({ message: 'Server error during admin authentication' });
   }
 };
 
-// Super Admin Authentication Middleware
 const superAdminAuth = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  
-  if (!token) {
-    console.error('No token provided');
-    return res.status(401).json({ message: 'Authentication token required' });
-  }
-
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log('Decoded token:', decoded);
-    console.log('SUPER_ADMIN_EMAIL:', process.env.SUPER_ADMIN_EMAIL);
-    req.user = decoded;
-    
-    const isSuperAdmin = decoded.isSuperAdmin || 
-                       (decoded.email && decoded.email === process.env.SUPER_ADMIN_EMAIL);
-    
-    if (!isSuperAdmin) {
-      console.error('Super admin check failed:', {
-        isSuperAdmin: decoded.isSuperAdmin,
-        emailMatch: decoded.email === process.env.SUPER_ADMIN_EMAIL
-      });
-      return res.status(403).json({ 
-        message: 'Super admin access required',
-        details: {
-          isSuperAdmin: decoded.isSuperAdmin,
-          emailMatch: decoded.email === process.env.SUPER_ADMIN_EMAIL
-        }
-      });
-    }
-    
+    // reuse authenticateToken above to ensure req.user is present
+    if (!req.user) return res.status(401).json({ message: 'Authentication token required' });
+    const isSuperAdmin = req.user.isSuperAdmin || (req.user.email && req.user.email === process.env.SUPER_ADMIN_EMAIL);
+    if (!isSuperAdmin) return res.status(403).json({ message: 'Super admin access required' });
     next();
   } catch (err) {
-    console.error('Token verification error:', err);
+    console.error('Super admin auth error:', err);
     return res.status(401).json({ message: 'Invalid or expired token' });
   }
 };
 
-// Routes with CSRF protection and validation
-app.post('/auth/superadmin/verify', authenticateToken, csrfProtection, async (req, res) => {
+/**
+ * Routes that require CSRF + auth (example: superadmin verify).
+ * Because csurf is mounted globally above (and ignores GET/HEAD/OPTIONS),
+ * POST/PUT/DELETE requests will require a valid token.
+ *
+ * NOTE: frontend should fetch /csrf-token first, include token in
+ * header 'X-CSRF-Token' or 'X-XSRF-TOKEN' when making state-changing requests.
+ */
+
+// Super admin verification
+app.post('/auth/superadmin/verify', authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
-    console.log('User email:', user?.email);
-    console.log('Expected SUPER_ADMIN_EMAIL:', process.env.SUPER_ADMIN_EMAIL);
-    
     if (!user || user.email !== process.env.SUPER_ADMIN_EMAIL) {
-      return res.status(403).json({ 
-        message: 'Super admin access required',
-        details: {
-          expectedEmail: process.env.SUPER_ADMIN_EMAIL,
-          userEmail: user?.email
-        }
-      });
+      return res.status(403).json({ message: 'Super admin access required' });
     }
 
     const { passcode } = req.body;
@@ -251,54 +235,46 @@ app.post('/auth/superadmin/verify', authenticateToken, csrfProtection, async (re
     user.isSuperAdmin = true;
     await user.save();
 
-    const newToken = jwt.sign(
-      { 
-        userId: user._id,
-        email: user.email,
-        isAdmin: true,
-        isSuperAdmin: true 
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: '7d' }
-    );
-
-    return res.status(200).json({
-      token: newToken,
+    const newToken = jwt.sign({
+      userId: user._id,
+      email: user.email,
+      isAdmin: true,
       isSuperAdmin: true
+    }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+    // Set cookie (HttpOnly) for auth and return token for backwards compatibility
+    res.cookie('authToken', newToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 3600 * 1000 // 7 days
     });
+
+    res.status(200).json({ token: newToken, isSuperAdmin: true });
   } catch (err) {
     console.error('Super admin verification error:', err);
     return res.status(500).json({ message: 'Server error' });
   }
 });
 
-app.post('/auth/admin/verify', authenticateToken, csrfProtection, async (req, res) => {
+// Admin verify (password check)
+app.post('/auth/admin/verify', authenticateToken, async (req, res) => {
   try {
     const { password } = req.body;
     const userId = req.user.userId;
 
-    if (!password) {
-      return res.status(400).json({ message: 'Password is required' });
-    }
+    if (!password) return res.status(400).json({ message: 'Password is required' });
 
     const user = await User.findById(userId);
-    
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
     const isAdmin = user.isAdmin || user.email === process.env.SUPER_ADMIN_EMAIL;
-    if (!isAdmin) {
-      return res.status(403).json({ message: 'Not an admin account' });
-    }
+    if (!isAdmin) return res.status(403).json({ message: 'Not an admin account' });
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
-    }
+    if (!isMatch) return res.status(400).json({ message: 'Invalid credentials' });
 
     const isSuperAdmin = user.email === process.env.SUPER_ADMIN_EMAIL;
-
     res.status(200).json({
       message: 'Admin verified successfully',
       isSuperAdmin,
@@ -315,9 +291,12 @@ app.post('/auth/admin/verify', authenticateToken, csrfProtection, async (req, re
   }
 });
 
-// Signup route with express-validator
-app.post('/auth/signup', 
-  csrfProtection,
+/**
+ * Signup route
+ * - validations
+ * - set auth cookie (HttpOnly) on success and also return token in JSON for older clients
+ */
+app.post('/auth/signup',
   [
     body('username').trim().isLength({ min: 3 }).withMessage('Username must be at least 3 characters'),
     body('email').isEmail().normalizeEmail().withMessage('Invalid email format'),
@@ -330,7 +309,7 @@ app.post('/auth/signup',
   async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         message: 'Validation failed',
         details: errors.array().map(err => err.msg)
       });
@@ -339,40 +318,27 @@ app.post('/auth/signup',
     try {
       const { username, email, password, fullName, referralCode } = req.body;
 
-      // Check for existing user
+      // Check existing
       const existingUser = await User.findOne({ $or: [{ email }, { username }] });
       if (existingUser) {
-        return res.status(409).json({ 
+        return res.status(409).json({
           message: 'Account exists',
-          details: existingUser.email === email 
-            ? 'Email already in use' 
-            : 'Username taken'
+          details: existingUser.email === email ? 'Email already in use' : 'Username taken'
         });
       }
 
-      // Handle referral if provided
+      // Handle referral
       let referrer = null;
       if (referralCode) {
         referrer = await User.findById(referralCode);
-        if (!referrer) {
-          return res.status(400).json({ 
-            message: 'Invalid referral',
-            details: 'Referral code not found' 
-          });
-        }
-        
-        if (!referrer.isActive) {
-          return res.status(400).json({ 
-            message: 'Invalid referral',
-            details: 'Referrer account is inactive' 
-          });
-        }
+        if (!referrer) return res.status(400).json({ message: 'Invalid referral', details: 'Referral code not found' });
+        if (!referrer.isActive) return res.status(400).json({ message: 'Invalid referral', details: 'Referrer account is inactive' });
       }
 
       // Create user
       const salt = await bcrypt.genSalt(10);
       const hashedPassword = await bcrypt.hash(password, salt);
-      
+
       const userData = {
         username,
         email,
@@ -382,31 +348,24 @@ app.post('/auth/signup',
         walletAddress: null,
         isAdmin: email === process.env.ADMIN_EMAIL,
         referredBy: referrer?._id,
-        referralStats: {
-          totalReferrals: 0,
-          activeReferrals: 0
-        }
+        referralStats: { totalReferrals: 0, activeReferrals: 0 }
       };
 
       const user = new User(userData);
       await user.save();
 
-      // Handle referral bonuses if applicable
+      // Referral bonus handling (best-effort; log errors but don't break signup)
       if (referrer) {
         try {
           const newUserBonus = parseFloat(process.env.REFERRAL_BONUS_NEW_USER || '0.0001');
           const referrerBonus = parseFloat(process.env.REFERRAL_BONUS_REFERRER || '0.0005');
-          
-          // Update referrer's data
+
           referrer.referrals.push(user._id);
           referrer.earnings += referrerBonus;
           referrer.referralStats.totalReferrals += 1;
           referrer.referralStats.activeReferrals += 1;
-          
-          // Update new user's data
           user.earnings += newUserBonus;
-          
-          // Create transactions
+
           const referrerTransaction = new Transaction({
             userId: referrer._id,
             amount: referrerBonus,
@@ -416,7 +375,7 @@ app.post('/auth/signup',
             description: `Earned for referring ${user.username}`,
             timestamp: new Date()
           });
-          
+
           const newUserTransaction = new Transaction({
             userId: user._id,
             amount: newUserBonus,
@@ -426,34 +385,32 @@ app.post('/auth/signup',
             description: `Received for signing up with referral`,
             timestamp: new Date()
           });
-          
-          await Promise.all([
-            referrer.save(),
-            user.save(),
-            referrerTransaction.save(),
-            newUserTransaction.save()
-          ]);
+
+          await Promise.all([referrer.save(), user.save(), referrerTransaction.save(), newUserTransaction.save()]);
         } catch (referralError) {
           console.error('Referral bonus error:', referralError);
         }
       }
 
-      // Generate token
-      const token = jwt.sign(
-        { 
-          userId: user._id, 
-          email: user.email,
-          isAdmin: user.isAdmin,
-          isSuperAdmin: user.email === process.env.SUPER_ADMIN_EMAIL
-        },
-        process.env.JWT_SECRET,
-        { expiresIn: '7d' }
-      );
+      // Generate token and set cookie
+      const token = jwt.sign({
+        userId: user._id,
+        email: user.email,
+        isAdmin: user.isAdmin,
+        isSuperAdmin: user.email === process.env.SUPER_ADMIN_EMAIL
+      }, process.env.JWT_SECRET, { expiresIn: '7d' });
+
+      res.cookie('authToken', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 7 * 24 * 3600 * 1000
+      });
 
       res.status(201).json({
         success: true,
         message: 'Account created successfully',
-        token,
+        token, // returned for compatibility if you still use Authorization header/localStorage
         user: {
           id: user._id,
           username: user.username,
@@ -464,16 +421,17 @@ app.post('/auth/signup',
         },
         referralApplied: !!referrer
       });
-
     } catch (error) {
       console.error('Signup error:', error);
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
         message: 'Account creation failed',
         error: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
-});
+  }
+);
+
 
 
 
@@ -487,7 +445,6 @@ app.post('/auth/signup',
 
 
 // Helper Functions with Security Validation
-
 function validateSignupInput(username, email, password, fullName) {
     const errors = [];
     
@@ -617,22 +574,18 @@ async function applyReferralBonuses(newUser, referrer) {
     }
 }
 
-function generateAuthToken(user) {
-    return jwt.sign(
-        { 
-            userId: user._id, 
-            email: user.email,
-            isAdmin: user.isAdmin,
-            isSuperAdmin: user.email === process.env.SUPER_ADMIN_EMAIL
-        },
-        process.env.JWT_SECRET,
-        { 
-            expiresIn: '7d',
-            issuer: 'your-app-name',
-            audience: 'your-app-domain.com'
-        }
-    );
-}
+const token = generateAuthToken(user);
+
+// Instead of res.json({ token }) or putting in localStorage:
+res.cookie('authToken', token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+});
+
+res.json({ user: formatUserResponse(user) });
+
 
 function formatUserResponse(user) {
     return {
@@ -648,9 +601,16 @@ function formatUserResponse(user) {
     };
 }
 
-// Routes with Security Middleware
 
-app.post('/auth/login', 
+
+
+
+
+// --- Secure Auth & Admin Routes ---
+
+// LOGIN
+app.post(
+    '/auth/login',
     csrfProtection,
     [
         body('username').trim().notEmpty().withMessage('Username is required'),
@@ -659,9 +619,9 @@ app.post('/auth/login',
     async (req, res) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
-            return res.status(400).json({ 
+            return res.status(400).json({
                 message: 'Validation failed',
-                errors: errors.array() 
+                errors: errors.array()
             });
         }
 
@@ -672,42 +632,38 @@ app.post('/auth/login',
                 $or: [{ username }, { email: username }]
             });
 
-            if (!user) {
-                return res.status(400).json({ message: 'Invalid credentials' });
-            }
-
-            const isMatch = await bcrypt.compare(password, user.password);
-            if (!isMatch) {
+            if (!user || !(await bcrypt.compare(password, user.password))) {
                 return res.status(400).json({ message: 'Invalid credentials' });
             }
 
             const isSuperAdmin = user.email === process.env.SUPER_ADMIN_EMAIL;
-
             const token = generateAuthToken(user);
 
-            res.status(200)
-                .cookie('token', token, {
-                    httpOnly: true,
-                    secure: process.env.NODE_ENV === 'production',
-                    sameSite: 'strict',
-                    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-                })
-                .json({
-                    token,
-                    user: formatUserResponse(user),
-                    requiresPasscode: isSuperAdmin && !user.isSuperAdmin
-                });
+            // Store JWT securely in HttpOnly cookie
+            res.cookie('token', token, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                sameSite: 'strict',
+                maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+            });
+
+            res.status(200).json({
+                message: 'Login successful',
+                user: formatUserResponse(user),
+                requiresPasscode: isSuperAdmin && !user.isSuperAdmin
+            });
         } catch (err) {
             console.error('Login error:', err);
             res.status(500).json({ message: 'Server error' });
         }
-});
+    }
+);
 
-app.post('/auth/admin/check', 
+// CHECK ADMIN EMAIL
+app.post(
+    '/auth/admin/check',
     csrfProtection,
-    [
-        body('email').isEmail().normalizeEmail().withMessage('Valid email is required')
-    ],
+    [body('email').isEmail().normalizeEmail().withMessage('Valid email is required')],
     async (req, res) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -716,32 +672,34 @@ app.post('/auth/admin/check',
 
         try {
             const { email } = req.body;
-
             const user = await User.findOne({ email });
+
             if (!user || !user.isAdmin) {
                 return res.status(403).json({ message: 'Not an admin account' });
             }
 
-            res.status(200).json({ 
-                message: 'Admin account verified', 
-                email 
+            res.status(200).json({
+                message: 'Admin account verified',
+                email
             });
         } catch (err) {
             console.error('Admin check error:', err);
             res.status(500).json({ message: 'Server error' });
         }
-});
+    }
+);
 
+// GOOGLE SIGN-IN PLACEHOLDER
 app.get('/auth/google', (req, res) => {
     res.status(501).json({ message: 'Google Sign-In not implemented' });
 });
 
-app.post('/auth/verify-admin', 
+// VERIFY ADMIN PASSWORD
+app.post(
+    '/auth/verify-admin',
     authenticateToken,
     csrfProtection,
-    [
-        body('password').notEmpty().withMessage('Password is required')
-    ],
+    [body('password').notEmpty().withMessage('Password is required')],
     async (req, res) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -751,23 +709,19 @@ app.post('/auth/verify-admin',
         try {
             const { password } = req.body;
             const userId = req.user.userId;
-
             const user = await User.findById(userId);
-            
+
             if (!user || !user.isAdmin) {
                 return res.status(403).json({ message: 'Not an admin account' });
             }
 
-            const isMatch = await bcrypt.compare(password, user.password);
-            if (!isMatch) {
+            if (!(await bcrypt.compare(password, user.password))) {
                 return res.status(400).json({ message: 'Invalid credentials' });
             }
 
-            const isSuperAdmin = user.email === process.env.SUPER_ADMIN_EMAIL;
-
             res.status(200).json({
                 message: 'Admin verified successfully',
-                isSuperAdmin,
+                isSuperAdmin: user.email === process.env.SUPER_ADMIN_EMAIL,
                 user: {
                     id: user._id,
                     email: user.email,
@@ -778,25 +732,27 @@ app.post('/auth/verify-admin',
             console.error('Admin verify error:', err);
             res.status(500).json({ message: 'Server error' });
         }
-});
+    }
+);
 
-// Get all users (for admin)
-app.get('/admin/users', 
+// GET ALL USERS (Super Admin Only)
+app.get(
+    '/admin/users',
     authenticateToken,
     superAdminAuth,
     csrfProtection,
     async (req, res) => {
         try {
             const { page = 1, limit = 10, search = '' } = req.query;
-            
-            const query = {};
-            if (search) {
-                query.$or = [
-                    { username: { $regex: search, $options: 'i' } },
-                    { email: { $regex: search, $options: 'i' } },
-                    { fullName: { $regex: search, $options: 'i' } }
-                ];
-            }
+            const query = search
+                ? {
+                      $or: [
+                          { username: { $regex: search, $options: 'i' } },
+                          { email: { $regex: search, $options: 'i' } },
+                          { fullName: { $regex: search, $options: 'i' } }
+                      ]
+                  }
+                : {};
 
             const users = await User.find(query)
                 .select('-password -passkey -transactions')
@@ -820,16 +776,16 @@ app.get('/admin/users',
             console.error('Get users error:', err);
             res.status(500).json({ message: 'Failed to fetch users' });
         }
-});
+    }
+);
 
-// Suspend/activate user
-app.put('/admin/users/:id/suspend', 
+// SUSPEND / ACTIVATE USER
+app.put(
+    '/admin/users/:id/suspend',
     authenticateToken,
     superAdminAuth,
     csrfProtection,
-    [
-        body('isActive').isBoolean().withMessage('isActive must be a boolean')
-    ],
+    [body('isActive').isBoolean().withMessage('isActive must be a boolean')],
     async (req, res) => {
         const errors = validationResult(req);
         if (!errors.isEmpty()) {
@@ -865,7 +821,8 @@ app.put('/admin/users/:id/suspend',
             console.error('Suspend user error:', err);
             res.status(500).json({ message: 'Failed to update user status' });
         }
-});
+    }
+);
 
 
 
@@ -878,308 +835,367 @@ app.put('/admin/users/:id/suspend',
 
 
 
-// Get system statistics with security middleware
-app.get('/admin/stats', 
-    authenticateToken,
-    superAdminAuth,
-    csrfProtection,
-    async (req, res) => {
+
+// -----------------------------
+// ADMIN STATS
+// -----------------------------
+app.get(
+  '/admin/stats',
+  authenticateToken,
+  superAdminAuth,
+  csrfProtection,
+  async (req, res) => {
+    try {
+      const [
+        totalUsers,
+        activeUsers,
+        totalCampaigns,
+        activeCampaigns,
+        totalAdmins
+      ] = await Promise.all([
+        User.countDocuments(),
+        User.countDocuments({ isActive: true }),
+        Campaign.countDocuments(),
+        Campaign.countDocuments({ status: 'active' }),
+        User.countDocuments({ isAdmin: true })
+      ]);
+
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      const dailySignups = await User.aggregate([
+        { $match: { createdAt: { $gte: sevenDaysAgo } } },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            count: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: 1 } }
+      ]);
+
+      const userActivity = await User.aggregate([
+        {
+          $project: {
+            date: { $dateToString: { format: '%Y-%m-%d', date: '$lastActivity' } },
+            isActive: 1
+          }
+        },
+        {
+          $match: {
+            date: { $exists: true, $ne: null },
+            isActive: true
+          }
+        },
+        {
+          $group: {
+            _id: '$date',
+            activeUsers: { $sum: 1 }
+          }
+        },
+        { $sort: { _id: 1 } },
+        { $limit: 7 }
+      ]);
+
+      res.json({
+        totalUsers,
+        activeUsers,
+        totalCampaigns,
+        activeCampaigns,
+        totalAdmins,
+        dailySignups: dailySignups.map(item => ({
+          date: item._id,
+          count: item.count
+        })),
+        userActivity: userActivity.map(item => ({
+          date: item._id,
+          active: item.activeUsers
+        }))
+      });
+    } catch (err) {
+      console.error('Get stats error:', err);
+      res.status(500).json({ message: 'Failed to fetch statistics' });
+    }
+  }
+);
+
+// -----------------------------
+// CREATE CAMPAIGN
+// -----------------------------
+app.post(
+  '/admin/campaigns',
+  authenticateToken,
+  adminAuth,
+  csrfProtection,
+  upload.single('image'),
+  [
+    body('title').trim().notEmpty().withMessage('Title is required'),
+    body('description')
+      .trim()
+      .isLength({ min: 10 })
+      .withMessage('Description must be at least 10 characters'),
+    body('category').trim().notEmpty().withMessage('Category is required'),
+    body('reward').isFloat({ gt: 0 }).withMessage('Reward must be a positive number'),
+    body('difficulty')
+      .isIn(['easy', 'medium', 'hard'])
+      .withMessage('Invalid difficulty level'),
+    body('duration').isInt({ gt: 0 }).withMessage('Duration must be a positive integer'),
+    body('startDate').isISO8601().withMessage('Invalid start date format'),
+    body('status')
+      .isIn(['draft', 'active', 'completed'])
+      .withMessage('Invalid status')
+  ],
+  async (req, res) => {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    try {
+      const formData = req.body;
+
+      let tasksList = [];
+      if (formData.tasks) {
         try {
-            const [totalUsers, activeUsers, totalCampaigns, activeCampaigns, totalAdmins] = await Promise.all([
-                User.countDocuments(),
-                User.countDocuments({ isActive: true }),
-                Campaign.countDocuments(),
-                Campaign.countDocuments({ status: 'active' }),
-                User.countDocuments({ isAdmin: true })
-            ]);
+          tasksList = JSON.parse(formData.tasks);
 
-            // Get daily signups for last 7 days
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-
-            const dailySignups = await User.aggregate([
-                { 
-                    $match: { 
-                        createdAt: { $gte: sevenDaysAgo } 
-                    } 
-                },
-                {
-                    $group: {
-                        _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-                        count: { $sum: 1 }
-                    }
-                },
-                { $sort: { _id: 1 } }
-            ]);
-
-            // Get user activity (last 7 days)
-            const userActivity = await User.aggregate([
-                {
-                    $project: {
-                        date: { $dateToString: { format: "%Y-%m-%d", date: "$lastActivity" } },
-                        isActive: 1
-                    }
-                },
-                {
-                    $match: {
-                        date: { $exists: true, $ne: null },
-                        isActive: true
-                    }
-                },
-                {
-                    $group: {
-                        _id: "$date",
-                        activeUsers: { $sum: 1 }
-                    }
-                },
-                { $sort: { _id: 1 } },
-                { $limit: 7 }
-            ]);
-
-            res.json({
-                totalUsers,
-                activeUsers,
-                totalCampaigns,
-                activeCampaigns,
-                totalAdmins,
-                dailySignups: dailySignups.map(item => ({ date: item._id, count: item.count })),
-                userActivity: userActivity.map(item => ({ date: item._id, active: item.activeUsers }))
-            });
-        } catch (err) {
-            console.error('Get stats error:', err);
-            res.status(500).json({ message: 'Failed to fetch statistics' });
+          for (const task of tasksList) {
+            if (!task.title || task.title.length < 3) {
+              return res.status(400).json({
+                message: 'Task title must be at least 3 characters long'
+              });
+            }
+            if (!task.description || task.description.length < 10) {
+              return res.status(400).json({
+                message: 'Task description must be at least 10 characters long'
+              });
+            }
+            if (!task.day || task.day < 1) {
+              return res.status(400).json({
+                message: 'Task day must be at least 1'
+              });
+            }
+            if (!task.reward || task.reward < 0) {
+              return res.status(400).json({
+                message: 'Task reward must be a positive number'
+              });
+            }
+            task.completedBy = [];
+          }
+        } catch (e) {
+          console.error('Error parsing tasks:', e);
+          return res.status(400).json({ message: 'Invalid tasks format' });
         }
-});
+      }
 
-// Create campaign with security middleware
-app.post('/admin/campaigns', 
-    authenticateToken,
-    adminAuth,
-    csrfProtection,
-    upload.single('image'),
-    [
-        body('title').trim().notEmpty().withMessage('Title is required'),
-        body('description').trim().isLength({ min: 10 }).withMessage('Description must be at least 10 characters'),
-        body('category').trim().notEmpty().withMessage('Category is required'),
-        body('reward').isFloat({ gt: 0 }).withMessage('Reward must be a positive number'),
-        body('difficulty').isIn(['easy', 'medium', 'hard']).withMessage('Invalid difficulty level'),
-        body('duration').isInt({ gt: 0 }).withMessage('Duration must be a positive integer'),
-        body('startDate').isISO8601().withMessage('Invalid start date format'),
-        body('status').isIn(['draft', 'active', 'completed']).withMessage('Invalid status')
-    ],
-    async (req, res) => {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ errors: errors.array() });
-        }
+      const endDate = new Date(
+        new Date(formData.startDate).getTime() +
+          parseInt(formData.duration) * 24 * 60 * 60 * 1000
+      );
 
+      let imageUrl = null;
+      if (req.file) {
+        imageUrl = req.file.path;
+      }
+
+      const campaign = new Campaign({
+        title: formData.title,
+        description: formData.description,
+        category: formData.category,
+        reward: parseFloat(formData.reward),
+        difficulty: formData.difficulty,
+        duration: parseInt(formData.duration),
+        featured: formData.featured === 'true',
+        new: formData.new === 'true',
+        trending: formData.trending === 'true',
+        ending: formData.ending === 'true',
+        startDate: formData.startDate,
+        endDate: endDate,
+        status: formData.status,
+        tasksList,
+        image: imageUrl,
+        participants: 0,
+        completedTasks: 0,
+        participantsList: [],
+        createdBy: req.user.userId
+      });
+
+      await campaign.save();
+
+      res.status(201).json({
+        ...campaign.toObject(),
+        image: imageUrl
+      });
+    } catch (err) {
+      if (req.file) {
         try {
-            const formData = req.body;
-
-            // Parse tasks if they exist
-            let tasksList = [];
-            if (formData.tasks) {
-                try {
-                    tasksList = JSON.parse(formData.tasks);
-
-                    // Validate each task
-                    for (const task of tasksList) {
-                        if (!task.title || task.title.length < 3) {
-                            return res.status(400).json({
-                                message: 'Task title must be at least 3 characters long'
-                            });
-                        }
-                        if (!task.description || task.description.length < 10) {
-                            return res.status(400).json({
-                                message: 'Task description must be at least 10 characters long'
-                            });
-                        }
-                        if (!task.day || task.day < 1) {
-                            return res.status(400).json({
-                                message: 'Task day must be at least 1'
-                            });
-                        }
-                        if (!task.reward || task.reward < 0) {
-                            return res.status(400).json({
-                                message: 'Task reward must be a positive number'
-                            });
-                        }
-                        task.completedBy = [];
-                    }
-                } catch (e) {
-                    console.error('Error parsing tasks:', e);
-                    return res.status(400).json({ message: 'Invalid tasks format' });
-                }
-            }
-
-            // Calculate end date
-            const endDate = new Date(new Date(formData.startDate).getTime() +
-                (parseInt(formData.duration) * 24 * 60 * 60 * 1000));
-
-            let imageUrl = null;
-            if (req.file) {
-                imageUrl = req.file.path; // Cloudinary URL
-            }
-
-            const campaign = new Campaign({
-                title: formData.title,
-                description: formData.description,
-                category: formData.category,
-                reward: parseFloat(formData.reward),
-                difficulty: formData.difficulty,
-                duration: parseInt(formData.duration),
-                featured: formData.featured === 'true',
-                new: formData.new === 'true',
-                trending: formData.trending === 'true',
-                ending: formData.ending === 'true',
-                startDate: formData.startDate,
-                endDate: new Date(endDate),
-                status: formData.status,
-                tasksList: tasksList,
-                image: imageUrl,
-                participants: 0,
-                completedTasks: 0,
-                participantsList: [],
-                createdBy: req.user.userId
-            });
-
-            await campaign.save();
-
-            res.status(201).json({
-                ...campaign.toObject(),
-                image: imageUrl
-            });
-        } catch (err) {
-            if (req.file) {
-                await cloudinary.uploader.destroy(req.file.filename); // Clean up Cloudinary upload
-            }
-            console.error('Error creating campaign:', err);
-            res.status(500).json({
-                message: err.message || 'Failed to create campaign'
-            });
+          await cloudinary.uploader.destroy(req.file.filename);
+        } catch (cleanupErr) {
+          console.error('Error cleaning up image:', cleanupErr);
         }
-});
+      }
+      console.error('Error creating campaign:', err);
+      res.status(500).json({
+        message: err.message || 'Failed to create campaign'
+      });
+    }
+  }
+);
 
-// User Dashboard Routes with security middleware
-app.get('/user/validate-token', 
-    authenticateToken,
-    csrfProtection,
-    async (req, res) => {
-        try {
-            const user = await User.findById(req.user.userId)
-                .select('username email isAdmin')
-                .lean();
-            if (!user) {
-                return res.status(404).json({ message: 'User not found', valid: false });
-            }
-            res.status(200).json({ 
-                valid: true, 
-                user,
-                csrfToken: req.csrfToken() 
-            });
-        } catch (err) {
-            console.error('Validate token error:', err);
-            res.status(500).json({ message: 'Server error', valid: false });
+// -----------------------------
+// USER DASHBOARD ROUTES
+// -----------------------------
+app.get(
+  '/user/validate-token',
+  authenticateToken,
+  csrfProtection,
+  async (req, res) => {
+    try {
+      const user = await User.findById(req.user.userId)
+        .select('username email isAdmin')
+        .lean();
+
+      if (!user) {
+        return res.status(404).json({ message: 'User not found', valid: false });
+      }
+
+      res.status(200).json({
+        valid: true,
+        user,
+        csrfToken: req.csrfToken()
+      });
+    } catch (err) {
+      console.error('Validate token error:', err);
+      res.status(500).json({ message: 'Server error', valid: false });
+    }
+  }
+);
+
+app.get(
+  '/user/user',
+  authenticateToken,
+  csrfProtection,
+  async (req, res) => {
+    try {
+      const user = await User.findById(req.user.userId)
+        .select(
+          'username email fullName walletAddress earnings co2Saved campaigns tasks'
+        )
+        .populate('tasks.taskId', 'co2Impact')
+        .lean();
+
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      let totalCO2Saved = 0;
+      user.tasks.forEach(task => {
+        if (task.status === 'completed' && task.taskId?.co2Impact) {
+          totalCO2Saved += parseFloat(task.taskId.co2Impact) || 0.01;
         }
-});
+      });
 
-app.get('/user/user', 
-    authenticateToken,
-    csrfProtection,
-    async (req, res) => {
-        try {
-            const user = await User.findById(req.user.userId)
-                .select('username email fullName walletAddress earnings co2Saved campaigns tasks')
-                .populate('tasks.taskId', 'co2Impact')
-                .lean();
-            
-            if (!user) {
-                return res.status(404).json({ message: 'User not found' });
-            }
+      totalCO2Saved = parseFloat(totalCO2Saved.toFixed(2));
 
-            let totalCO2Saved = 0;
-            user.tasks.forEach(task => {
-                if (task.status === 'completed' && task.taskId?.co2Impact) {
-                    totalCO2Saved += parseFloat(task.taskId.co2Impact) || 0.01;
-                }
-            });
+      if (parseFloat(user.co2Saved || '0') !== totalCO2Saved) {
+        await User.updateOne(
+          { _id: req.user.userId },
+          { $set: { co2Saved: totalCO2Saved.toFixed(2) } }
+        );
+      }
 
-            totalCO2Saved = parseFloat(totalCO2Saved.toFixed(2));
-            if (parseFloat(user.co2Saved || '0') !== totalCO2Saved) {
-                await User.updateOne(
-                    { _id: req.user.userId },
-                    { $set: { co2Saved: totalCO2Saved.toFixed(2) } }
-                );
-            }
+      res.status(200).json({
+        username: user.username,
+        email: user.email,
+        fullName: user.fullName || '',
+        walletAddress: user.walletAddress || '',
+        earnings: user.earnings || 0,
+        co2Saved: totalCO2Saved.toFixed(2),
+        campaigns: user.campaigns || [],
+        csrfToken: req.csrfToken()
+      });
+    } catch (err) {
+      console.error('Get user data error:', err);
+      res.status(500).json({ message: 'Server error' });
+    }
+  }
+);
 
-            res.status(200).json({
-                username: user.username,
-                email: user.email,
-                fullName: user.fullName || '',
-                walletAddress: user.walletAddress || '',
-                earnings: user.earnings || 0,
-                co2Saved: totalCO2Saved.toFixed(2),
-                campaigns: user.campaigns || [],
-                csrfToken: req.csrfToken()
-            });
-        } catch (err) {
-            console.error('Get user data error:', err);
-            res.status(500).json({ message: 'Server error' });
+app.get(
+  '/user/network-stats',
+  authenticateToken,
+  csrfProtection,
+  async (req, res) => {
+    try {
+      const totalRecycled = await User.aggregate([
+        {
+          $group: {
+            _id: null,
+            total: { $sum: { $toDouble: { $ifNull: ['$co2Saved', '0'] } } }
+          }
         }
-});
+      ]);
 
-app.get('/user/network-stats', 
-    authenticateToken,
-    csrfProtection,
-    async (req, res) => {
-        try {
-            const totalRecycled = await User.aggregate([
-                {
-                    $group: {
-                        _id: null,
-                        total: { $sum: { $toDouble: { $ifNull: ["$co2Saved", "0"] } } }
-                    }
-                }
-            ]);
+      const activeUsers = await User.countDocuments({
+        tasks: { $elemMatch: { status: 'completed' } }
+      });
 
-            const activeUsers = await User.countDocuments({
-                'tasks': { $elemMatch: { status: 'completed' } }
-            });
+      res.status(200).json({
+        totalRecycled: (totalRecycled[0]?.total || 0).toFixed(2),
+        activeUsers,
+        csrfToken: req.csrfToken()
+      });
+    } catch (err) {
+      console.error('Get network stats error:', err);
+      res.status(500).json({ message: 'Server error' });
+    }
+  }
+);
 
-            res.status(200).json({
-                totalRecycled: (totalRecycled[0]?.total || 0).toFixed(2),
-                activeUsers,
-                csrfToken: req.csrfToken()
-            });
-        } catch (err) {
-            console.error('Get network stats error:', err);
-            res.status(500).json({ message: 'Server error' });
-        }
-});
+app.get(
+  '/user/referral-link',
+  authenticateToken,
+  csrfProtection,
+  async (req, res) => {
+    try {
+      const user = await User.findById(req.user.userId)
+        .select('username')
+        .lean();
 
-app.get('/user/referral-link', 
-    authenticateToken,
-    csrfProtection,
-    async (req, res) => {
-        try {
-            const user = await User.findById(req.user.userId)
-                .select('username')
-                .lean();
-            if (!user) {
-                return res.status(404).json({ message: 'User not found' });
-            }
-            const referralLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/signup?ref=${user._id}`;
-            res.status(200).json({ 
-                referralLink,
-                csrfToken: req.csrfToken() 
-            });
-        } catch (err) {
-            console.error('Get referral link error:', err);
-            res.status(500).json({ message: 'Server error' });
-        }
-});
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
 
-app.get('/user/referral-info', 
+      const referralLink = `${
+        process.env.FRONTEND_URL || 'http://localhost:5173'
+      }/signup?ref=${user._id}`;
+
+      res.status(200).json({
+        referralLink,
+        csrfToken: req.csrfToken()
+      });
+    } catch (err) {
+      console.error('Get referral link error:', err);
+      res.status(500).json({ message: 'Server error' });
+    }
+  }
+);
+
+
+
+
+
+
+
+
+// Utility: Send JSON with fresh CSRF token
+const sendWithCsrf = (res, data = {}) => {
+    data.csrfToken = res.req.csrfToken();
+    res.status(200).json(data);
+};
+
+// GET Referral Info
+app.get('/user/referral-info',
     authenticateToken,
     csrfProtection,
     async (req, res) => {
@@ -1192,27 +1208,28 @@ app.get('/user/referral-info',
                     options: { sort: { createdAt: -1 } }
                 })
                 .lean();
-            
+
             if (!user) {
                 return res.status(404).json({ message: 'User not found' });
             }
 
             const referralLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/signup?ref=${user._id}`;
-            
-            res.status(200).json({ 
+
+            sendWithCsrf(res, {
                 referralLink,
                 referralCount: user.referrals.length,
                 referralEarnings: user.referralEarnings || 0,
-                referrals: user.referrals,
-                csrfToken: req.csrfToken()
+                referrals: user.referrals
             });
         } catch (err) {
             console.error('Get referral info error:', err);
             res.status(500).json({ message: 'Server error' });
         }
-});
+    }
+);
 
-app.post('/user/claim-reward', 
+// POST Claim Reward
+app.post('/user/claim-reward',
     authenticateToken,
     csrfProtection,
     async (req, res) => {
@@ -1224,6 +1241,7 @@ app.post('/user/claim-reward',
 
             const now = new Date();
             const oneDay = 24 * 60 * 60 * 1000;
+
             if (user.lastClaim && (now - user.lastClaim) < oneDay) {
                 const nextClaim = new Date(user.lastClaim.getTime() + oneDay);
                 return res.status(400).json({
@@ -1248,18 +1266,20 @@ app.post('/user/claim-reward',
             });
 
             await Promise.all([user.save(), transaction.save()]);
-            res.status(200).json({
+
+            sendWithCsrf(res, {
                 amount: rewardAmount,
-                newBalance: user.earnings,
-                csrfToken: req.csrfToken()
+                newBalance: user.earnings
             });
         } catch (err) {
             console.error('Claim reward error:', err);
             res.status(500).json({ message: 'Server error' });
         }
-});
+    }
+);
 
-app.patch('/user/update-wallet', 
+// PATCH Update Wallet
+app.patch('/user/update-wallet',
     authenticateToken,
     csrfProtection,
     [
@@ -1276,6 +1296,7 @@ app.patch('/user/update-wallet',
         try {
             const { walletAddress } = req.body;
             const user = await User.findById(req.user.userId);
+
             if (!user) {
                 return res.status(404).json({ message: 'User not found' });
             }
@@ -1283,16 +1304,17 @@ app.patch('/user/update-wallet',
             user.walletAddress = walletAddress;
             await user.save();
 
-            res.status(200).json({
+            sendWithCsrf(res, {
                 message: 'Wallet address updated successfully',
-                walletAddress,
-                csrfToken: req.csrfToken()
+                walletAddress
             });
         } catch (err) {
             console.error('Update wallet error:', err);
             res.status(500).json({ message: 'Server error' });
         }
-});
+    }
+);
+
 
 
 
