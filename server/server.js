@@ -22,6 +22,7 @@ const rateLimit = require('express-rate-limit');
 const slowDown = require('express-slow-down');
 const morgan = require('morgan');
 const { body, validationResult } = require('express-validator');
+const cron = require('node-cron');
 
 // Load environment variables
 dotenv.config();
@@ -45,6 +46,23 @@ app.use(helmet({
     noSniff: true,
     hidePoweredBy: true
 }));
+
+// Add server ping cron job to prevent Render from sleeping
+const heartBeat = () => {
+    if (process.env.RENDER_EXTERNAL_URL) {
+        cron.schedule('*/5 * * * *', async () => {
+            try {
+                console.log('Pinging server to keep alive...');
+                await axios.get(process.env.RENDER_EXTERNAL_URL);
+                console.log('Server ping successful');
+            } catch (error) {
+                console.error('Error pinging server:', error.message);
+            }
+        });
+    }
+};
+
+heartBeat()
 
 app.use(xss());
 app.use(morgan('combined', {

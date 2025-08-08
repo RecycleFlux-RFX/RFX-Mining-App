@@ -127,7 +127,7 @@ const games = [
         bgColor: "from-yellow-500 to-orange-500",
         cardColor: "bg-yellow-100",
         canPlay: true,
-        dailyLimit: 5,
+        dailyLimit: 2,
         wasteItems: [
             { name: "Solar Panel Scrap", correct: "Metal", emoji: "☀️" },
             { name: "Battery", correct: "Metal", emoji: "🔋" }
