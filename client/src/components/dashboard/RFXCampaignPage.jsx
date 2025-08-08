@@ -246,7 +246,6 @@ export default function RFXCampaignPage() {
             { icon: Home, label: 'Home', id: 'home', path: '/' },
             { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
             { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
-            { icon: Users, label: 'Referrals', id: 'referrals', path: '/referrals' },
             { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
             { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' },
         ];
@@ -626,7 +625,7 @@ export default function RFXCampaignPage() {
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
                     {[
                         { label: 'Active Campaigns', value: activeCampaigns.length, icon: Target, color: 'green' },
-                        { label: 'Total Earned', value: `₿ ${userStats.earnings.toFixed(5)}`, icon: Award, color: 'yellow' },
+                        { label: 'Total Earned', value: `${userStats.earnings.toFixed(5)} RFX`, icon: Award, color: 'yellow' },
                         { label: 'Global Impact', value: `${globalImpact} kg`, icon: Globe, color: 'blue' },
                         { label: 'Your Contribution', value: `${yourContribution} kg`, icon: Leaf, color: 'purple' },
                     ].map((stat, index) => (

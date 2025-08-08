@@ -988,23 +988,23 @@ const handleDeleteTask = async (taskId) => {
                                                 }`}
                                             onClick={() => setSelectedCampaign(campaign)}
                                         >
-                                            {/* Campaign Image/Header */}
-                                            <div className={`h-32 bg-gradient-to-r ${categoryConfig.gradient} rounded-t-2xl relative overflow-hidden`}>
-                                                {campaign.image ? (
-                                                    <img
-                                                        src={campaign.image.startsWith('http') ? campaign.image : `/uploads/${campaign.image.split('uploads/')[1]}`}
-                                                        alt={campaign.title}
-                                                        className="w-full h-full object-cover"
-                                                        onError={(e) => {
-                                                            e.target.onerror = null;
-                                                            e.target.src = '';
-                                                        }}
-                                                    />
-                                                ) : (
-                                                    <div className="w-full h-full flex items-center justify-center text-white text-4xl">
-                                                        {categoryConfig.icon}
-                                                    </div>
-                                                )}
+{/* Campaign Image/Header */}
+<div className={`h-32 bg-gradient-to-r ${categoryConfig.gradient} rounded-t-2xl relative overflow-hidden`}>
+    {campaign.image ? (
+        <img
+            src={campaign.image && (campaign.image.startsWith('http') ? campaign.image : `/uploads/${campaign.image.split('uploads/')[1]}`)}
+            alt={campaign.title}
+            className="w-full h-full object-cover"
+            onError={(e) => {
+                e.target.onerror = null;
+                e.target.src = '';
+            }}
+        />
+    ) : (
+        <div className="w-full h-full flex items-center justify-center text-white text-4xl">
+            {categoryConfig.icon}
+        </div>
+    )}
 
                                                 {/* Status Badge */}
                                                 <div className="absolute top-3 left-3">
@@ -1179,21 +1179,21 @@ const handleDeleteTask = async (taskId) => {
                                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                         {/* Campaign Image */}
                                         <div className="lg:col-span-1">
-                                            {selectedCampaign.image ? (
-                                                <img
-                                                    src={selectedCampaign.image.startsWith('http') ? selectedCampaign.image : `/uploads/${selectedCampaign.image.split('uploads/')[1]}`}
-                                                    alt={selectedCampaign.title}
-                                                    className="w-full h-64 object-cover rounded-2xl shadow-lg"
-                                                    onError={(e) => {
-                                                        e.target.onerror = null;
-                                                        e.target.src = '';
-                                                    }}
-                                                />
-                                            ) : (
-                                                <div className={`w-full h-64 bg-gradient-to-r ${getCategoryConfig(selectedCampaign.category).gradient} rounded-2xl flex items-center justify-center text-white text-6xl shadow-lg`}>
-                                                    {getCategoryConfig(selectedCampaign.category).icon}
-                                                </div>
-                                            )}
+{selectedCampaign.image ? (
+    <img
+        src={selectedCampaign.image && (selectedCampaign.image.startsWith('http') ? selectedCampaign.image : `/uploads/${selectedCampaign.image.split('uploads/')[1]}`)}
+        alt={selectedCampaign.title}
+        className="w-full h-64 object-cover rounded-2xl shadow-lg"
+        onError={(e) => {
+            e.target.onerror = null;
+            e.target.src = '';
+        }}
+    />
+) : (
+    <div className={`w-full h-64 bg-gradient-to-r ${getCategoryConfig(selectedCampaign.category).gradient} rounded-2xl flex items-center justify-center text-white text-6xl shadow-lg`}>
+        {getCategoryConfig(selectedCampaign.category).icon}
+    </div>
+)}
                                         </div>
 
                                         {/* Campaign Details */}

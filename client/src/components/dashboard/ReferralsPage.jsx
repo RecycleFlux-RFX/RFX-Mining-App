@@ -95,7 +95,7 @@ export default function ReferralsPage() {
                         <Coins className="w-6 h-6 text-yellow-400" />
                         <h3 className="text-lg font-semibold text-white">Total Earned</h3>
                     </div>
-                    <div className="text-3xl font-bold text-white">₿ {stats.totalEarned.toFixed(5)}</div>
+                    <div className="text-3xl font-bold text-white">RFX {stats.totalEarned.toFixed(5)}</div>
                 </div>
                 
                 <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-6 border border-gray-700">
@@ -103,7 +103,7 @@ export default function ReferralsPage() {
                         <Sparkles className="w-6 h-6 text-purple-400" />
                         <h3 className="text-lg font-semibold text-white">Potential Earnings</h3>
                     </div>
-                    <div className="text-3xl font-bold text-white">₿ {stats.potentialEarnings.toFixed(5)}</div>
+                    <div className="text-3xl font-bold text-white">RFX {stats.potentialEarnings.toFixed(5)}</div>
                 </div>
             </div>
             
@@ -132,10 +132,10 @@ export default function ReferralsPage() {
                                 </div>
                                 <div className="text-right">
                                     <div className="text-green-400 font-medium">
-                                        ₿ {(referral.earnings * 0.2).toFixed(5)}
+                                        RFX {(referral.earnings * 0.2).toFixed(5)}
                                     </div>
                                     <div className="text-gray-400 text-sm">
-                                        from ₿ {referral.earnings.toFixed(5)}
+                                        from RFX {referral.earnings.toFixed(5)}
                                     </div>
                                 </div>
                             </div>

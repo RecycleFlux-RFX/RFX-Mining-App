@@ -29,7 +29,6 @@ export default function RFXSettingsPage() {
         { icon: Home, label: 'Home', id: 'home', path: '/' },
         { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
         { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
-        { icon: Users, label: 'Referrals', id: 'referrals', path: '/referrals' },
         { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
         { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' },
     ];

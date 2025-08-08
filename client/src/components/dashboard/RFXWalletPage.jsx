@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-    Home, MapPin, Gamepad2, Wallet, Settings, ArrowUpRight, ArrowDownLeft, Plus, Minus,
-    Recycle, Trash2, TreePine, Droplets, Trophy, Star, Clock, TrendingUp, Send, Download,
-    Copy, Eye, EyeOff, RefreshCw, Filter, Calendar, Search, CreditCard, Coins, Target,
-    Award, Gift, Users, Zap
+    Home, MapPin, Gamepad2, Wallet, Settings, Plus, Minus,
+    Recycle, Trophy, Star, TrendingUp, Send, Users, Gift, Eye, Search, EyeOff
 } from 'lucide-react';
 
 export default function RFXWalletPage() {
@@ -22,7 +20,6 @@ export default function RFXWalletPage() {
 
     const BASE_URL = 'http://localhost:3000';
 
-    // Icon mapping based on backend walletController
     const iconMap = {
         Game: Gamepad2,
         Campaign: MapPin,
@@ -33,34 +30,20 @@ export default function RFXWalletPage() {
         Transfer: Send,
     };
 
-    const colorMap = {
-        Game: 'purple',
-        Campaign: 'blue',
-        'Real World': 'green',
-        Bonus: 'purple',
-        Referral: 'orange',
-        Competition: 'yellow',
-        Transfer: 'blue',
-    };
-
-const navItems = [
-    { icon: Home, label: 'Home', id: 'home', path: '/' },
-    { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
-    { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
-    { icon: Users, label: 'Referrals', id: 'referrals', path: '/referrals' },
-    { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
-    { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' },
-];
+    const navItems = [
+        { icon: Home, label: 'Home', id: 'home', path: '/' },
+        { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
+        { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
+        { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
+        { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' },
+    ];
 
     const periods = ['all', 'today', 'week', 'month'];
 
-    // Fetch data from backend
     useEffect(() => {
-        // Update the fetchData function in useEffect
         const fetchData = async () => {
             const token = localStorage.getItem('authToken');
             if (!token) {
-                console.log('No auth token found, redirecting to login');
                 setError('Please log in to access wallet');
                 navigate('/login');
                 return;
@@ -75,40 +58,30 @@ const navItems = [
                     'Authorization': `Bearer ${token}`,
                 };
 
-                // Fetch user data
                 const userResponse = await fetch(`${BASE_URL}/user/user`, {
                     method: 'GET',
                     headers
                 });
 
-                if (!userResponse.ok) {
-                    throw new Error('Failed to fetch user data');
-                }
+                if (!userResponse.ok) throw new Error('Failed to fetch user data');
                 const userData = await userResponse.json();
 
-                // Fetch transactions with error handling
                 const transactionsResponse = await fetch(
                     `${BASE_URL}/wallet/transactions?period=${selectedPeriod}&search=${encodeURIComponent(searchQuery)}`,
                     { method: 'GET', headers }
                 );
 
-                if (!transactionsResponse.ok) {
-                    throw new Error('Failed to fetch transactions');
-                }
+                if (!transactionsResponse.ok) throw new Error('Failed to fetch transactions');
                 const transactionsData = await transactionsResponse.json();
 
-                // Fetch rank
                 const rankResponse = await fetch(`${BASE_URL}/wallet/rank`, {
                     method: 'GET',
                     headers
                 });
 
-                if (!rankResponse.ok) {
-                    throw new Error('Failed to fetch rank');
-                }
+                if (!rankResponse.ok) throw new Error('Failed to fetch rank');
                 const rankData = await rankResponse.json();
 
-                // Format and set data
                 setWalletBalance(userData.earnings || 0);
                 setTransactions(transactionsData.map(tx => ({
                     ...tx,
@@ -132,67 +105,11 @@ const navItems = [
         fetchData();
     }, [navigate, selectedPeriod, searchQuery]);
 
-    // Set active tab based on current path
     useEffect(() => {
         const currentNavItem = navItems.find((item) => item.path === location.pathname);
-        if (currentNavItem) {
-            setActiveTab(currentNavItem.id);
-        }
+        if (currentNavItem) setActiveTab(currentNavItem.id);
     }, [location.pathname]);
 
-    // Handle Send Tokens
-    const handleSendTokens = async () => {
-        const recipientAddress = prompt('Enter recipient wallet address:');
-        const amount = parseFloat(prompt('Enter amount to send:'));
-
-        if (!recipientAddress || !amount || amount <= 0) {
-            setError('Invalid recipient address or amount');
-            return;
-        }
-
-        try {
-            const token = localStorage.getItem('authToken');
-            const response = await fetch(`${BASE_URL}/wallet/send-tokens`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({ recipientAddress, amount }),
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to send tokens');
-            }
-
-            const result = await response.json();
-            setWalletBalance(result.balance);
-            // Refresh transactions
-            const transactionsResponse = await fetch(
-                `${BASE_URL}/wallet/transactions?period=${selectedPeriod}&search=${encodeURIComponent(searchQuery)}`,
-                {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
-            );
-            const transactionsData = await transactionsResponse.json();
-            const formattedTransactions = transactionsData.map((tx) => ({
-                ...tx,
-                timestamp: new Date(tx.timestamp), // Convert ISO string to Date
-            }));
-            setTransactions(formattedTransactions);
-            alert('Tokens sent successfully!');
-        } catch (error) {
-            console.error('Send tokens error:', error.message);
-            setError(error.message || 'Failed to send tokens');
-        }
-    };
-
-    // Calculate earnings for today and week
     const todayEarnings = transactions
         .filter((tx) => tx.type === 'earn' && tx.timestamp.toDateString() === new Date().toDateString())
         .reduce((sum, tx) => sum + tx.amount, 0);
@@ -206,7 +123,7 @@ const navItems = [
 
     const getTimeAgo = (timestamp) => {
         const now = new Date();
-        const diff = now - new Date(timestamp); // Ensure timestamp is a Date object
+        const diff = now - new Date(timestamp);
         const minutes = Math.floor(diff / 60000);
         const hours = Math.floor(diff / 3600000);
         const days = Math.floor(diff / 86400000);
@@ -220,29 +137,8 @@ const navItems = [
         return amount.toFixed(5);
     };
 
-    // Handle copy wallet address
-    // Update the copyWalletAddress function
-    const copyWalletAddress = () => {
-        const walletAddress = localStorage.getItem('walletAddress');
-        if (!walletAddress) {
-            setError('Wallet address not found. Please update your wallet address in settings.');
-            return;
-        }
-
-        navigator.clipboard.writeText(walletAddress)
-            .then(() => {
-                // Show success feedback
-                alert('Wallet address copied to clipboard!');
-            })
-            .catch(err => {
-                console.error('Failed to copy:', err);
-                setError('Failed to copy wallet address');
-            });
-    };
-
     return (
         <div className="w-full min-h-screen bg-gradient-to-br from-black via-gray-900 to-black overflow-hidden relative">
-            {/* Animated Background */}
             <div className="absolute inset-0">
                 <div className="absolute inset-0 bg-gradient-to-t from-green-500/10 via-transparent to-transparent"></div>
                 <div className="absolute top-0 left-1/4 w-96 h-96 bg-green-500/20 rounded-full blur-3xl animate-pulse"></div>
@@ -262,18 +158,16 @@ const navItems = [
             </div>
 
             <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 pb-24">
-                {/* Error Message */}
                 {error && (
                     <div className="mb-4 p-4 bg-red-500/20 text-red-400 rounded-lg">
                         {error}
                     </div>
                 )}
 
-                {/* Loading State */}
                 {loading && (
                     <div className="text-center py-12">
                         <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
-                            <RefreshCw className="w-8 h-8 text-gray-400" />
+                            <div className="w-8 h-8 text-gray-400 animate-spin">↻</div>
                         </div>
                         <p className="text-gray-400">Loading wallet data...</p>
                     </div>
@@ -281,7 +175,6 @@ const navItems = [
 
                 {!loading && (
                     <>
-                        {/* Header */}
                         <div className="flex flex-col sm:flex-row items-center justify-between mb-8 pt-4 space-y-4 sm:space-y-0">
                             <div className="flex items-center space-x-3">
                                 <div className="relative">
@@ -297,27 +190,8 @@ const navItems = [
                                     <p className="text-gray-400 text-sm">Track your RFX token earnings</p>
                                 </div>
                             </div>
-
-                            <div className="flex items-center space-x-3">
-                                <button
-                                    className="flex items-center space-x-2 px-4 py-2 bg-gray-800/50 backdrop-blur-sm rounded-full border border-gray-700 hover:border-green-400/50 transition-all"
-                                    onClick={() => window.location.reload()}
-                                >
-                                    <RefreshCw className="w-4 h-4 text-gray-300" />
-                                    <span className="text-gray-300 text-sm">Refresh</span>
-                                </button>
-                                <div className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-gray-800 to-gray-700 rounded-full">
-                                    <span className="text-gray-300 text-sm font-mono">
-                                        {localStorage.getItem('walletAddress')?.slice(0, 6) + '...' + localStorage.getItem('walletAddress')?.slice(-2)}
-                                    </span>
-                                    <button className="text-gray-400 hover:text-white" onClick={copyWalletAddress}>
-                                        <Copy className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </div>
                         </div>
 
-                        {/* Balance Card */}
                         <div className="relative group mb-8">
                             <div className="absolute inset-0 bg-gradient-to-r from-green-400/20 to-green-600/20 rounded-3xl blur-xl group-hover:blur-2xl transition-all"></div>
                             <div className="relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-6 sm:p-8 border border-gray-700 overflow-hidden">
@@ -338,45 +212,20 @@ const navItems = [
 
                                             <div className="flex items-baseline space-x-3 mb-4">
                                                 <span className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-green-400 to-green-300 bg-clip-text text-transparent">
-                                                    {showBalance ? `₿ ${formatAmount(walletBalance)}` : '₿ ••••••'}
+                                                    {showBalance ? `RFX ${formatAmount(walletBalance)}` : 'RFX ••••••'}
                                                 </span>
-                                                <div className="flex items-center space-x-1 text-green-400 text-sm">
-                                                    <TrendingUp className="w-4 h-4" />
-                                                    <span>+15.2%</span>
-                                                </div>
-                                            </div>
-
-                                            <div className="text-gray-400 text-sm">
-                                                ≈ ${showBalance ? (walletBalance * 45000).toFixed(2) : '••••••'} USD
-                                            </div>
-                                        </div>
-
-                                        <div className="text-right">
-                                            <div className="flex space-x-3">
-                                                <button className="flex flex-col items-center space-y-2 p-3 bg-green-400/10 rounded-2xl border border-green-400/20 hover:bg-green-400/20 transition-all">
-                                                    <Download className="w-6 h-6 text-green-400" />
-                                                    <span className="text-green-400 text-xs font-semibold">Receive</span>
-                                                </button>
-                                                <button
-                                                    onClick={handleSendTokens}
-                                                    className="flex flex-col items-center space-y-2 p-3 bg-blue-400/10 rounded-2xl border border-blue-400/20 hover:bg-blue-400/20 transition-all"
-                                                >
-                                                    <Send className="w-6 h-6 text-blue-400" />
-                                                    <span className="text-blue-400 text-xs font-semibold">Send</span>
-                                                </button>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* Quick Stats */}
                                     <div className="grid grid-cols-3 gap-4">
                                         <div className="bg-gray-800/50 rounded-xl p-4 backdrop-blur-sm">
                                             <div className="text-gray-400 text-xs mb-1">Today</div>
-                                            <div className="text-green-400 font-bold text-lg">+₿ {formatAmount(todayEarnings)}</div>
+                                            <div className="text-green-400 font-bold text-lg">+RFX {formatAmount(todayEarnings)}</div>
                                         </div>
                                         <div className="bg-gray-800/50 rounded-xl p-4 backdrop-blur-sm">
                                             <div className="text-gray-400 text-xs mb-1">This Week</div>
-                                            <div className="text-green-400 font-bold text-lg">+₿ {formatAmount(weekEarnings)}</div>
+                                            <div className="text-green-400 font-bold text-lg">+RFX {formatAmount(weekEarnings)}</div>
                                         </div>
                                         <div className="bg-gray-800/50 rounded-xl p-4 backdrop-blur-sm">
                                             <div className="text-gray-400 text-xs mb-1">Rank</div>
@@ -387,7 +236,6 @@ const navItems = [
                             </div>
                         </div>
 
-                        {/* Filters and Search */}
                         <div className="flex flex-col sm:flex-row items-center justify-between mb-6 space-y-4 sm:space-y-0">
                             <div className="flex items-center space-x-2">
                                 <h2 className="text-xl font-bold text-white">Transaction History</h2>
@@ -423,7 +271,6 @@ const navItems = [
                             </div>
                         </div>
 
-                        {/* Transaction List */}
                         <div className="space-y-3">
                             {transactions.map((transaction) => {
                                 const TransactionIcon = iconMap[transaction.category] || Coins;
@@ -495,12 +342,9 @@ const navItems = [
                                                                 : 'text-red-400'
                                                             }`}
                                                     >
-                                                        {transaction.type === 'earn' || transaction.type === 'receive' ? '+' : '-'}₿{' '}
+                                                        {transaction.type === 'earn' || transaction.type === 'receive' ? '+' : '-'}RFX{' '}
                                                         {formatAmount(transaction.amount)}
                                                     </span>
-                                                </div>
-                                                <div className="text-gray-400 text-xs">
-                                                    ≈ ${(transaction.amount * 45000).toFixed(2)}
                                                 </div>
                                             </div>
                                         </div>
@@ -509,7 +353,6 @@ const navItems = [
                             })}
                         </div>
 
-                        {/* Empty State */}
                         {transactions.length === 0 && !loading && (
                             <div className="text-center py-12">
                                 <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -520,7 +363,6 @@ const navItems = [
                             </div>
                         )}
 
-                        {/* Earning Opportunities */}
                         <div className="mt-12 bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-6 border border-gray-700">
                             <div className="flex items-center space-x-3 mb-6">
                                 <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center">
@@ -534,11 +376,11 @@ const navItems = [
 
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {[
-                                    { icon: Gamepad2, title: 'Play Games', desc: 'Up to ₿ 0.006 per game', color: 'purple' },
-                                    { icon: MapPin, title: 'Join Campaigns', desc: 'Up to ₿ 0.08 per campaign', color: 'blue' },
-                                    { icon: Recycle, title: 'Real Recycling', desc: 'Up to ₿ 0.03 per verification', color: 'green' },
+                                    { icon: Gamepad2, title: 'Play Games', desc: 'Up to RFX 0.006 per game', color: 'purple' },
+                                    { icon: MapPin, title: 'Join Campaigns', desc: 'Up to RFX 0.08 per campaign', color: 'blue' },
+                                    { icon: Recycle, title: 'Real Recycling', desc: 'Up to RFX 0.03 per verification', color: 'green' },
                                     { icon: Users, title: 'Refer Friends', desc: '20% commission on earnings', color: 'orange' },
-                                    { icon: Trophy, title: 'Competitions', desc: 'Win up to ₿ 0.1 in prizes', color: 'yellow' },
+                                    { icon: Trophy, title: 'Competitions', desc: 'Win up to RFX 0.1 in prizes', color: 'yellow' },
                                     { icon: Star, title: 'Daily Streaks', desc: 'Bonus multipliers up to 3x', color: 'pink' },
                                 ].map((opportunity, index) => (
                                     <div
@@ -574,7 +416,6 @@ const navItems = [
                     </>
                 )}
 
-                {/* Bottom Navigation */}
                 <div className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-lg border-t border-gray-800 px-4 py-3 z-20">
                     <div className="max-w-lg mx-auto">
                         <div className="flex justify-around items-center">

@@ -40,7 +40,7 @@ export default function RecycleFluxWelcome() {
     const stats = [
         { value: "1M+", label: "Items Recycled" },
         { value: "50K+", label: "Active Users" },
-        { value: "₿ 100+", label: "Rewards Distributed" },
+        { value: "RFX 100+", label: "Rewards Distributed" },
         { value: "25", label: "Countries" }
     ];
 

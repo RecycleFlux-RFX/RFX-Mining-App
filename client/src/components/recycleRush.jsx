@@ -451,7 +451,7 @@ const RecycleRush = () => {
                                 <div className="flex justify-between">
                                     <span className="text-gray-700">Tokens Earned:</span>
                                     <span className="font-bold text-green-600">
-                                        ₿ {rewardTiers.reduce((sum, tier) => sum + tier.tokens, 0).toFixed(6)}
+                                        RFX {rewardTiers.reduce((sum, tier) => sum + tier.tokens, 0).toFixed(6)}
                                     </span>
                                 </div>
                             </div>
@@ -467,7 +467,7 @@ const RecycleRush = () => {
                                                 {tier.threshold ? `Score ${tier.threshold}+` : tier.description}
                                             </span>
                                             <span className="font-medium">
-                                                +{tier.xp} XP{tier.tokens > 0 ? ` +₿ ${tier.tokens.toFixed(6)}` : ''}
+                                                +{tier.xp} XP{tier.tokens > 0 ? ` +RFX ${tier.tokens.toFixed(6)}` : ''}
                                             </span>
                                         </li>
                                     ))}

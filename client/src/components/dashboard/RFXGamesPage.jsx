@@ -109,7 +109,7 @@ const navItems = [
                         locked: game.locked || false,
                         plays: game.plays || 0,
                         rating: game.rating || 0,
-                        reward: game.reward || '₿ 0.00000',
+                        reward: game.reward || 'RFX 0.00000',
                         xpReward: game.xpReward || 0
                     }));
                     setGames(validatedGames);
@@ -317,7 +317,7 @@ const navItems = [
                         </div>
                         <div className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-gray-800 to-gray-700 rounded-full">
                             <Trophy className="w-4 h-4 text-green-400" />
-                            <span className="text-gray-300 text-sm font-mono">₿ {playerStats.tokensEarned.toFixed(5)}</span>
+                            <span className="text-gray-300 text-sm font-mono">RFX {playerStats.tokensEarned.toFixed(5)}</span>
                         </div>
                     </div>
                 </div>
@@ -327,7 +327,7 @@ const navItems = [
                     {[
                         { label: 'Level', value: playerStats.level, icon: Crown, color: 'yellow', suffix: '' },
                         { label: 'Games Played', value: playerStats.gamesPlayed, icon: Gamepad2, color: 'purple', suffix: '' },
-                        { label: 'Total Earned', value: playerStats.tokensEarned.toFixed(5), icon: Award, color: 'green', suffix: ' BTC' },
+                        { label: 'Total Earned', value: playerStats.tokensEarned.toFixed(5), icon: Award, color: 'green', suffix: ' RFX' },
                         { label: 'XP Progress', value: `${playerStats.xp}/${playerStats.totalXp}`, icon: TrendingUp, color: 'blue', suffix: '' }
                     ].map((stat, index) => (
                         <div key={index} className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-4 border border-gray-700">
@@ -593,9 +593,9 @@ const navItems = [
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {[
-                            { title: "Eco Novice", desc: "Play 3 puzzle games", progress: 2, total: 3, reward: "₿ 0.001" },
-                            { title: "Ocean Savior", desc: "Score 1000+ in Ocean Defender", progress: 0, total: 1, reward: "₿ 0.002" },
-                            { title: "Green Streak", desc: "Win 5 games in a row", progress: 3, total: 5, reward: "₿ 0.003" }
+                            { title: "Eco Novice", desc: "Play 3 puzzle games", progress: 2, total: 3, reward: "RFX 0.001" },
+                            { title: "Ocean Savior", desc: "Score 1000+ in Ocean Defender", progress: 0, total: 1, reward: "RFX 0.002" },
+                            { title: "Green Streak", desc: "Win 5 games in a row", progress: 3, total: 5, reward: "RFX 0.003" }
                         ].map((challenge, index) => (
                             <div key={index} className="bg-gray-800/50 rounded-xl p-4 backdrop-blur-sm">
                                 <div className="flex items-center justify-between mb-2">

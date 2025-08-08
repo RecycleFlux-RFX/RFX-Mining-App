@@ -38,7 +38,6 @@ export default function RFXVerseInterface() {
         { icon: Home, label: 'Home', id: 'home', path: '/' },
         { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
         { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
-        { icon: Users, label: 'Referrals', id: 'referrals', path: '/referrals' },
         { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
         { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' },
     ];
@@ -344,7 +343,7 @@ export default function RFXVerseInterface() {
 
                                             <div className="flex items-baseline space-x-2 mb-4">
                                                 <span className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-green-400 to-green-300 bg-clip-text text-transparent">
-                                                    ₿ {userData.earnings.toFixed(5)} RFX
+                                                    {userData.earnings.toFixed(5)} RFX
                                                 </span>
                                                 <div className="flex items-center space-x-1 text-green-400 text-sm">
                                                     <ArrowUp className="w-4 h-4" />
@@ -383,7 +382,7 @@ export default function RFXVerseInterface() {
                                                             {referralInfo.referralCount} Friends Joined
                                                         </div>
                                                         <div className="text-xs bg-purple-900/50 text-purple-400 px-2 py-1 rounded">
-                                                            ₿ {referralInfo.referralEarnings.toFixed(5)} Earned
+                                                            {referralInfo.referralEarnings.toFixed(5)} RFX Earned
                                                         </div>
                                                     </div>
                                                     <div className="mt-3">
@@ -516,7 +515,7 @@ export default function RFXVerseInterface() {
                             </div>
                             <div>
                                 <div className="text-gray-400 text-sm">Total Earned</div>
-                                <div className="text-2xl font-bold text-white">₿ {referralInfo.referralEarnings.toFixed(5)}</div>
+                                <div className="text-2xl font-bold text-white">{referralInfo.referralEarnings.toFixed(5)} RFX</div>
                             </div>
                             <div className="pt-2">
                                 <Link 

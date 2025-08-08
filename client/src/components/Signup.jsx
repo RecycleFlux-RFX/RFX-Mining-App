@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Eye, EyeOff, Lock, User, Gift, CheckCircle, AlertCircle, Mail } from 'lucide-react';
+import { Eye, EyeOff, Lock, User, CheckCircle, AlertCircle, Mail } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import api from '../api/api';
 
@@ -183,15 +183,18 @@ export default function Signup() {
                     <div className="mb-8">
                         <div className="flex items-center space-x-3 mb-6">
                             <div className="w-8 h-8 bg-gradient-to-r from-cyan-600 to-teal-600 rounded-lg flex items-center justify-center">
-                                <Gift className="w-5 h-5 text-white" />
+                                <svg className="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                                    <line x1="4" y1="22" x2="4" y2="15" />
+                                </svg>
                             </div>
-                            <span className="text-lg font-semibold text-slate-800">RecycleFlux</span>
+                            <span className="text-lg font-semibold text-slate-800">RecycleFlux (RFX)</span>
                         </div>
                         <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 mb-2">
                             Create your account
                         </h1>
                         <p className="text-slate-600">
-                            Create credentials to join RecycleFlux
+                            Create credentials to join RecycleFlux (RFX)
                         </p>
                     </div>
 
@@ -230,7 +233,10 @@ export default function Signup() {
                             referralStatus.valid === false ? 'bg-yellow-50 text-yellow-600' :
                             'bg-blue-50 text-blue-600'
                         }`}>
-                            <Gift className="w-5 h-5" />
+                            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                                <line x1="4" y1="22" x2="4" y2="15" />
+                            </svg>
                             <span className="text-sm">{referralStatus.message}</span>
                         </div>
                     )}
@@ -345,7 +351,10 @@ export default function Signup() {
                             <div className="space-y-2">
                                 <label className="text-sm font-medium text-slate-700">Referral Code (optional)</label>
                                 <div className="relative">
-                                    <Gift className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" />
+                                    <svg className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                                        <line x1="4" y1="22" x2="4" y2="15" />
+                                    </svg>
                                     <input
                                         type="text"
                                         value={formData.referralCode}
@@ -398,7 +407,6 @@ export default function Signup() {
                             )}
                         </button>
 
-                        
                         {/* Login Link */}
                         <div className="text-center pt-4">
                             <span className="text-slate-600">Already have an account? </span>
@@ -411,11 +419,10 @@ export default function Signup() {
                         </div>
                     </form>
 
-                    
                     {/* Footer */}
                     <div className="mt-8 pt-6 border-t border-slate-200">
                         <p className="text-xs text-slate-500 text-center">
-                            © {new Date().getFullYear()} RecycleFlux. All rights reserved.
+                            © {new Date().getFullYear()} RecycleFlux (RFX). All rights reserved.
                         </p>
                     </div>
                 </div>
