@@ -48,7 +48,6 @@ const navItems = [
     { icon: Home, label: 'Home', id: 'home', path: '/' },
     { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
     { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
-    { icon: Users, label: 'Referrals', id: 'referrals', path: '/referrals' },
     { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
     { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' },
 ];
@@ -58,7 +57,7 @@ const navItems = [
         const token = localStorage.getItem('authToken');
         if (!token) {
             console.error('No auth token found');
-            navigate('/login');
+            navigate('/dashboard');
             throw new Error('No authentication token found');
         }
 
@@ -76,7 +75,7 @@ const navItems = [
                 if (response.status === 401) {
                     console.error('Unauthorized request:', errorMessage);
                     localStorage.removeItem('authToken');
-                    navigate('/login');
+                    navigate('/dashboard');
                 }
                 throw new Error(errorMessage);
             }

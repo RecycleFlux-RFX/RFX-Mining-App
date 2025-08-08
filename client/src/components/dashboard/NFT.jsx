@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
     Home, MapPin, Gamepad2, Wallet, Settings,
     Trophy, TrendingUp, Recycle, Trash2,
-    Sparkles, Zap, Star, ArrowUp, Users, Coins
+    Sparkles, Zap, Star, ArrowUp, Users, Coins, Clock
 } from 'lucide-react';
 import { throttle } from 'lodash';
 
@@ -24,29 +24,148 @@ export default function RFXVerseInterface() {
     const [referralInfo, setReferralInfo] = useState({
         referralCount: 0,
         referralEarnings: 0,
-        referrals: []
+        referrals: [],
+        referralLink: ''
     });
-    const [referralLink, setReferralLink] = useState('');
     const [isAnimating, setIsAnimating] = useState(false);
     const [error, setError] = useState(null);
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+    const [timeLeft, setTimeLeft] = useState({
+        days: 0,
+        hours: 0,
+        minutes: 0,
+        seconds: 0
+    });
+    const [newsItems, setNewsItems] = useState([]);
     const containerRef = useRef(null);
 
     const BASE_URL = 'http://localhost:3000/user';
 
     const navItems = [
-        { icon: Home, label: 'Home', id: 'home', path: '/' },
+        { icon: Home, label: 'Home', id: 'home', path: '/dashboard' },
         { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
         { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
         { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
         { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' },
     ];
 
+    // Enhanced countdown timer
+// Enhanced countdown timer - Fixed version
+useEffect(() => {
+    const calculateTimeLeft = () => {
+        // Set launch date to 100 days from now
+        const launchDate = new Date();
+        launchDate.setDate(launchDate.getDate() + 100);
+        launchDate.setHours(0, 0, 0, 0); // Set to midnight for consistency
+        
+        const now = new Date();
+        const difference = launchDate - now;
+        
+        // Calculate time components
+        const days = Math.floor(difference / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((difference / (1000 * 60 * 60)) % 24);
+        const minutes = Math.floor((difference / 1000 / 60) % 60);
+        const seconds = Math.floor((difference / 1000) % 60);
+        
+        setTimeLeft({
+            days,
+            hours,
+            minutes,
+            seconds
+        });
+    };
+
+    // Calculate immediately
+    calculateTimeLeft();
+    
+    // Then update every second
+    const timer = setInterval(calculateTimeLeft, 1000);
+    
+    // Cleanup interval on unmount
+    return () => clearInterval(timer);
+}, []);
+
+    // Enhanced news fetch
+    useEffect(() => {
+        const fetchNews = async () => {
+            try {
+                const mockNewsSources = [
+                    {
+                        title: 'RFX Partners with Major Recycling Chain',
+                        desc: 'New collaboration will expand recycling rewards to 500+ locations nationwide',
+                        source: 'EcoTech News',
+                        time: 'Just now',
+                        trending: true
+                    },
+                    {
+                        title: 'Crypto Recycling Initiatives Gain Traction',
+                        desc: 'How blockchain is incentivizing sustainability worldwide',
+                        source: 'Blockchain Daily',
+                        time: '30 minutes ago'
+                    },
+                    {
+                        title: 'RFX Token Listed on New Exchange',
+                        desc: 'Trading begins next week with special launch rewards',
+                        source: 'Crypto Updates',
+                        time: '2 hours ago',
+                        trending: true
+                    },
+                    {
+                        title: 'Green Tech Startups Raise $120M in Q2',
+                        desc: 'Sustainable projects attracting major investor interest',
+                        source: 'Tech Finance',
+                        time: '5 hours ago'
+                    },
+                    {
+                        title: 'Main Launch Countdown',
+                        desc: 'Official platform launch scheduled in 100 days',
+                        source: 'RFX Official',
+                        time: '1 day ago',
+                        trending: true
+                    },
+                    {
+                        title: 'Mobile App Beta Testing Begins Next Week',
+                        desc: 'Early access available for premium members',
+                        source: 'App Insider',
+                        time: '3 days ago'
+                    }
+                ];
+                
+                const shuffledNews = [...mockNewsSources]
+                    .sort(() => 0.5 - Math.random())
+                    .slice(0, 2)
+                    .map(item => ({
+                        ...item,
+                        title: item.title.includes('Countdown') ? 
+                            `Main Launch Countdown: ${timeLeft.days}d ${timeLeft.hours}h ${timeLeft.minutes}m left` : 
+                            item.title
+                    }));
+                
+                setNewsItems(shuffledNews);
+            } catch (error) {
+                console.error('Error fetching news:', error);
+                setNewsItems([
+                    {
+                        title: 'Stay tuned for latest updates',
+                        desc: 'News feed will be available shortly',
+                        source: 'RFX Team',
+                        time: 'Just now'
+                    }
+                ]);
+            }
+        };
+
+        fetchNews();
+        const newsInterval = setInterval(fetchNews, 300000);
+        return () => clearInterval(newsInterval);
+    }, [timeLeft]);
+
+    // Existing fetch functions
     const fetchWithAuth = async (url, options = {}) => {
         const token = localStorage.getItem('authToken');
         if (!token) {
             console.error('No auth token found');
-            navigate('/login');
+            navigate('/dashboard');
             throw new Error('No authentication token found');
         }
 
@@ -64,7 +183,7 @@ export default function RFXVerseInterface() {
                 if (response.status === 401) {
                     console.error('Unauthorized request:', errorMessage);
                     localStorage.removeItem('authToken');
-                    navigate('/login');
+                    navigate('/dashboard');
                 }
                 throw new Error(errorMessage);
             }
@@ -110,7 +229,7 @@ export default function RFXVerseInterface() {
             const token = localStorage.getItem('authToken');
             if (!token) {
                 console.error('No auth token found during checkAuth');
-                navigate('/login');
+                navigate('/dashboard');
                 return;
             }
 
@@ -123,7 +242,7 @@ export default function RFXVerseInterface() {
             } catch (error) {
                 console.error('Authentication check failed:', error.message);
                 localStorage.removeItem('authToken');
-                navigate('/login');
+                navigate('/dashboard');
             }
         };
 
@@ -137,10 +256,6 @@ export default function RFXVerseInterface() {
                 fetchWithAuth(`${BASE_URL}/network-stats`),
                 fetchWithAuth(`${BASE_URL}/referral-link`),
             ]);
-
-            console.log('User Response:', userResponse);
-            console.log('Network Stats Response:', statsResponse);
-            console.log('Referral Response:', referralResponse);
 
             setUserData({
                 earnings: userResponse.earnings || 0,
@@ -224,8 +339,8 @@ export default function RFXVerseInterface() {
     };
 
     const handleCopyReferralLink = () => {
-        if (referralLink) {
-            navigator.clipboard.writeText(referralLink);
+        if (referralInfo.referralLink) {
+            navigator.clipboard.writeText(referralInfo.referralLink);
             setError({
                 type: 'success',
                 message: 'Referral link copied!',
@@ -236,7 +351,7 @@ export default function RFXVerseInterface() {
 
     const handleActionClick = (title) => {
         if (title === 'Trash') {
-            navigate('/games'); // Redirect to games page when Trash Sort is clicked
+            navigate('/games');
         } else {
             setError({
                 type: 'info',
@@ -253,7 +368,6 @@ export default function RFXVerseInterface() {
     };
 
     const calculateTreeEquivalent = (co2Kg) => {
-        // On average, a tree absorbs about 21 kg of CO₂ per year
         const co2 = parseFloat(co2Kg) || 0;
         const trees = (co2 / 21).toFixed(2);
         return trees > 0 ? trees : '0';
@@ -312,7 +426,7 @@ export default function RFXVerseInterface() {
                             <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-ping"></div>
                         </div>
                         <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-green-400 to-green-300 bg-clip-text text-transparent">
-                            RFX Verse
+                            RecycleFlux
                         </h1>
                     </div>
                 </div>
@@ -345,13 +459,13 @@ export default function RFXVerseInterface() {
                                                 <span className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-green-400 to-green-300 bg-clip-text text-transparent">
                                                     {userData.earnings.toFixed(5)} RFX
                                                 </span>
-                                                <div className="flex items-center space-x-1 text-green-400 text-sm">
+{/*                                                 <div className="flex items-center space-x-1 text-green-400 text-sm">
                                                     <ArrowUp className="w-4 h-4" />
                                                     <span>+12.5%</span>
-                                                </div>
+                                                </div> */}
                                             </div>
 
-                                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                            {/* <div className="grid grid-cols-2 gap-4 mb-6">
                                                 <div className="bg-gray-800/50 rounded-xl p-3 backdrop-blur-sm">
                                                     <div className="text-gray-400 text-xs mb-1">Current Rate</div>
                                                     <div className="text-white font-semibold flex items-center space-x-1">
@@ -363,7 +477,7 @@ export default function RFXVerseInterface() {
                                                     <div className="text-gray-400 text-xs mb-1">Active Hours</div>
                                                     <div className="text-white font-semibold">0 h</div>
                                                 </div>
-                                            </div>
+                                            </div> */}
                                         </div>
 
                                         <div className="mt-4 sm:mt-0">
@@ -465,8 +579,39 @@ export default function RFXVerseInterface() {
 
                 {/* Action Grid */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-8">
+                    {/* Enhanced Countdown Timer */}
+                    <div className="group relative overflow-hidden bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-6 border border-gray-700 transition-all hover:scale-105 hover:border-gray-600 cursor-pointer">
+                        <div className="absolute inset-0 bg-gradient-to-br from-transparent to-transparent group-hover:from-purple-400/10 group-hover:to-transparent transition-all"></div>
+                        <div className="absolute top-2 right-2 px-2 py-1 bg-purple-400 text-black text-xs font-bold rounded animate-pulse">
+                            COMING
+                        </div>
+                        <div className="relative z-10">
+                            <div className="w-12 h-12 bg-gradient-to-br from-purple-400 to-purple-600 rounded-xl flex items-center justify-center mb-4 transform group-hover:rotate-12 transition-transform">
+                                <Clock className="w-6 h-6 text-black" />
+                            </div>
+                            <div className="text-white font-semibold">Main Launch</div>
+                            <div className="grid grid-cols-2 gap-2 mt-2">
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-purple-400">{timeLeft.days}</div>
+                                    <div className="text-gray-400 text-xs">Days</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-purple-400">{timeLeft.hours}</div>
+                                    <div className="text-gray-400 text-xs">Hours</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-purple-400">{timeLeft.minutes}</div>
+                                    <div className="text-gray-400 text-xs">Minutes</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-2xl font-bold text-purple-400">{timeLeft.seconds}</div>
+                                    <div className="text-gray-400 text-xs">Seconds</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     {[
-                        { icon: Recycle, title: 'Recycle', subtitle: 'Box', color: 'green', badge: 'NEW' },
                         { icon: Trash2, title: 'Trash', subtitle: 'Sort Game', color: 'yellow', badge: 'HOT' },
                         { icon: TrendingUp, title: 'Upgrade', subtitle: 'Plant', color: 'blue' },
                         { icon: Trophy, title: 'Leaderboard', subtitle: 'Top 100', color: 'purple' },
@@ -502,72 +647,65 @@ export default function RFXVerseInterface() {
                             </div>
                         </div>
                     ))}
-
-                    <div className="bg-gradient-to-br from-indigo-900/20 to-indigo-800/20 rounded-2xl p-6 border border-indigo-700/50 backdrop-blur-sm">
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-white font-semibold">Referral Stats</h3>
-                            <TrendingUp className="w-5 h-5 text-indigo-400" />
-                        </div>
-                        <div className="space-y-3">
-                            <div>
-                                <div className="text-gray-400 text-sm">Friends Joined</div>
-                                <div className="text-2xl font-bold text-white">{referralInfo.referralCount}</div>
-                            </div>
-                            <div>
-                                <div className="text-gray-400 text-sm">Total Earned</div>
-                                <div className="text-2xl font-bold text-white">{referralInfo.referralEarnings.toFixed(5)} RFX</div>
-                            </div>
-                            <div className="pt-2">
-                                <Link 
-                                    to="/referrals" 
-                                    className="text-indigo-400 text-sm hover:underline"
-                                    onClick={() => setActiveTab('referrals')}
-                                >
-                                    View all referrals →
-                                </Link>
-                            </div>
-                        </div>
-                    </div>
                 </div>
 
-                {/* News Section */}
+                {/* Enhanced News Section */}
                 <div className="mt-8 bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-6 sm:p-8 border border-gray-700">
                     <div className="flex items-center justify-between mb-6">
                         <h3 className="text-xl sm:text-2xl font-bold text-white">Latest News</h3>
-                        <div className="px-3 py-1 bg-green-400/20 rounded-full text-green-400 text-sm font-semibold animate-pulse">
-                            LIVE
+                        <div className="flex items-center space-x-2">
+                            <div className="px-3 py-1 bg-green-400/20 rounded-full text-green-400 text-sm font-semibold animate-pulse">
+                                LIVE
+                            </div>
+                            <div className="text-xs text-gray-400">
+                                Updated: {new Date().toLocaleTimeString()}
+                            </div>
                         </div>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {[
-                            { title: 'New recycling partner added!', desc: 'Expanding our network for greater impact', time: '2 hours ago', trending: true },
-                            { title: 'What is Proof of Stake?', desc: 'Learn about our consensus mechanism', time: '5 hours ago' },
-                        ].map((news, index) => (
+                        {newsItems.map((news, index) => (
                             <div
                                 key={index}
                                 className="group relative overflow-hidden bg-gray-800/50 rounded-2xl p-5 backdrop-blur-sm border border-gray-700 transition-all hover:border-green-400/50 cursor-pointer"
                                 onClick={() => handleNewsClick(news.title)}
                             >
                                 <div className="absolute inset-0 bg-gradient-to-r from-green-400/0 to-green-400/0 group-hover:from-green-400/10 group-hover:to-transparent transition-all"></div>
-                                <div className="relative z-10 flex items-start space-x-4">
-                                    <div className="w-14 h-14 bg-gradient-to-br from-green-400 to-green-600 rounded-2xl flex items-center justify-center flex-shrink-0 transform group-hover:rotate-6 transition-transform">
-                                        <Sparkles className="w-7 h-7 text-black" />
-                                    </div>
-                                    <div className="flex-1">
-                                        <div className="flex items-center space-x-2 mb-1">
-                                            <h4 className="text-white font-semibold text-lg">{news.title}</h4>
-                                            {news.trending && (
-                                                <div className="px-2 py-1 bg-orange-400/20 rounded text-orange-400 text-xs font-semibold">
-                                                    TRENDING
-                                                </div>
-                                            )}
+                                <div className="relative z-10">
+                                    <div className="flex items-start space-x-4">
+                                        <div className="w-14 h-14 bg-gradient-to-br from-green-400 to-green-600 rounded-2xl flex items-center justify-center flex-shrink-0 transform group-hover:rotate-6 transition-transform">
+                                            <Sparkles className="w-7 h-7 text-black" />
                                         </div>
-                                        <p className="text-gray-400 text-sm mb-2">{news.desc}</p>
-                                        <span className="text-gray-500 text-xs">{news.time}</span>
+                                        <div className="flex-1">
+                                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                                                <h4 className="text-white font-semibold text-lg mb-1 sm:mb-0">
+                                                    {news.title}
+                                                </h4>
+                                                {news.trending && (
+                                                    <div className="px-2 py-1 bg-orange-400/20 rounded text-orange-400 text-xs font-semibold mb-2 sm:mb-0">
+                                                        TRENDING
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <p className="text-gray-400 text-sm mb-2">{news.desc}</p>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-gray-500 text-xs">{news.source}</span>
+                                                <span className="text-gray-500 text-xs">{news.time}</span>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         ))}
+                    </div>
+                    <div className="mt-4 text-right">
+                        <button 
+                            className="text-green-400 text-sm hover:underline"
+                            onClick={() => {
+                                setNewsItems(prev => [...prev].sort(() => 0.5 - Math.random()).slice(0, 2));
+                            }}
+                        >
+                            Refresh News →
+                        </button>
                     </div>
                 </div>
             </div>

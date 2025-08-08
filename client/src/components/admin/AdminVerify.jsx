@@ -16,7 +16,7 @@ export default function AdminVerify() {
             setEmail(userData.email);
         } else {
             // If no user data, redirect to login
-            navigate('/login');
+            navigate('/dashboard');
         }
     }, [navigate]);
 

@@ -147,7 +147,7 @@ const RecycleRush = () => {
             if (errorMessage.includes('authentication') || errorMessage.includes('token')) {
                 errorMessage = 'Session expired. Please log in again.';
                 localStorage.removeItem('authToken');
-                navigate('/login');
+                navigate('/dashboard');
             } else if (errorMessage.includes('ObjectId') || errorMessage.includes('Cast to ObjectId')) {
                 errorMessage = 'Game configuration error. Please try another game.';
             } else if (errorMessage.includes('locked')) {

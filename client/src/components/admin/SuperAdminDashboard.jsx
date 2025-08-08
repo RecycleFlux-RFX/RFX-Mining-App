@@ -500,7 +500,7 @@ const SuperAdminDashboard = () => {
   const handleLogout = () => {
     localStorage.removeItem('authToken');
     localStorage.removeItem('isSuperAdmin');
-    navigate('/login');
+    navigate('/dashboard');
   };
 
   // Render dashboard tab with real data

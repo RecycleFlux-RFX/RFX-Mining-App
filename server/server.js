@@ -13,7 +13,7 @@ const helmet = require('helmet');
 const path = require('path');
 const fs = require('fs');
 const Game = require('./models/Game');
-const Campaign = require('./models/campaign');
+const Campaign = require('./models/Campaign');
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const Leaderboard = require('./models/leaderboard');
@@ -53,8 +53,8 @@ app.use(morgan('combined', {
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 40 * 60 * 1000, // 40 minutes
-  max: 100, // Limit each IP to 100 requests per window
+  windowMs: 40 * 60 * 10000, // 40 minutes
+  max: 500, // Limit each IP to 100 requests per window
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
   message: 'Too many requests from this IP, please try again after 40 minutes',
@@ -67,8 +67,8 @@ app.use(limiter);
 
 // Request slow-down
 const speedLimiter = slowDown({
-  windowMs: 40 * 60 * 1000, // 40 minutes
-  delayAfter: 50, // Allow 50 requests without slowing down
+  windowMs: 40 * 60 * 10000, // 40 minutes
+  delayAfter: 500, // Allow 50 requests without slowing down
   delayMs: () => 500, // Add 500ms delay per request above limit
   skip: (req) => {
     // Skip slowing down for certain routes or conditions

@@ -18,6 +18,7 @@ import {
     FaTiktok as TikTok
 } from 'react-icons/fa';
 import axios from 'axios';
+import Swal from 'sweetalert2';
 // Bind modal to app element
 Modal.setAppElement('#root');
 
@@ -114,7 +115,7 @@ export default function RFXCampaignPage() {
     const fetchWithAuth = async (url, options = {}) => {
         const token = localStorage.getItem('authToken');
         if (!token) {
-            navigate('/login');
+            navigate('/dashboard');
             throw new Error('No authentication token found');
         }
 
@@ -140,7 +141,7 @@ export default function RFXCampaignPage() {
         } catch (error) {
             if (error.message.includes('401')) {
                 localStorage.removeItem('authToken');
-                navigate('/login');
+                navigate('/dashboard');
             }
             throw error;
         }
@@ -243,7 +244,7 @@ export default function RFXCampaignPage() {
 
     useEffect(() => {
         const navItems = [
-            { icon: Home, label: 'Home', id: 'home', path: '/' },
+            { icon: Home, label: 'Home', id: 'home', path: '/dashboard' },
             { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
             { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
             { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
@@ -264,7 +265,7 @@ export default function RFXCampaignPage() {
                     type: 'error',
                     message: 'Please log in to access campaigns',
                 });
-                navigate('/login');
+                navigate('/dashboard');
                 setLoading(false);
                 return;
             }
@@ -278,7 +279,7 @@ export default function RFXCampaignPage() {
             } catch (error) {
                 console.error('Authentication check failed:', error.message);
                 localStorage.removeItem('authToken');
-                navigate('/login');
+                navigate('/dashboard');
             } finally {
                 setLoading(false);
             }
@@ -287,116 +288,158 @@ export default function RFXCampaignPage() {
         checkAuth();
     }, [navigate]);
 
-    const fetchInitialData = async () => {
-        setLoading(true);
+const fetchInitialData = async () => {
+    setLoading(true);
+    try {
+        const [userResponse, rankResponse, networkResponse, campaignsResponse] = await Promise.all([
+            fetchWithAuth(`${BASE_URL}/user/user`).catch(error => {
+                if (error.message.includes('404')) return { username: '', email: '', campaigns: [] };
+                throw error;
+            }),
+            fetchWithAuth(`${BASE_URL}/wallet/rank`).catch(error => {
+                if (error.message.includes('404')) return { rank: 'N/A' };
+                throw error;
+            }),
+            fetchWithAuth(`${BASE_URL}/user/network-stats`).catch(error => {
+                if (error.message.includes('404')) return { totalRecycled: '0.00', activeUsers: 0 };
+                throw error;
+            }),
+            fetchWithAuth(`${BASE_URL}/campaigns`).catch(error => {
+                if (error.message.includes('404')) return { data: [] };
+                throw error;
+            }),
+        ]);
+
+        let userCampaignsData = [];
         try {
-            const [userResponse, rankResponse, networkResponse, campaignsResponse] = await Promise.all([
-                fetchWithAuth(`${BASE_URL}/user/user`).catch(error => {
-                    if (error.message.includes('404')) return { username: '', email: '', campaigns: [] };
-                    throw error;
-                }),
-                fetchWithAuth(`${BASE_URL}/wallet/rank`).catch(error => {
-                    if (error.message.includes('404')) return { rank: 'N/A' };
-                    throw error;
-                }),
-                fetchWithAuth(`${BASE_URL}/user/network-stats`).catch(error => {
-                    if (error.message.includes('404')) return { totalRecycled: '0.00', activeUsers: 0 };
-                    throw error;
-                }),
-                fetchWithAuth(`${BASE_URL}/campaigns`).catch(error => {
-                    if (error.message.includes('404')) return { data: [] };
-                    throw error;
-                }),
-            ]);
-
-            let userCampaignsData = [];
-            try {
-                const userCampaignsResponse = await fetchWithAuth(`${BASE_URL}/user/campaigns`);
-                userCampaignsData = Array.isArray(userCampaignsResponse) ? userCampaignsResponse : [];
-            } catch (error) {
-                console.error('Error fetching user campaigns:', error);
-                userCampaignsData = (userResponse.campaigns || []).map(c => ({
-                    ...c,
-                    id: c.campaignId?.toString(),
-                    _id: c.campaignId,
-                    userJoined: true,
-                    userCompleted: c.completed || 0,
-                    progress: 0
-                }));
-            }
-
-            const campaignsData = campaignsResponse.data || campaignsResponse;
-
-            const mappedCampaigns = (campaignsData || []).map((c) => {
-                const userCampaign = userCampaignsData.find(uc => 
-                    uc._id?.toString() === c._id?.toString() || 
-                    uc.id?.toString() === c._id?.toString()
-                ) || null;
-
-                const userProgress = userCampaign && c.tasksList && c.tasksList.length > 0 
-                    ? (userCampaign.userCompleted / c.tasksList.length) * 100 
-                    : 0;
-
-                const userCompletedWithPending = userCampaign && c.tasksList 
-                    ? userResponse.tasks.filter(t => 
-                        t.campaignId.toString() === c._id.toString() && 
-                        (t.status === 'completed' || (includePendingInProgress && t.status === 'pending'))
-                    ).length
-                    : userCampaign?.userCompleted || 0;
-
-                const userProgressWithPending = c.tasksList && c.tasksList.length > 0 
-                    ? (userCompletedWithPending / c.tasksList.length) * 100 
-                    : 0;
-
-                const globalProgress = c.tasksList && c.participants > 0
-                    ? (c.completedTasks / (c.tasksList.length * c.participants)) * 100
-                    : 0;
-
-                return {
-                    ...c,
-                    id: c._id?.toString() || c.id,
-                    tasks: c.tasksList ? c.tasksList.length : 0,
-                    completed: c.completedTasks || 0,
-                    participants: c.participants || 0,
-                    progress: userCampaign ? (includePendingInProgress ? userProgressWithPending : userProgress) : globalProgress,
-                    reward: c.reward ? `${c.reward} RFX` : '0 RFX',
-                    duration: c.duration ? `${c.duration} days` : 'N/A',
-                    userJoined: !!userCampaign,
-                    userCompleted: userCampaign ? userCampaign.userCompleted || 0 : 0,
-                    startDate: c.startDate ? new Date(c.startDate).toISOString() : new Date().toISOString(),
-                };
-            });
-
-            setCampaigns(mappedCampaigns);
-            setUserCampaigns(mappedCampaigns.filter(c => c.userJoined));
-            setUserStats({
-                earnings: userResponse.earnings || 0,
-                co2Saved: userResponse.co2Saved || '0.00',
-                fullName: userResponse.fullName || ''
-            });
-            setUserRank(rankResponse.rank || 'N/A');
-            setNetworkStats({
-                totalRecycled: networkResponse.totalRecycled || '0.00',
-                activeUsers: networkResponse.activeUsers || 0
-            });
+            const userCampaignsResponse = await fetchWithAuth(`${BASE_URL}/user/campaigns`);
+            userCampaignsData = Array.isArray(userCampaignsResponse) ? userCampaignsResponse : [];
         } catch (error) {
-            console.error('Fetch data error:', {
-                message: error.message,
-                response: error.response?.data,
-                status: error.response?.status
-            });
-            setError({
-                type: 'error',
-                message: error.message || 'Failed to fetch data',
-            });
-            if (error.message === 'User not found' || error.message.includes('Invalid token') || error.status === 401) {
-                localStorage.removeItem('authToken');
-                navigate('/login');
-            }
-        } finally {
-            setLoading(false);
+            console.error('Error fetching user campaigns:', error);
+            userCampaignsData = (userResponse.campaigns || []).map(c => ({
+                ...c,
+                id: c.campaignId?.toString(),
+                _id: c.campaignId,
+                userJoined: true,
+                userCompleted: c.completed || 0,
+                progress: 0
+            }));
         }
-    };
+
+        const campaignsData = campaignsResponse.data || campaignsResponse;
+
+        // Check for any campaigns that just ended
+        const now = new Date();
+        const justEndedCampaigns = campaignsData.filter(c => {
+            if (!c.endDate) return false;
+            const endDate = new Date(c.endDate);
+            // Check if campaign ended in the last 5 minutes (adjust as needed)
+            return endDate <= now && endDate > new Date(now.getTime() - 5 * 60 * 1000);
+        });
+
+        // Show SweetAlert for each just-ended campaign the user participated in
+        justEndedCampaigns.forEach(campaign => {
+            const userCampaign = userCampaignsData.find(uc => 
+                uc._id?.toString() === campaign._id?.toString() || 
+                uc.id?.toString() === campaign._id?.toString()
+            );
+            
+            if (userCampaign) {
+                Swal.fire({
+                    title: 'Campaign Ended!',
+                    text: `The "${campaign.title}" campaign has ended. Thanks for participating!`,
+                    icon: 'success',
+                    confirmButtonText: 'OK',
+                    background: '#1a202c',
+                    color: '#ffffff',
+                    confirmButtonColor: '#38a169'
+                });
+            }
+        });
+
+        const mappedCampaigns = (campaignsData || []).map((c) => {
+            const userCampaign = userCampaignsData.find(uc => 
+                uc._id?.toString() === c._id?.toString() || 
+                uc.id?.toString() === c._id?.toString()
+            ) || null;
+
+            const userProgress = userCampaign && c.tasksList && c.tasksList.length > 0 
+                ? (userCampaign.userCompleted / c.tasksList.length) * 100 
+                : 0;
+
+            const userCompletedWithPending = userCampaign && c.tasksList 
+                ? userResponse.tasks.filter(t => 
+                    t.campaignId.toString() === c._id.toString() && 
+                    (t.status === 'completed' || (includePendingInProgress && t.status === 'pending'))
+                ).length
+                : userCampaign?.userCompleted || 0;
+
+            const userProgressWithPending = c.tasksList && c.tasksList.length > 0 
+                ? (userCompletedWithPending / c.tasksList.length) * 100 
+                : 0;
+
+            const globalProgress = c.tasksList && c.participants > 0
+                ? (c.completedTasks / (c.tasksList.length * c.participants)) * 100
+                : 0;
+
+            return {
+                ...c,
+                id: c._id?.toString() || c.id,
+                tasks: c.tasksList ? c.tasksList.length : 0,
+                completed: c.completedTasks || 0,
+                participants: c.participants || 0,
+                progress: userCampaign ? (includePendingInProgress ? userProgressWithPending : userProgress) : globalProgress,
+                reward: c.reward ? `${c.reward} RFX` : '0 RFX',
+                duration: c.duration ? `${c.duration} days` : 'N/A',
+                userJoined: !!userCampaign,
+                userCompleted: userCampaign ? userCampaign.userCompleted || 0 : 0,
+                startDate: c.startDate ? new Date(c.startDate).toISOString() : new Date().toISOString(),
+                endDate: c.endDate ? new Date(c.endDate).toISOString() : null,
+                status: c.status || (c.endDate && new Date(c.endDate) <= now ? 'completed' : 'active')
+            };
+        });
+
+        // Filter out ended campaigns from active display
+const now1 = new Date();
+const activeCampaigns = campaigns.filter(c => 
+    c.status === 'active' || 
+    (c.endDate && new Date(c.endDate) > now1)
+);
+const completedCampaigns = campaigns.filter(c => 
+    c.status === 'completed' || 
+    (c.endDate && new Date(c.endDate) <= now1)
+);
+
+        setCampaigns(mappedCampaigns);
+        setUserCampaigns(activeCampaigns.filter(c => c.userJoined));
+        setUserStats({
+            earnings: userResponse.earnings || 0,
+            co2Saved: userResponse.co2Saved || '0.00',
+            fullName: userResponse.fullName || ''
+        });
+        setUserRank(rankResponse.rank || 'N/A');
+        setNetworkStats({
+            totalRecycled: networkResponse.totalRecycled || '0.00',
+            activeUsers: networkResponse.activeUsers || 0
+        });
+    } catch (error) {
+        console.error('Fetch data error:', {
+            message: error.message,
+            response: error.response?.data,
+            status: error.response?.status
+        });
+        setError({
+            type: 'error',
+            message: error.message || 'Failed to fetch data',
+        });
+        if (error.message === 'User not found' || error.message.includes('Invalid token') || error.status === 401) {
+            localStorage.removeItem('authToken');
+            navigate('/dashboard');
+        }
+    } finally {
+        setLoading(false);
+    }
+};
 
     const fetchCampaignDetails = async (campaignId) => {
         try {

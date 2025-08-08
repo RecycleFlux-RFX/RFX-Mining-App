@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
     Home, MapPin, Gamepad2, Wallet, Settings, Plus, Minus,
-    Recycle, Trophy, Star, TrendingUp, Send, Users, Gift, Eye, Search, EyeOff
+    Recycle, Trophy, Star, TrendingUp, Send, Users, Gift, Eye, Search, EyeOff, Coins
 } from 'lucide-react';
 
 export default function RFXWalletPage() {
@@ -31,7 +31,7 @@ export default function RFXWalletPage() {
     };
 
     const navItems = [
-        { icon: Home, label: 'Home', id: 'home', path: '/' },
+        { icon: Home, label: 'Home', id: 'home', path: '/dashboard' },
         { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
         { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
         { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
@@ -45,7 +45,7 @@ export default function RFXWalletPage() {
             const token = localStorage.getItem('authToken');
             if (!token) {
                 setError('Please log in to access wallet');
-                navigate('/login');
+                navigate('/dashboard');
                 return;
             }
 
@@ -95,7 +95,7 @@ export default function RFXWalletPage() {
 
                 if (error.message.includes('Authentication') || error.message.includes('Invalid token')) {
                     localStorage.removeItem('authToken');
-                    navigate('/login');
+                    navigate('/dashboard');
                 }
             } finally {
                 setLoading(false);
