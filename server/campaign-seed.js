@@ -505,7 +505,7 @@ const seedCampaigns = async () => {
             useNewUrlParser: true,
             useUnifiedTopology: true,
         });
-        console.log('Connected to MongoDB');
+
 
         // Find the admin user
         const adminUser = await User.findOne({ email: 'abubakar.nabil.210@gmail.com' });
@@ -519,18 +519,17 @@ const seedCampaigns = async () => {
 
         // Delete existing campaigns
         await Campaign.deleteMany({});
-        console.log('Deleted existing campaigns');
+
 
         // Insert new campaigns
         const insertedCampaigns = await Campaign.insertMany(campaignsWithCreatedBy);
-        console.log(`Successfully seeded ${insertedCampaigns.length} campaigns`);
+
 
     } catch (error) {
         console.error('Seeding error:', error);
         process.exit(1);
     } finally {
         await mongoose.connection.close();
-        console.log('MongoDB connection closed');
     }
 };
 

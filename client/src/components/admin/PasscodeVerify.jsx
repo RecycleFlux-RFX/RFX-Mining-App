@@ -19,7 +19,7 @@ const handleSubmit = async (e) => {
             throw new Error('No authentication token found. Please login again.');
         }
 
-        console.log('Submitting passcode:', passcode);
+
         
         const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/superadmin/verify`, {
             method: 'POST',
@@ -37,7 +37,7 @@ const handleSubmit = async (e) => {
             throw new Error(data.message || 'Verification failed');
         }
 
-        console.log('Verification successful:', data);
+
         localStorage.setItem('isSuperAdmin', 'true');
         navigate('/admin/super');
     } catch (err) {

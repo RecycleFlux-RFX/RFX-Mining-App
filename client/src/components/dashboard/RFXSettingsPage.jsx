@@ -24,7 +24,7 @@ export default function RFXSettingsPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [showComingSoon, setShowComingSoon] = useState(true);
 
-    const BASE_URL = 'http://localhost:3000/user';
+    const BASE_URL = 'https://rfx-mining-app.onrender.com/user';
 
     const navItems = [
         { icon: Home, label: 'Home', id: 'home', path: '/dashboard' },
@@ -63,7 +63,6 @@ export default function RFXSettingsPage() {
     useEffect(() => {
         const token = localStorage.getItem('authToken');
         if (!token) {
-            console.log('No auth token found, redirecting to login');
             setError('Please log in to access settings');
             navigate('/dashboard');
         }

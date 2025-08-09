@@ -162,7 +162,7 @@ const SuperAdminDashboard = () => {
   useEffect(() => {
     const verifySuperAdminStatus = async () => {
       const token = localStorage.getItem('authToken');
-      console.log('Token from localStorage:', token);
+
 
       if (!token) {
         console.error('No token found, redirecting to login');
@@ -172,7 +172,7 @@ const SuperAdminDashboard = () => {
 
       try {
         const decoded = jwtDecode(token);
-        console.log('Decoded token:', decoded);
+
 
         if (decoded.isSuperAdmin) {
           await fetchInitialData();
@@ -180,7 +180,7 @@ const SuperAdminDashboard = () => {
         }
 
         if (decoded.email === import.meta.env.VITE_SUPER_ADMIN_EMAIL) {
-          console.log('Super admin email matched, needs passcode verification');
+
           setNeedsVerification(true);
           return;
         }

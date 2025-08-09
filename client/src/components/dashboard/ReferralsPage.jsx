@@ -11,7 +11,7 @@ export default function ReferralsPage() {
     });
     const [isLoading, setIsLoading] = useState(true);
 
-    const BASE_URL = 'http://localhost:3000'; // Or use process.env.REACT_APP_API_URL
+    const BASE_URL = 'https://rfx-mining-app.onrender.com'; // Or use process.env.REACT_APP_API_URL
 
     const fetchWithAuth = async (url, options = {}) => {
         const token = localStorage.getItem('authToken');

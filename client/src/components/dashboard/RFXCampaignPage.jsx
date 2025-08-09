@@ -22,7 +22,7 @@ import Swal from 'sweetalert2';
 // Bind modal to app element
 Modal.setAppElement('#root');
 
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = 'https://rfx-mining-app.onrender.com';
 
 export default function RFXCampaignPage() {
     const location = useLocation();
@@ -198,18 +198,15 @@ export default function RFXCampaignPage() {
                 seconds: Math.max(0, seconds)
             }
         };
-        console.log('Calculated day progress:', result, 'for campaign:', campaign.title);
+        ('Calculated day progress:', result, 'for campaign:', campaign.title);
         return result;
     };
 
     useEffect(() => {
         if (selectedCampaign && tasks.length > 0) {
-            console.log('Campaign Start Date:', selectedCampaign.startDate);
-            console.log('Current Day:', currentDay);
-            console.log('Tasks for Current Day:', tasks.filter(task => task.day === currentDay));
+
             setDailyTasks(tasks.filter(task => task.day === currentDay || (isNaN(currentDay) && task.day === 1)));
         } else {
-            console.log('No selected campaign or tasks:', { selectedCampaign, tasks });
             setDailyTasks([]);
         }
     }, [tasks, currentDay, selectedCampaign]);
@@ -228,7 +225,7 @@ export default function RFXCampaignPage() {
 
                     const duration = parseInt(selectedCampaign.duration, 10) || 1;
                     const newDay = Math.min(currentDay + 1, duration);
-                    console.log('Advancing to new day:', newDay);
+
                     if (newDay !== currentDay) {
                         setCurrentDay(newDay);
                         fetchCampaignDetails(selectedCampaign.id);
@@ -443,9 +440,9 @@ const completedCampaigns = campaigns.filter(c =>
 
     const fetchCampaignDetails = async (campaignId) => {
         try {
-            console.log('Fetching campaign details for ID:', campaignId);
+
             const response = await fetchWithAuth(`${BASE_URL}/campaigns/${campaignId}/user`);
-            console.log('Campaign details response:', response);
+
 
             const mappedTasks = (response.tasksList || []).map((task) => {
                 const userTask = response.participantsList
@@ -462,7 +459,7 @@ const completedCampaigns = campaigns.filter(c =>
                 };
             });
 
-            console.log('Mapped tasks:', mappedTasks);
+
             setTasks(mappedTasks);
             setSelectedCampaign({
                 ...response,

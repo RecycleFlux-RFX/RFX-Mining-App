@@ -18,7 +18,7 @@ export default function RFXWalletPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    const BASE_URL = 'http://localhost:3000';
+    const BASE_URL = 'https://rfx-mining-app.onrender.com';
 
     const iconMap = {
         Game: Gamepad2,

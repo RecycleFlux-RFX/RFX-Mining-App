@@ -17,14 +17,14 @@ function App() {
     setAddress(addr);
 
     // Send address to backend
-    const res = await fetch("http://localhost:3000/connect", {
+    const res = await fetch("https://rfx-mining-app.onrender.com/connect", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ address: addr })
     });
 
     const data = await res.json();
-    console.log(data);
+
   };
 
   return (

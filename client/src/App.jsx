@@ -33,7 +33,6 @@ const ProtectedAdminRoute = ({ children, superAdminOnly = false }) => {
             const decoded = jwtDecode(token);
             isAdmin = decoded.isAdmin || localStorage.getItem('isAdmin') === 'true';
             isSuperAdmin = decoded.isSuperAdmin || localStorage.getItem('isSuperAdmin') === 'true';
-            console.log('ProtectedAdminRoute - Decoded token:', { isAdmin, isSuperAdmin }); // Debug
         } catch (err) {
             console.error('Token decode error in ProtectedAdminRoute:', err);
             localStorage.removeItem('authToken');

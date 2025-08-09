@@ -24,6 +24,8 @@ const morgan = require('morgan');
 const { body, validationResult } = require('express-validator');
 const cron = require('node-cron');
 const axios = require('axios');
+/* const manager = require('./runners'); */
+
 
 // Load environment variables
 dotenv.config();
@@ -83,6 +85,19 @@ const limiter = rateLimit({
   }
 });
 app.use(limiter);
+
+const keepDatabaseAlive = () => {
+    // Run every 30 minutes (adjust as needed)
+    setInterval(async () => {
+        try {
+            // Perform a simple query to keep the connection alive
+            await mongoose.connection.db.admin().ping();
+            console.log('Database ping successful - connection kept alive');
+        } catch (error) {
+            console.error('Database ping failed:', error);
+        }
+    }, 30 * 60 * 1000); // 30 minutes in milliseconds
+};
 
 // Request slow-down
 const speedLimiter = slowDown({
@@ -172,7 +187,7 @@ const adminAuth = (req, res, next) => {
             return res.status(401).json({ message: 'Unauthorized: No user data found' });
         }
 
-        const isSuperAdmin = req.user.email === process.env.SUPER_ADMIN_EMAIL;
+        const isSuperAdmin = req.user.email === process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2;
         const isAdmin = req.user.isAdmin === true;
 
         if (!isSuperAdmin && !isAdmin) {
@@ -200,12 +215,12 @@ const superAdminAuth = (req, res, next) => {
         req.user = decoded;
         
         const isSuperAdmin = decoded.isSuperAdmin || 
-                           (decoded.email && decoded.email === process.env.SUPER_ADMIN_EMAIL);
+                           (decoded.email && decoded.email === SUPER_ADMIN_EMAILprocess.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2);
         
         if (!isSuperAdmin) {
             console.error('Super admin check failed:', {
                 isSuperAdmin: decoded.isSuperAdmin,
-                emailMatch: decoded.email === process.env.SUPER_ADMIN_EMAIL
+                emailMatch: decoded.email === process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2
             });
             return res.status(403).json({ 
                 message: 'Super admin access required'
@@ -348,7 +363,7 @@ app.post('/auth/signup', limiter, validateSignup, async (req, res) => {
                 userId: user._id, 
                 email: user.email,
                 isAdmin: user.isAdmin,
-                isSuperAdmin: user.email === process.env.SUPER_ADMIN_EMAIL
+                isSuperAdmin: user.email === process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2
             },
             process.env.JWT_SECRET,
             { expiresIn: '7d' }
@@ -422,6 +437,11 @@ app.post('/auth/signup', limiter, validateSignup, async (req, res) => {
     }
 });
 
+app.get('/ping-server', (req, res) => {
+  res.status(200).send('heartBeat🚀');
+});
+
+
 app.post('/auth/login', validateLogin, async (req, res) => {
     try {
         const errors = validationResult(req);
@@ -447,7 +467,7 @@ app.post('/auth/login', validateLogin, async (req, res) => {
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
-        const isSuperAdmin = user.email === process.env.SUPER_ADMIN_EMAIL;
+        const isSuperAdmin = user.email === process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2;
         const token = jwt.sign(
             { 
                 userId: user._id, 
@@ -481,14 +501,14 @@ app.post('/auth/login', validateLogin, async (req, res) => {
 app.post('/auth/superadmin/verify', authenticateToken, async (req, res) => {
     try {
         const user = await User.findById(req.user.userId);
-        if (!user || user.email !== process.env.SUPER_ADMIN_EMAIL) {
+        if (!user || user.email !== process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2) {
             return res.status(403).json({ 
                 message: 'Super admin access required'
             });
         }
 
         const { passcode } = req.body;
-        if (passcode !== process.env.SUPER_ADMIN_PASSCODE) {
+        if (passcode !== process.env.SUPER_ADMIN_PASSCODE_1 || process.env.SUPER_ADMIN_PASSCODE_2) {
             return res.status(400).json({ message: 'Invalid passcode' });
         }
 
@@ -534,7 +554,7 @@ app.post('/auth/admin/verify', [authenticateToken, validateAdminVerify], async (
             return res.status(404).json({ message: 'User not found' });
         }
 
-        const isAdmin = user.isAdmin || user.email === process.env.SUPER_ADMIN_EMAIL;
+        const isAdmin = user.isAdmin || user.email === process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2;
         if (!isAdmin) {
             return res.status(403).json({ message: 'Not an admin account' });
         }
@@ -544,7 +564,7 @@ app.post('/auth/admin/verify', [authenticateToken, validateAdminVerify], async (
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
-        const isSuperAdmin = user.email === process.env.SUPER_ADMIN_EMAIL;
+        const isSuperAdmin = user.email === process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2;
 
         res.status(200).json({
             message: 'Admin verified successfully',
@@ -613,7 +633,7 @@ app.post('', authenticateToken, async (req, res) => {
         }
 
         // Check if this is super admin
-        const isSuperAdmin = user.email === process.env.SUPER_ADMIN_EMAIL;
+        const isSuperAdmin = user.email === process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2;
 
         res.status(200).json({
             message: 'Admin verified successfully',
@@ -684,7 +704,7 @@ app.put('/admin/users/:id/suspend', [authenticateToken, superAdminAuth], async (
     }
 
     // Prevent modifying super admin
-    if (user.email === process.env.SUPER_ADMIN_EMAIL) {
+    if (user.email === process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2) {
       return res.status(403).json({ message: 'Cannot modify super admin status' });
     }
 
@@ -3158,6 +3178,7 @@ const connectDB = async () => {
     try {
         await mongoose.connect(process.env.MONGO_URI);
         console.log('MongoDB connected successfully');
+        keepDatabaseAlive(); // Start the keep-alive mechanism
     } catch (err) {
         console.error('MongoDB connection error:', err);
         process.exit(1);

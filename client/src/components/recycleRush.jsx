@@ -20,7 +20,7 @@ const RecycleRush = () => {
     const itemIdCounter = useRef(0);
     const navigate = useNavigate();
     const gameId = '688d176754cb10bba40ace6d';
-    const BASE_URL = 'http://localhost:3000';
+    const BASE_URL = 'https://rfx-mining-app.onrender.com';
 
     const wasteItems = [
         { name: 'Soda Can', type: 'Metal', emoji: '🥤' },

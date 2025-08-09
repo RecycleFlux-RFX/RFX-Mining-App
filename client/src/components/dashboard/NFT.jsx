@@ -39,7 +39,7 @@ export default function RFXVerseInterface() {
     const [newsItems, setNewsItems] = useState([]);
     const containerRef = useRef(null);
 
-    const BASE_URL = 'http://localhost:3000/user';
+    const BASE_URL = 'https://rfx-mining-app.onrender.com/user';
 
     const navItems = [
         { icon: Home, label: 'Home', id: 'home', path: '/dashboard' },

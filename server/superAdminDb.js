@@ -14,13 +14,13 @@ const seedSuperAdmin = async () => {
     });
     console.log('Connected to MongoDB');
 
-    // Delete any existing super admin users
+/*     // Delete any existing super admin users
     const deleteResult = await User.deleteMany({ isSuperAdmin: true });
-    console.log(`Deleted ${deleteResult.deletedCount} existing super admin(s)`);
+    console.log(`Deleted ${deleteResult.deletedCount} existing super admin(s)`); */
 
     // Generate a secure password
     const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(process.env.SUPER_ADMIN_PASSWORD, salt);
+    const hashedPassword = await bcrypt.hash(/* process.env.SUPER_ADMIN_PASSWORD_1  || */ process.env.SUPER_ADMIN_PASSWORD_2, salt);
     const passkey = uuidv4();
     
     // Generate a fake Ethereum wallet address
@@ -28,11 +28,11 @@ const seedSuperAdmin = async () => {
 
     // Create super admin user
     const superAdmin = new User({
-      username: 'superadmin',
-      email: process.env.SUPER_ADMIN_EMAIL,
+      username: 'YUSUF',
+      email: process.env.SUPER_ADMIN_EMAIL_2,
       password: hashedPassword,
       passkey,
-      fullName: 'Super Admin',
+      fullName: 'YUSUF',
       isAdmin: true,  // Changed from false to true since super admin should also be admin
       isSuperAdmin: true,
       walletAddress: fakeWallet, // Using generated fake wallet address

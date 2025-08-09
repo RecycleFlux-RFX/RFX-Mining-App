@@ -29,10 +29,8 @@ async function migrateCampaigns() {
             }
 
             await campaign.save();
-            console.log(`Updated campaign ${campaign._id}`);
         }
 
-        console.log('Migration completed');
         mongoose.connection.close();
     } catch (err) {
         console.error('Migration error:', err);
