@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const cors = require('cors');
 const { v4: uuidv4 } = require('uuid');
 const User = require('./models/User');
 const Transaction = require('./models/Transaction');
@@ -28,6 +29,11 @@ dotenv.config();
 
 const app = express();
 
+
+app.use(cors({
+  origin: 'https://rfx-mining1-app.vercel.app',
+  credentials: true, // if you're sending cookies or using sessions
+}));
 
 app.use(helmet({
     contentSecurityPolicy: {
