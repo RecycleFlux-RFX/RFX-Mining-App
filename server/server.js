@@ -36,7 +36,7 @@ app.use(helmet({
             scriptSrc: ["'self'", 'trusted-cdn.com'],
             styleSrc: ["'self'", "'unsafe-inline'"],
             imgSrc: ["'self'", 'data:', 'https:'],
-            connectSrc: ["'self'", 'https://api.trusted-service.com'],
+            connectSrc: ["'self'", 'rfx-mining1-app.vercel.app'],
             upgradeInsecureRequests: [],
         }
     },
