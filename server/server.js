@@ -1,6 +1,5 @@
 const express = require('express');
 const mongoose = require('mongoose');
-const cors = require('cors');
 const dotenv = require('dotenv');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -80,6 +79,8 @@ const keepDatabaseAlive = () => {
     }, 30 * 60 * 1000); // 30 minutes in milliseconds
 };
 
+
+keepDatabaseAlive()
 // Request slow-down
 const speedLimiter = slowDown({
   windowMs: 40 * 60 * 10000, // 40 minutes
@@ -99,10 +100,6 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-
-
-// Middleware
-/* // CORS configuration
 app.use((req, res, next) => {
   const allowedOrigins = [
     "rfx-mining1-app.vercel.app",
