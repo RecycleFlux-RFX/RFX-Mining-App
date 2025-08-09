@@ -67,7 +67,7 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again after 40 minutes',
   skip: (req) => {
     // Skip rate limiting for certain routes or conditions if needed
-    return req.path === '/health-check' || req.ip === '127.0.0.1';
+    return req.path === '/health-check' || req.ip === '44.226.145.213';
   }
 });
 app.use(limiter);
@@ -243,7 +243,7 @@ app.post('/auth/superadmin/verify', authenticateToken, async (req, res) => {
     try {
         const user = await User.findById(req.user.userId);
         
-        if (!user || user.email !== process.env.SUPER_ADMIN_EMAIL) {
+        if (!user || (user.email !== process.env.SUPER_ADMIN_EMAIL_1 &&user.email !== process.env.SUPER_ADMIN_EMAIL_2)) {
             return res.status(403).json({ 
                 message: 'Super admin access required',
                 details: {
