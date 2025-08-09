@@ -16,7 +16,7 @@ const TrashSortGame = () => {
     const [showInstructions, setShowInstructions] = useState(false);
     const [rewardTiers, setRewardTiers] = useState([]);
     const [difficulty, setDifficulty] = useState(1);
-    const BASE_URL = 'http://localhost:3000';
+    const BASE_URL = 'https://rfx-mining-app.onrender.com';
     const navigate = useNavigate();
     const gameId = '688d176754cb10bba40ace66';
     const itemIdCounter = useRef(0);

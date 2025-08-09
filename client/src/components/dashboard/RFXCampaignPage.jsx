@@ -22,7 +22,7 @@ import Swal from 'sweetalert2';
 // Bind modal to app element
 Modal.setAppElement('#root');
 
-const BASE_URL = 'http://localhost:3000';
+const BASE_URL = 'https://rfx-mining-app.onrender.com';
 
 export default function RFXCampaignPage() {
     const location = useLocation();

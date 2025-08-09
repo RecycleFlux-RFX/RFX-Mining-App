@@ -105,7 +105,7 @@ cloudinary.config({
 // CORS configuration
 app.use((req, res, next) => {
   const allowedOrigins = [
-    "https://rfx-mining.vercel.app",
+    "rfx-mining1-app.vercel.app",
     "http://localhost:5173"
   ];
   
