@@ -437,7 +437,7 @@ app.post('/auth/signup', limiter, validateSignup, async (req, res) => {
     }
 });
 
-app.get('/ping-server', (req, res) => {
+app.get('/', (req, res) => {
   res.status(200).send('heartBeat🚀');
 });
 
