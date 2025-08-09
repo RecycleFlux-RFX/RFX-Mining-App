@@ -51,7 +51,7 @@ app.use(helmet({
 }));
 
 // Add server ping cron job to prevent Render from sleeping
-const heartBeat = () => {
+/* const heartBeat = () => {
     if (process.env.RENDER_EXTERNAL_URL) {
         cron.schedule('*/5 * * * *', async () => {
             try {
@@ -63,7 +63,7 @@ const heartBeat = () => {
             }
         });
     }
-};
+}; */
 
 heartBeat()
 
@@ -437,9 +437,6 @@ app.post('/auth/signup', limiter, validateSignup, async (req, res) => {
     }
 });
 
-app.get('/', (req, res) => {
-  res.status(200).send('heartBeat🚀');
-});
 
 
 app.post('/auth/login', validateLogin, async (req, res) => {
