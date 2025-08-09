@@ -17,7 +17,7 @@ const categoryIcons = {
     Default: Puzzle
 };
 
-const BASE_URL = 'https://rfx-mining-app.onrender.com';
+const BASE_URL = 'http://localhost:3000';
 
 export default function RFXGamesPage() {
     const location = useLocation();

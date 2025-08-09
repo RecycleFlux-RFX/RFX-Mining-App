@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-    baseURL: 'https://rfx-mining-app.onrender.com',
+    baseURL: 'http://localhost:3000',
     headers: {
         'Content-Type': 'application/json'
     },

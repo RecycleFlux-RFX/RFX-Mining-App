@@ -63,7 +63,7 @@ export default function Login() {
                     } 
                 });
             } else {
-                navigate('/');
+                navigate('/dashboard');
             }
 
         } catch (err) {

@@ -9,14 +9,13 @@ const User = require('./models/User');
 const Transaction = require('./models/Transaction');
 const ethers = require('ethers');
 const multer = require('multer');
-const helmet = require('helmet');
 const path = require('path');
-const fs = require('fs');
+const fs = require('fs'); // Added for file system operations
 const Game = require('./models/Game');
-const Campaign = require('./models/Campaign');
+const Campaign = require('./models/campaign');
 const cloudinary = require('cloudinary').v2;
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
-const Leaderboard = require('./models/leaderboard');
+const Leaderboard = require('./models/leaderboard')
 const xss = require('xss-clean');
 const rateLimit = require('express-rate-limit');
 const slowDown = require('express-slow-down');
@@ -24,15 +23,13 @@ const morgan = require('morgan');
 const { body, validationResult } = require('express-validator');
 const cron = require('node-cron');
 const axios = require('axios');
-/* const manager = require('./runners'); */
-
-
+const helmet = require('helmet')
 // Load environment variables
 dotenv.config();
 
 const app = express();
 
-// Security Middleware Setup
+
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
@@ -95,6 +92,16 @@ const speedLimiter = slowDown({
 });
 app.use(speedLimiter);
 
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
+
+
+// Middleware
 // CORS configuration
 app.use((req, res, next) => {
   const allowedOrigins = [
@@ -118,40 +125,32 @@ app.use((req, res, next) => {
   next();
 });
 
-
-app.use(express.json({ limit: '10kb' }));
-app.use(express.urlencoded({ extended: true, limit: '10kb' }));
-
-// Cloudinary configuration
-cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET
-});
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Ensure uploads directory exists
-const uploadDir = path.join(__dirname, 'Uploads', 'campaigns');
+const uploadDir = path.join(__dirname, 'uploads', 'campaigns');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-// Multer configuration
+// Configure multer for file uploads with improved filename handling
 const storage = new CloudinaryStorage({
-    cloudinary: cloudinary,
-    params: {
-        folder: 'campaign-proofs',
-        allowed_formats: ['jpg', 'jpeg', 'png', 'gif'],
-        transformation: [{ width: 800, height: 600, crop: 'limit' }]
-    }
+  cloudinary: cloudinary,
+  params: {
+    folder: 'campaign-proofs',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'gif'],
+    transformation: [{ width: 800, height: 600, crop: 'limit' }]
+  }
 });
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 5 * 1024 * 1024 },
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
     fileFilter: (req, file, cb) => {
         const filetypes = /jpeg|jpg|png|gif/;
         const mimetype = filetypes.test(file.mimetype);
-        const extname = filetypes.test(path.extname(file.originalName).toLowerCase());
+        const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
 
         if (mimetype && extname) {
             return cb(null, true);
@@ -160,6 +159,8 @@ const upload = multer({
     }
 });
 
+
+// Serve static files from uploads directory
 app.use('/uploads', express.static(uploadDir));
 
 // JWT Authentication Middleware
@@ -182,29 +183,34 @@ const authenticateToken = (req, res, next) => {
 
 // Admin Authentication Middleware
 const adminAuth = (req, res, next) => {
-    try {
-        if (!req.user) {
-            return res.status(401).json({ message: 'Unauthorized: No user data found' });
-        }
-
-        const isSuperAdmin = req.user.email === process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2;
-        const isAdmin = req.user.isAdmin === true;
-
-        if (!isSuperAdmin && !isAdmin) {
-            return res.status(403).json({ message: 'Not an admin account' });
-        }
-
-        next();
-    } catch (error) {
-        console.error('Admin auth error:', error);
-        res.status(500).json({ message: 'Server error during admin authentication' });
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized: No user data found' });
     }
+
+const isSuperAdmin =
+  req.user.email === process.env.SUPER_ADMIN_EMAIL_1 ||
+  req.user.email === process.env.SUPER_ADMIN_EMAIL_2;
+
+    const isAdmin = req.user.isAdmin === true;
+
+    if (!isSuperAdmin && !isAdmin) {
+      return res.status(403).json({ message: 'Not an admin account' });
+    }
+
+    next();
+  } catch (error) {
+    console.error('Admin auth error:', error);
+    res.status(500).json({ message: 'Server error during admin authentication' });
+  }
 };
 
-// Super Admin Authentication Middleware
+
+// server.js
 const superAdminAuth = (req, res, next) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
+    
     if (!token) {
         console.error('No token provided');
         return res.status(401).json({ message: 'Authentication token required' });
@@ -214,16 +220,32 @@ const superAdminAuth = (req, res, next) => {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         req.user = decoded;
         
-        const isSuperAdmin = decoded.isSuperAdmin || 
-                           (decoded.email && decoded.email === SUPER_ADMIN_EMAILprocess.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2);
+const isSuperAdmin =
+  decoded.isSuperAdmin ||
+  (
+    decoded.email &&
+    (decoded.email === process.env.SUPER_ADMIN_EMAIL_1 ||
+     decoded.email === process.env.SUPER_ADMIN_EMAIL_2)
+  );
+
         
         if (!isSuperAdmin) {
             console.error('Super admin check failed:', {
                 isSuperAdmin: decoded.isSuperAdmin,
-                emailMatch: decoded.email === process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2
+emailMatch:
+  decoded.email === process.env.SUPER_ADMIN_EMAIL_1 ||
+  decoded.email === process.env.SUPER_ADMIN_EMAIL_2
+
             });
             return res.status(403).json({ 
-                message: 'Super admin access required'
+                message: 'Super admin access required',
+                details: {
+                    isSuperAdmin: decoded.isSuperAdmin,
+emailMatch:
+  decoded.email === process.env.SUPER_ADMIN_EMAIL_1 ||
+  decoded.email === process.env.SUPER_ADMIN_EMAIL_2
+
+                }
             });
         }
         
@@ -234,75 +256,126 @@ const superAdminAuth = (req, res, next) => {
     }
 };
 
-// Input validation middleware
-const validateSignup = [
-    body('username')
-        .trim()
-        .notEmpty().withMessage('Username is required')
-        .isLength({ min: 3, max: 20 }).withMessage('Username must be between 3 and 20 characters')
-        .matches(/^[a-zA-Z0-9_]+$/).withMessage('Username can only contain letters, numbers, and underscores'),
-    body('email')
-        .trim()
-        .isEmail().withMessage('Invalid email format')
-        .normalizeEmail(),
-    body('password')
-        .isLength({ min: 8 }).withMessage('Password must be at least 8 characters')
-        .matches(/[a-zA-Z]/).withMessage('Password must contain letters')
-        .matches(/[0-9]/).withMessage('Password must contain numbers')
-        .matches(/[!@#$%^&*(),.?":{}|<>]/).withMessage('Password must contain special characters'),
-    body('fullName')
-        .trim()
-        .notEmpty().withMessage('Full name is required')
-        .isLength({ min: 2, max: 50 }).withMessage('Full name must be between 2 and 50 characters')
-];
-
-const validateLogin = [
-    body('username')
-        .trim()
-        .notEmpty().withMessage('Username or email is required'),
-    body('password')
-        .notEmpty().withMessage('Password is required')
-];
-
-const validateAdminVerify = [
-    body('password').notEmpty().withMessage('Password is required')
-];
-
-const validateAdminCheck = [
-    body('email').isEmail().withMessage('Invalid email format').normalizeEmail()
-];
-
-// Routes
-app.post('/auth/signup', limiter, validateSignup, async (req, res) => {
+// Update the super admin verification endpoint
+app.post('/auth/superadmin/verify', authenticateToken, async (req, res) => {
     try {
-        // Check validation results
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ 
-                message: 'Validation failed',
-                errors: errors.array()
+        const user = await User.findById(req.user.userId);
+        
+        if (!user || user.email !== process.env.SUPER_ADMIN_EMAIL) {
+            return res.status(403).json({ 
+                message: 'Super admin access required',
+                details: {
+                    expectedEmail: process.env.SUPER_ADMIN_EMAIL_1 || process.env.SUPER_ADMIN_EMAIL_2,
+                    userEmail: user?.email
+                }
             });
         }
 
-        const { username, email, password, fullName, referralCode, recaptchaToken } = req.body;
+        const { passcode } = req.body;
+        if (passcode !== process.env.SUPER_ADMIN_PASSCODE_1) {
+            return res.status(400).json({ message: 'Invalid passcode' });
+        }
 
-        // Verify reCAPTCHA token
-        const recaptchaResponse = await axios.post(
-            `https://www.google.com/recaptcha/api/siteverify`,
-            null,
-            {
-                params: {
-                    secret: process.env.RECAPTCHA_SECRET_KEY,
-                    response: recaptchaToken,
-                    remoteip: req.ip
-                }
-            }
+        user.isSuperAdmin = true;
+        await user.save();
+
+        const newToken = jwt.sign(
+            { 
+                userId: user._id,
+                email: user.email,
+                isAdmin: true,
+                isSuperAdmin: true 
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
         );
 
-        if (!recaptchaResponse.data.success || recaptchaResponse.data.score < 0.5) {
-            return res.status(400).json({
-                message: 'Invalid reCAPTCHA token',
-                details: 'reCAPTCHA verification failed'
+        return res.status(200).json({
+            token: newToken,
+            isSuperAdmin: true
+        });
+    } catch (err) {
+        console.error('Super admin verification error:', err);
+        return res.status(500).json({ message: 'Server error' });
+    }
+});
+
+app.post('/auth/admin/verify', authenticateToken, async (req, res) => {
+    try {
+        const { password } = req.body;
+        const userId = req.user.userId;
+
+        if (!password) {
+            return res.status(400).json({ message: 'Password is required' });
+        }
+
+        // Get user from database
+        const user = await User.findById(userId);
+        
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Check if user is either admin or super admin
+        const isAdmin = user.isAdmin || user.email === process.env.ADMIN_EMAIL;
+        if (!isAdmin) {
+            return res.status(403).json({ message: 'Not an admin account' });
+        }
+
+        // Verify password
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ message: 'Invalid credentials' });
+        }
+
+        // Check if this is super admin
+isSuperAdmin:
+  user.email === process.env.SUPER_ADMIN_EMAIL_1 ||
+  user.email === process.env.SUPER_ADMIN_EMAIL_2
+
+
+        res.status(200).json({
+            message: 'Admin verified successfully',
+            isSuperAdmin,
+            user: {
+                id: user._id,
+                email: user.email,
+                isAdmin: user.isAdmin,
+                isSuperAdmin
+            }
+        });
+    } catch (err) {
+        console.error('Admin verify error:', err);
+        res.status(500).json({ message: 'Server error' });
+    }
+});
+
+// Routes
+app.post('/auth/signup', async (req, res) => {
+    try {
+        const { username, email, password, fullName, referralCode } = req.body;
+
+        // Validation
+        if (!username || !email || !password || !fullName) {
+            return res.status(400).json({ 
+                message: 'Validation failed',
+                details: 'All fields are required'
+            });
+        }
+
+        // Email validation
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            return res.status(400).json({ 
+                message: 'Validation failed',
+                details: 'Invalid email format'
+            });
+        }
+
+        // Password validation
+        if (password.length < 8 || !/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+            return res.status(400).json({ 
+                message: 'Validation failed',
+                details: 'Password must be at least 8 characters with letters and numbers'
             });
         }
 
@@ -328,6 +401,7 @@ app.post('/auth/signup', limiter, validateSignup, async (req, res) => {
                 });
             }
             
+            // Additional referral validation
             if (!referrer.isActive) {
                 return res.status(400).json({ 
                     message: 'Invalid referral',
@@ -358,29 +432,22 @@ app.post('/auth/signup', limiter, validateSignup, async (req, res) => {
         const user = new User(userData);
         await user.save();
 
-        const token = jwt.sign(
-            { 
-                userId: user._id, 
-                email: user.email,
-                isAdmin: user.isAdmin,
-                isSuperAdmin: user.email === process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2
-            },
-            process.env.JWT_SECRET,
-            { expiresIn: '7d' }
-        );
-
+        // Handle referral bonuses if applicable
         if (referrer) {
             try {
                 const newUserBonus = parseFloat(process.env.REFERRAL_BONUS_NEW_USER || '0.0001');
                 const referrerBonus = parseFloat(process.env.REFERRAL_BONUS_REFERRER || '0.0005');
                 
+                // Update referrer's data
                 referrer.referrals.push(user._id);
                 referrer.earnings += referrerBonus;
                 referrer.referralStats.totalReferrals += 1;
                 referrer.referralStats.activeReferrals += 1;
                 
+                // Update new user's data
                 user.earnings += newUserBonus;
                 
+                // Create transactions
                 const referrerTransaction = new Transaction({
                     userId: referrer._id,
                     amount: referrerBonus,
@@ -409,8 +476,24 @@ app.post('/auth/signup', limiter, validateSignup, async (req, res) => {
                 ]);
             } catch (referralError) {
                 console.error('Referral bonus error:', referralError);
+                // Don't fail signup if referral bonuses fail
             }
         }
+
+        // Generate token
+        const token = jwt.sign(
+            { 
+                userId: user._id, 
+                email: user.email,
+                isAdmin: user.isAdmin,
+isSuperAdmin:
+  user.email === process.env.SUPER_ADMIN_EMAIL_1 ||
+  user.email === process.env.SUPER_ADMIN_EMAIL_2
+
+            },
+            process.env.JWT_SECRET,
+            { expiresIn: '7d' }
+        );
 
         res.status(201).json({
             success: true,
@@ -424,9 +507,9 @@ app.post('/auth/signup', limiter, validateSignup, async (req, res) => {
                 isAdmin: user.isAdmin,
                 referralLink: `${process.env.FRONTEND_URL}/signup?ref=${user._id}`
             },
-            passkey: user.passkey,
             referralApplied: !!referrer
         });
+
     } catch (error) {
         console.error('Signup error:', error);
         res.status(500).json({ 
@@ -437,19 +520,178 @@ app.post('/auth/signup', limiter, validateSignup, async (req, res) => {
     }
 });
 
+// Helper Functions
 
-
-app.post('/auth/login', validateLogin, async (req, res) => {
-    try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ 
-                message: 'Validation failed',
-                errors: errors.array()
-            });
+function validateSignupInput(username, email, password, fullName) {
+    const errors = [];
+    
+    if (!username) errors.push('Username is required');
+    if (!email) errors.push('Email is required');
+    if (!password) errors.push('Password is required');
+    if (!fullName) errors.push('Full name is required');
+    
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        errors.push('Invalid email format');
+    }
+    
+    if (password) {
+        if (password.length < 8) errors.push('Password must be at least 8 characters');
+        if (!/[a-zA-Z]/.test(password)) errors.push('Password must contain letters');
+        if (!/[0-9]/.test(password)) errors.push('Password must contain numbers');
+        if (!/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+            errors.push('Password must contain special characters');
         }
+    }
+    
+    return errors;
+}
 
+async function processReferral(referralCode) {
+    if (!referralCode) return { valid: false, message: 'No referral code provided' };
+    
+    try {
+        const referrer = await User.findById(referralCode);
+        if (!referrer) {
+            return { 
+                valid: false, 
+                message: 'Referral code not found' 
+            };
+        }
+        
+        if (!referrer.isActive) {
+            return { 
+                valid: false, 
+                message: 'Referrer account is inactive' 
+            };
+        }
+        
+        return { 
+            valid: true, 
+            referrer,
+            message: 'Valid referral code' 
+        };
+    } catch (error) {
+        console.error('Referral processing error:', error);
+        return { 
+            valid: false, 
+            message: 'Error processing referral' 
+        };
+    }
+}
+
+async function createNewUser(username, email, password, fullName, referrer = null) {
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+    
+    const userData = {
+        username,
+        email,
+        password: hashedPassword,
+        passkey: uuidv4(),
+        fullName,
+        walletAddress: null,
+        isAdmin: email === process.env.ADMIN_EMAIL,
+        referredBy: referrer?._id,
+        referralStats: {
+            totalReferrals: 0,
+            activeReferrals: 0
+        }
+    };
+    
+    const user = new User(userData);
+    await user.save();
+    return user;
+}
+
+async function applyReferralBonuses(newUser, referrer) {
+    try {
+        const newUserBonus = parseFloat(process.env.REFERRAL_BONUS_NEW_USER || '0.0001');
+        const referrerBonus = parseFloat(process.env.REFERRAL_BONUS_REFERRER || '0.0005');
+        
+        // Update referrer's data
+        referrer.referrals.push(newUser._id);
+        referrer.earnings += referrerBonus;
+        referrer.referralStats.totalReferrals += 1;
+        referrer.referralStats.activeReferrals += 1;
+        
+        // Update new user's data
+        newUser.earnings += newUserBonus;
+        
+        // Create transactions for both users
+        const referrerTransaction = new Transaction({
+            userId: referrer._id,
+            amount: referrerBonus,
+            type: 'referral',
+            category: 'Bonus',
+            activity: 'Referral Bonus',
+            description: `Earned ${referrerBonus} for referring ${newUser.username}`,
+            timestamp: new Date()
+        });
+        
+        const newUserTransaction = new Transaction({
+            userId: newUser._id,
+            amount: newUserBonus,
+            type: 'referral',
+            category: 'Bonus',
+            activity: 'Referral Welcome Bonus',
+            description: `Received ${newUserBonus} for signing up with referral`,
+            timestamp: new Date()
+        });
+        
+        await Promise.all([
+            referrer.save(),
+            newUser.save(),
+            referrerTransaction.save(),
+            newUserTransaction.save()
+        ]);
+        
+    } catch (error) {
+        console.error('Failed to apply referral bonuses:', error);
+        // Don't fail the signup if bonuses fail
+    }
+}
+
+function generateAuthToken(user) {
+    return jwt.sign(
+        { 
+            userId: user._id, 
+            email: user.email,
+            isAdmin: user.isAdmin,
+isSuperAdmin:
+  user.email === process.env.SUPER_ADMIN_EMAIL_1 ||
+  user.email === process.env.SUPER_ADMIN_EMAIL_2
+
+        },
+        process.env.JWT_SECRET,
+        { expiresIn: '7d' }
+    );
+}
+
+function formatUserResponse(user) {
+    return {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        fullName: user.fullName,
+        walletAddress: user.walletAddress,
+        isAdmin: user.isAdmin,
+isSuperAdmin:
+  user.email === process.env.SUPER_ADMIN_EMAIL_1 ||
+  user.email === process.env.SUPER_ADMIN_EMAIL_2,
+
+        earnings: user.earnings,
+        referralLink: `${process.env.FRONTEND_URL}/signup?ref=${user._id}`
+    };
+}
+
+
+app.post('/auth/login', async (req, res) => {
+    try {
         const { username, password } = req.body;
+
+        if (!username || !password) {
+            return res.status(400).json({ message: 'Username and password are required' });
+        }
 
         const user = await User.findOne({
             $or: [{ username }, { email: username }]
@@ -464,7 +706,11 @@ app.post('/auth/login', validateLogin, async (req, res) => {
             return res.status(400).json({ message: 'Invalid credentials' });
         }
 
-        const isSuperAdmin = user.email === process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2;
+const isSuperAdmin =
+  user.email === process.env.SUPER_ADMIN_EMAIL_1 ||
+  user.email === process.env.SUPER_ADMIN_EMAIL_2;
+
+
         const token = jwt.sign(
             { 
                 userId: user._id, 
@@ -495,101 +741,15 @@ app.post('/auth/login', validateLogin, async (req, res) => {
     }
 });
 
-app.post('/auth/superadmin/verify', authenticateToken, async (req, res) => {
+
+app.post('/auth/admin/check', async (req, res) => {
     try {
-        const user = await User.findById(req.user.userId);
-        if (!user || user.email !== process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2) {
-            return res.status(403).json({ 
-                message: 'Super admin access required'
-            });
-        }
-
-        const { passcode } = req.body;
-        if (passcode !== process.env.SUPER_ADMIN_PASSCODE_1 || process.env.SUPER_ADMIN_PASSCODE_2) {
-            return res.status(400).json({ message: 'Invalid passcode' });
-        }
-
-        user.isSuperAdmin = true;
-        await user.save();
-
-        const newToken = jwt.sign(
-            { 
-                userId: user._id,
-                email: user.email,
-                isAdmin: true,
-                isSuperAdmin: true 
-            },
-            process.env.JWT_SECRET,
-            { expiresIn: '7d' }
-        );
-
-        return res.status(200).json({
-            token: newToken,
-            isSuperAdmin: true
-        });
-    } catch (err) {
-        console.error('Super admin verification error:', err);
-        return res.status(500).json({ message: 'Server error' });
-    }
-});
-
-app.post('/auth/admin/verify', [authenticateToken, validateAdminVerify], async (req, res) => {
-    try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ 
-                message: 'Validation failed',
-                errors: errors.array()
-            });
-        }
-
-        const { password } = req.body;
-        const userId = req.user.userId;
-
-        const user = await User.findById(userId);
-        if (!user) {
-            return res.status(404).json({ message: 'User not found' });
-        }
-
-        const isAdmin = user.isAdmin || user.email === process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2;
-        if (!isAdmin) {
-            return res.status(403).json({ message: 'Not an admin account' });
-        }
-
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            return res.status(400).json({ message: 'Invalid credentials' });
-        }
-
-        const isSuperAdmin = user.email === process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2;
-
-        res.status(200).json({
-            message: 'Admin verified successfully',
-            isSuperAdmin,
-            user: {
-                id: user._id,
-                email: user.email,
-                isAdmin: user.isAdmin,
-                isSuperAdmin
-            }
-        });
-    } catch (err) {
-        console.error('Admin verify error:', err);
-        res.status(500).json({ message: 'Server error' });
-    }
-});
-
-app.post('/auth/admin/check', validateAdminCheck, async (req, res) => {
-    try {
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({ 
-                message: 'Validation failed',
-                errors: errors.array()
-            });
-        }
-
         const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ message: 'Email is required' });
+        }
+
         const user = await User.findOne({ email });
         if (!user || !user.isAdmin) {
             return res.status(403).json({ message: 'Not an admin account' });
@@ -601,7 +761,6 @@ app.post('/auth/admin/check', validateAdminCheck, async (req, res) => {
         res.status(500).json({ message: 'Server error' });
     }
 });
-
 
 app.get('/auth/google', (req, res) => {
     res.status(501).json({ message: 'Google Sign-In not implemented' });
@@ -630,7 +789,10 @@ app.post('', authenticateToken, async (req, res) => {
         }
 
         // Check if this is super admin
-        const isSuperAdmin = user.email === process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2;
+const isSuperAdmin =
+  user.email === process.env.SUPER_ADMIN_EMAIL_1 ||
+  user.email === process.env.SUPER_ADMIN_EMAIL_2;
+
 
         res.status(200).json({
             message: 'Admin verified successfully',
@@ -700,10 +862,14 @@ app.put('/admin/users/:id/suspend', [authenticateToken, superAdminAuth], async (
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Prevent modifying super admin
-    if (user.email === process.env.SUPER_ADMIN_EMAIL_1  || process.env.SUPER_ADMIN_EMAIL_2) {
-      return res.status(403).json({ message: 'Cannot modify super admin status' });
-    }
+// Prevent modifying super admin
+if (
+  user.email === process.env.SUPER_ADMIN_EMAIL_1 ||
+  user.email === process.env.SUPER_ADMIN_EMAIL_2
+) {
+  return res.status(403).json({ message: 'Cannot modify super admin status' });
+}
+
 
     user.isActive = isActive;
     await user.save();
@@ -968,7 +1134,6 @@ app.get('/user/network-stats', authenticateToken, async (req, res) => {
             'tasks': { $elemMatch: { status: 'completed' } }
         });
 
-        console.log(`Network stats: totalRecycled=${totalRecycled[0]?.total || 0}, activeUsers=${activeUsers}`);
         res.status(200).json({
             totalRecycled: (totalRecycled[0]?.total || 0).toFixed(2),
             activeUsers
@@ -1859,7 +2024,7 @@ app.post('/games/complete', authenticateToken, async (req, res) => {
         userGame.highScore = Math.max(userGame.highScore, score || 0);
         userGame.totalXp += xpEarned || game.xpReward;
         user.xp += xpEarned || game.xpReward;
-        user.earnings += parseFloat(game.reward.replace('RFX ', ''));
+        user.earnings += parseFloat(game.reward.replace('₿ ', ''));
 
         // Level up logic
         while (user.xp >= user.totalXp) {
@@ -1870,7 +2035,7 @@ app.post('/games/complete', authenticateToken, async (req, res) => {
 
         const transaction = new Transaction({
             userId: user._id,
-            amount: parseFloat(game.reward.replace('RFX ', '')),
+            amount: parseFloat(game.reward.replace('₿ ', '')),
             type: 'earn',
             category: 'Game',
             activity: `Completed ${game.title}`,
@@ -2026,7 +2191,7 @@ app.post('/admin/games', [authenticateToken, adminAuth], async (req, res) => {
         const gameData = req.body;
         const game = new Game({
             ...gameData,
-            reward: `RFX ${parseFloat(gameData.reward).toFixed(5)}`
+            reward: `₿ ${parseFloat(gameData.reward).toFixed(5)}`
         });
         await game.save();
         res.status(201).json(game);
@@ -2043,7 +2208,7 @@ app.put('/admin/games/:id', [authenticateToken, adminAuth], async (req, res) => 
             return res.status(404).json({ message: 'Game not found' });
         }
         Object.assign(game, req.body);
-        game.reward = `RFX ${parseFloat(req.body.reward).toFixed(5)}`;
+        game.reward = `₿ ${parseFloat(req.body.reward).toFixed(5)}`;
         await game.save();
         res.json(game);
     } catch (err) {
@@ -2457,7 +2622,6 @@ app.post('/campaigns/:id/tasks/:taskId/proof', [authenticateToken, upload.single
 app.post('/campaigns/:id/tasks/:taskId/complete', authenticateToken, async (req, res) => {
     try {
         const { id: campaignId, taskId } = req.params;
-        console.log(`Completing task ${taskId} for campaign ${campaignId} by user ${req.user.userId}`);
 
         const campaign = await Campaign.findById(campaignId);
         if (!campaign) {
@@ -2505,7 +2669,6 @@ app.post('/campaigns/:id/tasks/:taskId/complete', authenticateToken, async (req,
             await campaign.save(); // Save updated task
         }
         co2Impact = parseFloat(task.co2Impact) || 2.0;
-        console.log(`Applying co2Impact: ${co2Impact} for task ${task.title}`);
 
         if (!userTask) {
             user.tasks.push({
@@ -2556,7 +2719,6 @@ app.post('/campaigns/:id/tasks/:taskId/complete', authenticateToken, async (req,
 
         user.earnings += finalReward;
         const newCo2Saved = (parseFloat(user.co2Saved || '0') + co2Impact).toFixed(2);
-        console.log(`Updating user.co2Saved: ${user.co2Saved} + ${co2Impact} = ${newCo2Saved}`);
         user.co2Saved = newCo2Saved;
 
         const transaction = new Transaction({
@@ -2571,7 +2733,6 @@ app.post('/campaigns/:id/tasks/:taskId/complete', authenticateToken, async (req,
         });
 
         await Promise.all([user.save(), campaign.save(), transaction.save()]);
-        console.log(`Saved user with co2Saved: ${user.co2Saved}`);
 
         res.json({
             message: 'Task completed successfully',
@@ -2794,10 +2955,8 @@ app.post('/admin/campaigns/:id/approve-proof', [authenticateToken, adminAuth], a
                 await campaign.save();
             }
             co2Impact = parseFloat(task.co2Impact) || 2.0;
-            console.log(`Applying co2Impact: ${co2Impact} for task ${task.title}`);
             user.earnings += task.reward || 0;
             const newCo2Saved = (parseFloat(user.co2Saved || '0') + co2Impact).toFixed(2);
-            console.log(`Updating user.co2Saved: ${user.co2Saved} + ${co2Impact} = ${newCo2Saved}`);
             user.co2Saved = newCo2Saved;
 
             const transaction = new Transaction({
@@ -2813,7 +2972,6 @@ app.post('/admin/campaigns/:id/approve-proof', [authenticateToken, adminAuth], a
 
             await transaction.save();
             await user.save();
-            console.log(`Saved user with co2Saved: ${user.co2Saved}`);
         }
 
         campaign.completedTasks += 1;
@@ -3175,7 +3333,6 @@ const connectDB = async () => {
     try {
         await mongoose.connect(process.env.MONGO_URI);
         console.log('MongoDB connected successfully');
-        keepDatabaseAlive(); // Start the keep-alive mechanism
     } catch (err) {
         console.error('MongoDB connection error:', err);
         process.exit(1);
