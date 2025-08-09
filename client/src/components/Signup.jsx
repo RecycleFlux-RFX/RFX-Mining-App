@@ -120,7 +120,7 @@ export default function Signup() {
 
             // Redirect after a short delay
             setTimeout(() => {
-                navigate('/', { replace: true });
+                navigate('/login', { replace: true });
             }, 2000);
 
         } catch (err) {
@@ -153,7 +153,7 @@ export default function Signup() {
                         setReferralStatus(null);
                         
                         setTimeout(() => {
-                            navigate('/', { replace: true });
+                            navigate('/login', { replace: true });
                         }, 2000);
                         
                         return;
