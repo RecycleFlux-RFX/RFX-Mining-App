@@ -311,9 +311,7 @@ app.post('/auth/admin/verify', authenticateToken, async (req, res) => {
         }
 
         // Check if this is super admin
-isSuperAdmin:
-  user.email === process.env.SUPER_ADMIN_EMAIL_1 ||
-  user.email === process.env.SUPER_ADMIN_EMAIL_2
+        const isSuperAdmin = user.email === process.env.SUPER_ADMIN_EMAIL_1 || user.email === process.env.SUPER_ADMIN_EMAIL_2
 
 
         res.status(200).json({
