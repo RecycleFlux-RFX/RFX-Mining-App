@@ -66,7 +66,7 @@ function App() {
             <Routes>
                 {/* Public Routes */}
                 <Route path="/onboarding/1" element={<Onboarding />} />
-                <Route path="/welcome" element={<RecycleFluxWelcome />} />
+                <Route path="/" element={<RecycleFluxWelcome />} />
                 <Route path="/dashboard" element={<RFXVerseInterface />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
