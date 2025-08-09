@@ -102,7 +102,7 @@ cloudinary.config({
 
 
 // Middleware
-// CORS configuration
+/* // CORS configuration
 app.use((req, res, next) => {
   const allowedOrigins = [
     "rfx-mining1-app.vercel.app",
@@ -123,7 +123,7 @@ app.use((req, res, next) => {
   }
 
   next();
-});
+}); */
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
