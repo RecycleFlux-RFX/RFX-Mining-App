@@ -1681,7 +1681,7 @@ app.get('/games', async (req, res) => {
 });
 
 // Get game progress for authenticated user
-/* app.get('/games/progress', authenticateToken, async (req, res) => {
+app.get('/games/progress', authenticateToken, async (req, res) => {
     try {
         const user = await User.findById(req.user.userId).select('games level xp totalXp gamesPlayed earnings');
         if (!user) {
@@ -1709,7 +1709,7 @@ app.get('/games', async (req, res) => {
         console.error('Get game progress error:', err);
         res.status(500).json({ message: 'Server error' });
     }
-}); */
+});
 
 // Start a game session
 // Start a game session
