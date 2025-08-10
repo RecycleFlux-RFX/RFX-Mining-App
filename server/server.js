@@ -2118,7 +2118,7 @@ app.post('/games/complete', authenticateToken, async (req, res) => {
 });
 
 // User Progress Route
-app.get('/games/progress', authenticateToken, async (req, res) => {
+/* app.get('/games/progress', authenticateToken, async (req, res) => {
     try {
         const user = await User.findById(req.user._id)
             .select('playerStats games gamePlays')
@@ -2156,7 +2156,7 @@ app.get('/games/progress', authenticateToken, async (req, res) => {
         });
     }
 });
-
+ */
 // Admin Routes for Games
 app.post('/admin/games', [authenticateToken, adminAuth], async (req, res) => {
     try {
