@@ -72,21 +72,7 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-const keepDatabaseAlive = () => {
-    // Run every 30 minutes (adjust as needed)
-    setInterval(async () => {
-        try {
-            // Perform a simple query to keep the connection alive
-            await mongoose.connection.db.admin().ping();
-            console.log('Database ping successful - connection kept alive');
-        } catch (error) {
-            console.error('Database ping failed:', error);
-        }
-    }, 30 * 60 * 1000); // 30 minutes in milliseconds
-};
 
-
-keepDatabaseAlive()
 // Request slow-down
 const speedLimiter = slowDown({
   windowMs: 40 * 60 * 10000, // 40 minutes
@@ -144,6 +130,12 @@ const upload = multer({
 
 // Serve static files from uploads directory
 app.use('/uploads', express.static(uploadDir));
+
+app.get('/', (req, res) => res.status(200).json({ 
+  status: 'ok',
+  message: 'RFX Mining API',
+  timestamp: new Date().toISOString()
+}));
 
 // JWT Authentication Middleware
 const authenticateToken = (req, res, next) => {
@@ -3318,6 +3310,23 @@ const connectDB = async () => {
         process.exit(1);
     }
 };
+
+
+const keepDatabaseAlive = () => {
+    // Run every 30 minutes (adjust as needed)
+    setInterval(async () => {
+        try {
+            // Perform a simple query to keep the connection alive
+            await mongoose.connection.db.admin().ping();
+            console.log('Database ping successful - connection kept alive');
+        } catch (error) {
+            console.error('Database ping failed:', error);
+        }
+    }, 30 * 60 * 1000); // 30 minutes in milliseconds
+};
+
+
+keepDatabaseAlive()
 
 // Start server
 const PORT = process.env.PORT || 3000;
