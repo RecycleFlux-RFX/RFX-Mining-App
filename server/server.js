@@ -1130,7 +1130,7 @@ app.get('/user/referral-link', authenticateToken, async (req, res) => {
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
-        const referralLink = `http://localhost:5173/signup?ref=${user._id}`;
+        const referralLink = `rfx-mining1-app.vercel.app?ref=${user._id}`;
         res.status(200).json({ referralLink });
     } catch (err) {
         console.error('Get referral link error:', err);
@@ -1152,7 +1152,7 @@ app.get('/user/referral-info', authenticateToken, async (req, res) => {
             return res.status(404).json({ message: 'User not found' });
         }
 
-        const referralLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/signup?ref=${user._id}`;
+        const referralLink = `${process.env.FRONTEND_URL || 'rfx-mining1-app.vercel.app'}/signup?ref=${user._id}`;
         
         res.status(200).json({ 
             referralLink,
