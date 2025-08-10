@@ -1689,7 +1689,7 @@ app.get('/games', async (req, res) => {
 });
 
 // Get game progress for authenticated user
-app.get('/games/progress', authenticateToken, async (req, res) => {
+/* app.get('/games/progress', authenticateToken, async (req, res) => {
     try {
         const user = await User.findById(req.user.userId).select('games level xp totalXp gamesPlayed earnings');
         if (!user) {
@@ -1717,7 +1717,7 @@ app.get('/games/progress', authenticateToken, async (req, res) => {
         console.error('Get game progress error:', err);
         res.status(500).json({ message: 'Server error' });
     }
-});
+}); */
 
 // Start a game session
 // Start a game session
@@ -1982,7 +1982,7 @@ app.get('/games/:id/leaderboard', async (req, res) => {
   }
 });
 
-// Complete a game session and award rewards
+/* // Complete a game session and award rewards
 app.post('/games/complete', authenticateToken, async (req, res) => {
     try {
         const { gameId, score, xpEarned } = req.body;
@@ -2015,7 +2015,7 @@ app.post('/games/complete', authenticateToken, async (req, res) => {
 
         const transaction = new Transaction({
             userId: user._id,
-            amount: parseFloat(game.reward.replace('₿ ', '')),
+            amount: parseFloat(game.reward.replace('RFX ', '')),
             type: 'earn',
             category: 'Game',
             activity: `Completed ${game.title}`,
@@ -2036,7 +2036,7 @@ app.post('/games/complete', authenticateToken, async (req, res) => {
         console.error('Complete game error:', err);
         res.status(500).json({ message: 'Server error' });
     }
-});
+}); */
 
 app.post('/games/complete', authenticateToken, async (req, res) => {
     try {
@@ -2126,7 +2126,7 @@ app.post('/games/complete', authenticateToken, async (req, res) => {
 });
 
 // User Progress Route
-app.get('/api/games/progress', authenticateToken, async (req, res) => {
+app.get('/games/progress', authenticateToken, async (req, res) => {
     try {
         const user = await User.findById(req.user._id)
             .select('playerStats games gamePlays')
