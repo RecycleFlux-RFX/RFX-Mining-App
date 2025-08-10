@@ -2038,7 +2038,7 @@ app.post('/games/complete', authenticateToken, async (req, res) => {
     }
 });
 
-app.post('/api/games/complete', authenticateToken, async (req, res) => {
+app.post('/games/complete', authenticateToken, async (req, res) => {
     try {
         const { gameId, score, xpEarned, tokensEarned } = req.body;
         
