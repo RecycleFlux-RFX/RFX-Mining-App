@@ -200,7 +200,7 @@ const TrashSortGame = () => {
             const achievements = streak >= 7 ? ['High Streak'] : [];
 
             const response = await axios.post(
-                `${BASE_URL}/games/complete`,
+                `${BASE_URL}/games/${gameId}/score`,
                 {
                     gameId,
                     score,
@@ -208,17 +208,37 @@ const TrashSortGame = () => {
                     tokensEarned,
                     achievements,
                 },
-                { headers: { Authorization: `Bearer ${token}` } }
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    validateStatus: (status) => status < 500,
+                }
             );
 
+            if (response.data.success === false) {
+                throw new Error(response.data.message || 'Failed to submit score');
+            }
 
             setRewardTiers(achievedTiers);
             setGameState('gameOver');
+            setError(null);
         } catch (error) {
             console.error('Error submitting score:', error);
-            setError('Failed to submit score');
+            let errorMessage = error.response?.data?.message || error.message || 'Failed to submit score';
+
+            if (errorMessage.includes('authentication') || errorMessage.includes('token')) {
+                errorMessage = 'Session expired. Please log in again.';
+                localStorage.removeItem('authToken');
+                navigate('/dashboard');
+            } else if (errorMessage.includes('ObjectId') || errorMessage.includes('Cast to ObjectId')) {
+                errorMessage = 'Game configuration error. Please try another game.';
+            }
+
+            setError(errorMessage);
         }
-    }, [score, streak, calculateRewards, gameId]);
+    }, [score, streak, calculateRewards, gameId, navigate, BASE_URL]);
 
     const nextQuestion = useCallback(() => {
         setCurrentItem(getRandomItem());

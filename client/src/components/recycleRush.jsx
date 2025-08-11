@@ -160,7 +160,7 @@ const RecycleRush = () => {
         }
     };
 
-    const submitScore = async () => {
+    const submitScore = useCallback(async () => {
         try {
             const token = localStorage.getItem('authToken');
             if (!token) {
@@ -171,7 +171,7 @@ const RecycleRush = () => {
             const achievements = combo >= 5 ? ['High Combo'] : [];
 
             const response = await axios.post(
-                `${BASE_URL}/games/complete`,
+                `${BASE_URL}/games/${gameId}/score`,
                 {
                     gameId,
                     score,
@@ -179,17 +179,38 @@ const RecycleRush = () => {
                     tokensEarned,
                     achievements,
                 },
-                { headers: { Authorization: `Bearer ${token}` } }
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    validateStatus: (status) => status < 500,
+                }
             );
+
+            if (response.data.success === false) {
+                throw new Error(response.data.message || 'Failed to submit score');
+            }
 
             setHighScore(response.data.newHighScore || score);
             setRewardTiers(achievedTiers);
             setGameState('gameOver');
+            setError(null);
         } catch (error) {
             console.error('Error submitting score:', error);
-            setError('Failed to submit score');
+            let errorMessage = error.response?.data?.message || error.message || 'Failed to submit score';
+
+            if (errorMessage.includes('authentication') || errorMessage.includes('token')) {
+                errorMessage = 'Session expired. Please log in again.';
+                localStorage.removeItem('authToken');
+                navigate('/dashboard');
+            } else if (errorMessage.includes('ObjectId') || errorMessage.includes('Cast to ObjectId')) {
+                errorMessage = 'Game configuration error. Please try another game.';
+            }
+
+            setError(errorMessage);
         }
-    };
+    }, [score, combo, calculateRewards, gameId, navigate, BASE_URL]);
 
     const endGame = () => {
         submitScore();
@@ -248,7 +269,7 @@ const RecycleRush = () => {
         }, 50);
 
         return () => clearInterval(gameLoop);
-    }, [gameState]);
+    }, [gameState, createFallingItem]);
 
     useEffect(() => {
         if (gameState === 'playing' && showInstructions) {

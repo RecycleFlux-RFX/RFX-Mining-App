@@ -214,79 +214,86 @@ const fetchCampaigns = async () => {
     };
 
     // Submit campaign form
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setLoading(true);
+const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
 
-        try {
-            const token = localStorage.getItem('authToken');
-            const formPayload = new FormData();
+    try {
+        const token = localStorage.getItem('authToken');
+        const formPayload = new FormData();
 
-            // Append all form data
-            Object.entries(formData).forEach(([key, value]) => {
-                if (key !== 'tasksList' && key !== 'image') {
-                    formPayload.append(key, value);
-                }
-            });
-
-            // Handle image upload
-            if (formData.image) {
-                formPayload.append('image', formData.image);
-            } else if (selectedCampaign?.image) {
-                formPayload.append('image', '');
-            }
-
-            // Handle tasks
-            if (formData.tasksList.length > 0) {
-                formPayload.append('tasks', JSON.stringify(formData.tasksList));
-            }
-
-            const config = {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'Content-Type': 'multipart/form-data'
-                }
-            };
-
-            let response;
-            if (selectedCampaign) {
-                response = await api.put(
-                    `/admin/campaigns/${selectedCampaign._id}`,
-                    formPayload,
-                    config
-                );
-                toast.success('Campaign updated successfully');
-            } else {
-                response = await api.post(
-                    '/admin/campaigns',
-                    formPayload,
-                    config
-                );
-                toast.success('Campaign created successfully');
-            }
-
-            // Update state and close modal
-            setCampaigns(prev => {
-                const existing = prev.find(c => c._id === response.data._id);
-                if (existing) {
-                    return prev.map(c => c._id === response.data._id ? response.data : c);
-                }
-                return [response.data, ...prev];
-            });
-
-            setIsModalOpen(false);
-            resetFormData();
-        } catch (err) {
-            console.error('Error saving campaign:', err);
-            const errorMsg = err.response?.data?.message ||
-                err.response?.data?.error ||
-                'Failed to save campaign';
-            setError(errorMsg);
-            toast.error(errorMsg);
-        } finally {
-            setLoading(false);
+        // Append all form data
+        formPayload.append('title', formData.title);
+        formPayload.append('description', formData.description);
+        formPayload.append('category', formData.category);
+        formPayload.append('reward', formData.reward);
+        formPayload.append('difficulty', formData.difficulty);
+        formPayload.append('duration', formData.duration);
+        formPayload.append('featured', formData.featured);
+        formPayload.append('new', formData.new);
+        formPayload.append('trending', formData.trending);
+        formPayload.append('ending', formData.ending);
+        formPayload.append('startDate', formData.startDate);
+        formPayload.append('status', formData.status);
+        
+        // Handle tasks
+        if (formData.tasksList.length > 0) {
+            formPayload.append('tasks', JSON.stringify(formData.tasksList));
         }
-    };
+
+        // Handle image upload
+        if (formData.image) {
+            formPayload.append('image', formData.image);
+        } else if (selectedCampaign?.image) {
+            formPayload.append('image', '');
+        }
+
+        const config = {
+            headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'multipart/form-data'
+            }
+        };
+
+        let response;
+        if (selectedCampaign) {
+            response = await api.put(
+                `/admin/campaigns/${selectedCampaign._id}`,
+                formPayload,
+                config
+            );
+            toast.success('Campaign updated successfully');
+        } else {
+            response = await api.post(
+                '/admin/campaigns',
+                formPayload,
+                config
+            );
+            toast.success('Campaign created successfully');
+        }
+
+        // Update state and close modal
+        setCampaigns(prev => {
+            const existing = prev.find(c => c._id === response.data._id);
+            if (existing) {
+                return prev.map(c => c._id === response.data._id ? response.data : c);
+            }
+            return [response.data, ...prev];
+        });
+
+        setIsModalOpen(false);
+        resetFormData();
+    } catch (err) {
+        console.error('Error saving campaign:', err);
+        const errorMsg = err.response?.data?.message ||
+            err.response?.data?.error ||
+            'Failed to save campaign';
+        setError(errorMsg);
+        toast.error(errorMsg);
+    } finally {
+        setLoading(false);
+    }
+};
 
     // Add task to form
 // In your handleAddTask function:
@@ -298,7 +305,7 @@ const handleAddTask = async (e) => {
         const token = localStorage.getItem('authToken');
         const formPayload = new FormData();
 
-        // Append all task data as FormData
+        // Append all task data
         formPayload.append('day', taskForm.day);
         formPayload.append('title', taskForm.title);
         formPayload.append('description', taskForm.description);
@@ -332,11 +339,11 @@ const handleAddTask = async (e) => {
 
         // Reset form
         setTaskForm({
-            day: taskForm.day, // Keep same day
+            day: taskForm.day,
             title: '',
             description: '',
-            type: taskForm.type, // Keep same type
-            platform: taskForm.platform, // Keep same platform
+            type: taskForm.type,
+            platform: taskForm.platform,
             reward: 0.001,
             requirements: '',
             contentUrl: '',

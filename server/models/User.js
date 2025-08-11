@@ -47,7 +47,6 @@ const userSchema = new mongoose.Schema({
     walletAddress: {
         type: String,
         default: '',
-        trim: true
     },
     fullName: {
         type: String,
