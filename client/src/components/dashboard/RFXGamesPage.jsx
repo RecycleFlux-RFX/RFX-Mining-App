@@ -17,7 +17,7 @@ const categoryIcons = {
     Default: Puzzle
 };
 
-const BASE_URL = 'https://rfx-mining-app.onrender.com';
+const BASE_URL = 'http://localhost:3000';
 
 export default function RFXGamesPage() {
     const location = useLocation();
@@ -40,17 +40,19 @@ export default function RFXGamesPage() {
         tokensEarned: 0
     });
     const [error, setError] = useState(null);
+    const [gameCooldowns, setGameCooldowns] = useState({});
+    const [lastPlays, setLastPlays] = useState({});
 
     const categories = ["All", "Puzzle", "Action", "Simulation", "Strategy"];
     const [selectedCategory, setSelectedCategory] = useState("All");
 
-const navItems = [
-    { icon: Home, label: 'Home', id: 'home', path: '/' },
-    { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
-    { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
-    { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
-    { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' },
-];
+    const navItems = [
+        { icon: Home, label: 'Home', id: 'home', path: '/dashboard' },
+        { icon: MapPin, label: 'Campaign', id: 'campaign', path: '/campaign' },
+        { icon: Gamepad2, label: 'Games', id: 'games', path: '/games' },
+        { icon: Wallet, label: 'Wallet', id: 'wallet', path: '/wallet' },
+        { icon: Settings, label: 'Settings', id: 'settings', path: '/settings' },
+    ];
 
     // Fetch with authentication
     const fetchWithAuth = async (url, options = {}) => {
@@ -128,7 +130,7 @@ const navItems = [
         fetchGames();
     }, [navigate]);
 
-    // Fetch player stats
+    // Fetch player stats and game plays
     useEffect(() => {
         const fetchPlayerStats = async () => {
             setLoading(prev => ({ ...prev, stats: true }));
@@ -142,6 +144,17 @@ const navItems = [
                         gamesPlayed: response.playerStats.gamesPlayed || 0,
                         tokensEarned: response.playerStats.tokensEarned || 0
                     });
+
+                    // Extract last play times for each game
+                    const playsData = {};
+                    if (response.games) {
+                        response.games.forEach(game => {
+                            if (game.lastPlayed) {
+                                playsData[game.gameId] = new Date(game.lastPlayed);
+                            }
+                        });
+                    }
+                    setLastPlays(playsData);
                 } else {
                     throw new Error('Invalid player stats data received');
                 }
@@ -157,6 +170,28 @@ const navItems = [
         };
         fetchPlayerStats();
     }, [navigate]);
+
+    // Update cooldowns every second
+    useEffect(() => {
+        const interval = setInterval(() => {
+            const cooldowns = {};
+            const now = new Date();
+            
+            Object.keys(lastPlays).forEach(gameId => {
+                const lastPlayTime = lastPlays[gameId];
+                const timeSinceLastPlay = now - lastPlayTime;
+                const cooldownPeriod = 5 * 60 * 60 * 1000; // 5 hours in milliseconds
+                
+                if (timeSinceLastPlay < cooldownPeriod) {
+                    cooldowns[gameId] = cooldownPeriod - timeSinceLastPlay;
+                }
+            });
+            
+            setGameCooldowns(cooldowns);
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [lastPlays]);
 
     // Update active tab based on location
     useEffect(() => {
@@ -193,6 +228,16 @@ const navItems = [
     const startGameSession = async (game) => {
         if (game.locked || !game.canPlay) return;
 
+        // Check cooldown
+        if (gameCooldowns[game.id]) {
+            const hoursLeft = Math.ceil(gameCooldowns[game.id] / (60 * 60 * 1000));
+            setError({
+                type: 'error',
+                message: `You can play this game again in ${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`
+            });
+            return;
+        }
+
         try {
             const response = await fetchWithAuth(`${BASE_URL}/games/start`, {
                 method: 'POST',
@@ -202,6 +247,20 @@ const navItems = [
                     path: game.path
                 }),
             });
+
+            if (response.success === false) {
+                setError({
+                    type: 'error',
+                    message: response.message || 'Failed to start game session'
+                });
+                return;
+            }
+
+            // Update last play time for this game
+            setLastPlays(prev => ({
+                ...prev,
+                [game.id]: new Date()
+            }));
 
             if (response.path) {
                 navigate(response.path);
@@ -215,6 +274,18 @@ const navItems = [
                 message: err.message || 'Failed to start game session. Please try again.',
             });
         }
+    };
+
+    // Format time for display
+    const formatCooldownTime = (ms) => {
+        const hours = Math.floor(ms / (1000 * 60 * 60));
+        const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+        return `${hours}h ${minutes}m`;
+    };
+
+    // Check if game is on cooldown
+    const isGameOnCooldown = (gameId) => {
+        return gameCooldowns[gameId] > 0;
     };
 
     // Helper functions
@@ -361,6 +432,8 @@ const navItems = [
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             {featuredGames.map((game) => {
                                 const GameIcon = categoryIcons[game.category] || categoryIcons.Default;
+                                const isOnCooldown = isGameOnCooldown(game.id);
+                                
                                 return (
                                     <div
                                         key={game.id}
@@ -410,8 +483,8 @@ const navItems = [
                                                         e.stopPropagation();
                                                         startGameSession(game);
                                                     }}
-                                                    className={`w-full bg-gradient-to-r ${game.bgColor} text-black font-bold py-4 rounded-2xl text-lg transition-all transform hover:scale-105 flex items-center justify-center space-x-2 ${game.locked || !game.canPlay ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                                    disabled={game.locked || !game.canPlay}
+                                                    className={`w-full bg-gradient-to-r ${game.bgColor} text-black font-bold py-4 rounded-2xl text-lg transition-all transform hover:scale-105 flex items-center justify-center space-x-2 ${game.locked || !game.canPlay || isOnCooldown ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                    disabled={game.locked || !game.canPlay || isOnCooldown}
                                                 >
                                                     {game.locked ? (
                                                         <>
@@ -422,6 +495,11 @@ const navItems = [
                                                         <>
                                                             <Lock className="w-5 h-5" />
                                                             <span>DAILY LIMIT REACHED</span>
+                                                        </>
+                                                    ) : isOnCooldown ? (
+                                                        <>
+                                                            <Clock className="w-5 h-5" />
+                                                            <span>COOLDOWN: {formatCooldownTime(gameCooldowns[game.id])}</span>
                                                         </>
                                                     ) : (
                                                         <>
@@ -459,6 +537,8 @@ const navItems = [
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {filteredGames.map((game) => {
                         const GameIcon = categoryIcons[game.category] || categoryIcons.Default;
+                        const isOnCooldown = isGameOnCooldown(game.id);
+                        
                         return (
                             <div
                                 key={game.id}
@@ -473,6 +553,16 @@ const navItems = [
                                             <div className="flex flex-col items-center space-y-2">
                                                 <Lock className="w-8 h-8 text-gray-400" />
                                                 <span className="text-white font-bold">COMING SOON</span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {isOnCooldown && !game.locked && (
+                                        <div className="absolute inset-0 bg-black/50 rounded-2xl flex items-center justify-center z-10">
+                                            <div className="flex flex-col items-center space-y-2">
+                                                <Clock className="w-8 h-8 text-yellow-400" />
+                                                <span className="text-white font-bold">COOLDOWN</span>
+                                                <span className="text-yellow-400 text-sm">{formatCooldownTime(gameCooldowns[game.id])}</span>
                                             </div>
                                         </div>
                                     )}
@@ -536,8 +626,8 @@ const navItems = [
                                                 e.stopPropagation();
                                                 startGameSession(game);
                                             }}
-                                            className={`flex-1 bg-gradient-to-r ${game.bgColor} text-black font-bold py-3 rounded-xl transition-all transform hover:scale-105 flex items-center justify-center space-x-2 ${game.locked || !game.canPlay ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                            disabled={game.locked || !game.canPlay}
+                                            className={`flex-1 bg-gradient-to-r ${game.bgColor} text-black font-bold py-3 rounded-xl transition-all transform hover:scale-105 flex items-center justify-center space-x-2 ${game.locked || !game.canPlay || isOnCooldown ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                            disabled={game.locked || !game.canPlay || isOnCooldown}
                                         >
                                             {game.locked ? (
                                                 <>
@@ -548,6 +638,11 @@ const navItems = [
                                                 <>
                                                     <Lock className="w-4 h-4" />
                                                     <span>DAILY LIMIT REACHED</span>
+                                                </>
+                                            ) : isOnCooldown ? (
+                                                <>
+                                                    <Clock className="w-4 h-4" />
+                                                    <span>COOLDOWN</span>
                                                 </>
                                             ) : (
                                                 <>
@@ -754,8 +849,8 @@ const navItems = [
                         <div className="flex space-x-4">
                             <button
                                 onClick={() => startGameSession(selectedGame)}
-                                className={`flex-1 bg-gradient-to-r ${selectedGame.bgColor} text-black font-bold py-4 rounded-2xl text-lg transition-all transform hover:scale-105 flex items-center justify-center space-x-2 ${selectedGame.locked || !selectedGame.canPlay ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                disabled={selectedGame.locked || !selectedGame.canPlay}
+                                className={`flex-1 bg-gradient-to-r ${selectedGame.bgColor} text-black font-bold py-4 rounded-2xl text-lg transition-all transform hover:scale-105 flex items-center justify-center space-x-2 ${selectedGame.locked || !selectedGame.canPlay || isGameOnCooldown(selectedGame.id) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                disabled={selectedGame.locked || !selectedGame.canPlay || isGameOnCooldown(selectedGame.id)}
                             >
                                 {selectedGame.locked ? (
                                     <>
@@ -766,6 +861,11 @@ const navItems = [
                                     <>
                                         <Lock className="w-5 h-5" />
                                         <span>DAILY LIMIT REACHED</span>
+                                    </>
+                                ) : isGameOnCooldown(selectedGame.id) ? (
+                                    <>
+                                        <Clock className="w-5 h-5" />
+                                        <span>COOLDOWN: {formatCooldownTime(gameCooldowns[selectedGame.id])}</span>
                                     </>
                                 ) : (
                                     <>

@@ -22,7 +22,7 @@ import {
 
 Modal.setAppElement('#root');
 
-const BASE_URL = 'https://rfx-mining-app.onrender.com';
+const BASE_URL = 'http://localhost:3000';
 
 const CAMPAIGN_CATEGORIES = {
   Ocean: Droplets,
@@ -83,7 +83,7 @@ const NAV_ITEMS = [
 ];
 
 const BOTTOM_NAV_ITEMS = [
-  { id: 'home', icon: Home, label: 'Home', path: '/' },
+  { id: 'home', icon: Home, label: 'Home', path: '/dashboard' },
   { id: 'campaign', icon: MapPin, label: 'Campaigns', path: '/campaign' },
   { id: 'games', icon: Gamepad2, label: 'Games', path: '/games' },
   { id: 'wallet', icon: Wallet, label: 'Wallet', path: '/wallet' },
@@ -148,6 +148,11 @@ export default function RFXCampaignPage() {
     }
   };
 
+  const detectUrls = (text) => {
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  return text.match(urlRegex) || [];
+};
+
   const areAllTasksCompleted = (tasks, currentDay) => {
     const todayTasks = tasks.filter(task => task.day === currentDay);
     if (todayTasks.length === 0) return false;
@@ -192,22 +197,35 @@ export default function RFXCampaignPage() {
     }
   };
 
-  const calculateDayProgress = (campaign) => {
-    if (!campaign?.startDate || !campaign?.duration) {
+const calculateDayProgress = (campaign) => {
+  if (!campaign?.startDate || !campaign?.duration) {
+    return { currentDay: 1, timeLeft: { hours: 23, minutes: 59, seconds: 59 } };
+  }
+
+  try {
+    const startDate = new Date(campaign.startDate);
+    const now = new Date();
+    
+    // Ensure startDate is valid
+    if (isNaN(startDate.getTime())) {
       return { currentDay: 1, timeLeft: { hours: 23, minutes: 59, seconds: 59 } };
     }
 
-    const startDate = new Date(campaign.startDate);
-    const duration = parseInt(campaign.duration, 10) || 1;
-    const now = new Date();
-    const diffTime = now - startDate;
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
-    const currentDay = Math.min(diffDays, duration);
+    // Calculate elapsed time in milliseconds
+    const elapsedMs = now - startDate;
+    
+    // Calculate elapsed days (1-based)
+    const elapsedDays = Math.max(1, Math.floor(elapsedMs / (1000 * 60 * 60 * 24)) + 1);
+    
+    // Ensure we don't exceed campaign duration
+    const currentDay = Math.min(elapsedDays, parseInt(campaign.duration) || 1);
+    
+    // Calculate time until next day
+    const nextDayStart = new Date(startDate);
+    nextDayStart.setDate(startDate.getDate() + currentDay);
+    const timeUntilNextDay = nextDayStart - now;
 
-    const nextDay = new Date(startDate);
-    nextDay.setDate(startDate.getDate() + currentDay);
-    const timeUntilNextDay = nextDay - now;
-
+    // Ensure time values are valid numbers
     return {
       currentDay,
       timeLeft: {
@@ -216,7 +234,12 @@ export default function RFXCampaignPage() {
         seconds: Math.max(0, Math.floor((timeUntilNextDay % (1000 * 60)) / 1000))
       }
     };
-  };
+  } catch (error) {
+    console.error('Error calculating day progress:', error);
+    return { currentDay: 1, timeLeft: { hours: 23, minutes: 59, seconds: 59 } };
+  }
+};
+
 
   const fetchInitialData = async () => {
     setLoading(true);
@@ -295,57 +318,66 @@ export default function RFXCampaignPage() {
     }
   };
 
-  const fetchCampaignDetails = async (campaignId) => {
-    try {
-      const response = await fetchWithAuth(`${BASE_URL}/campaigns/${campaignId}/user`);
+const fetchCampaignDetails = async (campaignId) => {
+  try {
+    const response = await fetchWithAuth(`${BASE_URL}/campaigns/${campaignId}/user`);
 
-      const mappedTasks = (response.tasksList || []).map((task, index) => {
-        const userTask = response.participantsList
-          ?.find(p => p.userId?.toString() === localStorage.getItem('userId'))
-          ?.tasks?.find(t => t.taskId?.toString() === task._id?.toString()) || {};
-        
-        return {
-          ...task,
-          id: task._id || `temp-${Math.random()}`,
-          status: userTask.status || 'open',
-          reward: task.reward ? `${task.reward} RFX` : '0 RFX',
-          completed: userTask.status === 'completed',
-          proof: userTask.proof || null,
-          day: task.day || 1,
-          taskNumber: index + 1
-        };
-      });
-
-      const { currentDay, timeLeft } = calculateDayProgress(response);
+    // When mapping tasks, add the index to each task
+    const mappedTasks = (response.tasksList || []).map((task, index) => {
+      const userTask = response.participantsList
+        ?.find(p => p.userId?.toString() === localStorage.getItem('userId'))
+        ?.tasks?.find(t => t.taskId?.toString() === task._id?.toString()) || {};
       
-      setTasks(mappedTasks);
-      setSelectedCampaign({
-        ...response,
-        id: response._id,
-        tasks: mappedTasks.length,
-        reward: response.reward ? `${response.reward} RFX` : '0 RFX',
-        duration: response.duration ? `${response.duration} days` : '1 day',
-        startDate: response.startDate ? new Date(response.startDate).toISOString() : new Date().toISOString(),
-        currentDay,
-        dayTimeLeft: timeLeft
-      });
-      setCurrentDay(currentDay);
-      setDayTimeLeft(timeLeft);
-    } catch (error) {
-      console.error('Fetch campaign error:', error);
-      setError({
-        type: 'error',
-        message: error.message || 'Failed to load campaign details',
-      });
-    }
-  };
+      return {
+        ...task,
+        id: task._id || `temp-${Math.random()}`,
+        status: userTask.status || 'open',
+        reward: task.reward ? `${task.reward} RFX` : '0 RFX',
+        completed: userTask.status === 'completed',
+        proof: userTask.proof || null,
+        day: task.day || 1,
+        taskNumber: index + 1
+      };
+    });
+
+    const { currentDay, timeLeft } = calculateDayProgress(response);
+    
+    // Calculate progress
+    const userCampaign = response.participantsList?.find(p => 
+      p.userId?.toString() === localStorage.getItem('userId')
+    );
+    const progress = response.tasksList?.length > 0 
+      ? ((userCampaign?.completed || 0) / response.tasksList.length) * 100 
+      : 0;
+
+    setTasks(mappedTasks);
+    setSelectedCampaign({
+      ...response,
+      id: response._id,
+      tasks: mappedTasks.length,
+      reward: response.reward ? `${response.reward} RFX` : '0 RFX',
+      duration: response.duration ? `${response.duration} days` : '1 day',
+      startDate: response.startDate ? new Date(response.startDate).toISOString() : new Date().toISOString(),
+      currentDay,
+      dayTimeLeft: timeLeft,
+      progress: Math.min(100, Math.max(0, progress))
+    });
+    setCurrentDay(currentDay);
+    setDayTimeLeft(timeLeft);
+  } catch (error) {
+    console.error('Fetch campaign error:', error);
+    setError({
+      type: 'error',
+      message: error.message || 'Failed to load campaign details',
+    });
+  }
+};
 
 const handleCompleteTask = async (campaignId, taskId) => {
-    // Set loading state for this specific task
     setCompletingTask(taskId);
     
     try {
-        // Optimistic update - show completing state immediately
+        // Optimistic update
         setTasks(prev => prev.map(t => 
             t.id === taskId ? { ...t, status: 'completing' } : t
         ));
@@ -354,20 +386,46 @@ const handleCompleteTask = async (campaignId, taskId) => {
             t.id === taskId ? { ...t, status: 'completing' } : t
         ));
 
-        // Make the API call
         const response = await fetchWithAuth(
             `${BASE_URL}/campaigns/${campaignId}/tasks/${taskId}/complete`, 
-            { method: 'POST' }
+            { 
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json' // Explicitly ask for JSON
+                }
+            }
         );
 
-        if (response.success) {
-            // Update all states with the confirmed completion
+        // Check if response exists
+        if (!response) {
+            throw new Error('Server did not respond');
+        }
+
+        // Get response text first for debugging
+        const responseText = await response.text();
+        let responseData;
+        
+        try {
+            responseData = JSON.parse(responseText);
+        } catch (e) {
+            console.error('Failed to parse JSON:', e, 'Response text:', responseText);
+            throw new Error('Server returned invalid data');
+        }
+
+        // Check for error response
+        if (!response.ok || responseData.error) {
+            throw new Error(responseData.message || 'Task completion failed');
+        }
+
+        // Only update state if we got valid data
+        if (responseData.success) {
             setTasks(prev => prev.map(t => 
                 t.id === taskId ? { 
                     ...t, 
                     status: 'completed',
                     completed: true,
-                    reward: response.task.reward
+                    reward: responseData.task?.reward || t.reward
                 } : t
             ));
 
@@ -381,8 +439,8 @@ const handleCompleteTask = async (campaignId, taskId) => {
 
             setUserStats(prev => ({
                 ...prev,
-                earnings: response.userStats.earnings,
-                co2Saved: response.userStats.co2Saved
+                earnings: responseData.userStats?.earnings || prev.earnings,
+                co2Saved: responseData.userStats?.co2Saved || prev.co2Saved
             }));
 
             setSelectedCampaign(prev => ({
@@ -394,39 +452,69 @@ const handleCompleteTask = async (campaignId, taskId) => {
                         completed: true
                     } : t
                 ),
-                userCompleted: response.campaignProgress.completed
+                userCompleted: responseData.campaignProgress?.completed || prev.userCompleted
             }));
 
             Swal.fire({
                 title: 'Task Completed!',
-                text: `You earned ${response.task.reward.toFixed(5)} RFX`,
+                text: `You earned ${(responseData.task?.reward || 0).toFixed(5)} RFX`,
                 icon: 'success',
                 background: '#1a202c',
                 color: '#ffffff',
                 confirmButtonColor: '#38a169'
             });
         }
-    } catch (error) {
-        // Roll back optimistic updates if there's an error
-        setTasks(prev => prev.map(t => 
-            t.id === taskId ? { ...t, status: 'open' } : t
-        ));
-        
-        setDailyTasks(prev => prev.map(t => 
-            t.id === taskId ? { ...t, status: 'open' } : t
-        ));
 
+    } catch (error) {
         console.error('Complete task error:', error);
-        Swal.fire({
-            title: 'Error',
-            text: error.message || 'Failed to complete task',
-            icon: 'error',
-            background: '#1a202c',
-            color: '#ffffff',
-            confirmButtonColor: '#38a169'
-        });
+        
+        // Check if this is a "already completed" error
+        if (error.message.includes('already completed')) {
+            // Update state to reflect completion
+            setTasks(prev => prev.map(t => 
+                t.id === taskId ? { 
+                    ...t, 
+                    status: 'completed',
+                    completed: true
+                } : t
+            ));
+            
+            setDailyTasks(prev => prev.map(t => 
+                t.id === taskId ? { 
+                    ...t, 
+                    status: 'completed',
+                    completed: true
+                } : t
+            ));
+
+            Swal.fire({
+                title: 'Already Completed',
+                text: 'This task was already completed',
+                icon: 'info',
+                background: '#1a202c',
+                color: '#ffffff',
+                confirmButtonColor: '#38a169'
+            });
+        } else {
+            // For other errors, reset to open status
+            setTasks(prev => prev.map(t => 
+                t.id === taskId ? { ...t, status: 'open' } : t
+            ));
+            
+            setDailyTasks(prev => prev.map(t => 
+                t.id === taskId ? { ...t, status: 'open' } : t
+            ));
+
+            Swal.fire({
+                title: 'Error',
+                text: error.message || 'Failed to complete task',
+                icon: 'error',
+                background: '#1a202c',
+                color: '#ffffff',
+                confirmButtonColor: '#38a169'
+            });
+        }
     } finally {
-        // Clear loading state regardless of success/error
         setCompletingTask(null);
     }
 };
@@ -1251,15 +1339,23 @@ const handleProofUpload = async (campaignId, taskId, file) => {
                     </div>
                 ) : dailyTasks.length > 0 ? (
                     <div className="space-y-4 max-h-96 overflow-y-auto">
-                        <div className="bg-gray-800 p-3 rounded-xl mb-4 text-center">
-                            <div className="text-sm text-gray-400 mb-1">Day {currentDay} of {selectedCampaign.duration}</div>
-                            <div className="text-lg font-bold text-white">
-                                {String(dayTimeLeft.hours).padStart(2, '0')}:
-                                {String(dayTimeLeft.minutes).padStart(2, '0')}:
-                                {String(dayTimeLeft.seconds).padStart(2, '0')}
-                            </div>
-                            <div className="text-xs text-gray-400">Time remaining to complete today's tasks</div>
-                        </div>
+<div className="bg-gray-800 p-3 rounded-xl mb-4 text-center">
+  <div className="text-sm text-gray-400 mb-1">
+    {!isNaN(currentDay) && !isNaN(selectedCampaign?.duration) ? (
+      `Day ${currentDay} of ${selectedCampaign.duration}`
+    ) : (
+      "Day 1 of 7"
+    )}
+  </div>
+  <div className="text-lg font-bold text-white">
+    {!isNaN(dayTimeLeft?.hours) && !isNaN(dayTimeLeft?.minutes) && !isNaN(dayTimeLeft?.seconds) ? (
+      `${String(dayTimeLeft.hours).padStart(2, '0')}:${String(dayTimeLeft.minutes).padStart(2, '0')}:${String(dayTimeLeft.seconds).padStart(2, '0')}`
+    ) : (
+      "23:59:59"
+    )}
+  </div>
+  <div className="text-xs text-gray-400">Time remaining to complete today's tasks</div>
+</div>
                         
                         {dailyTasks.map((task) => {
                             const colors = getColorClasses(selectedCampaign.category);
@@ -1373,19 +1469,62 @@ const handleProofUpload = async (campaignId, taskId, file) => {
                                                     </button>
                                                 )}
                                                 
-                                                {task.requirements && (
-                                                    <div className="mt-2">
-                                                        <div className="text-xs text-gray-500 mb-1">Requirements:</div>
-                                                        <ul className="text-xs text-gray-400 space-y-1">
-                                                            {task.requirements.map((req, i) => (
-                                                                <li key={i} className="flex items-center space-x-2">
-                                                                    <div className="w-1 h-1 bg-gray-400 rounded-full"></div>
-                                                                    <span>{req}</span>
-                                                                </li>
-                                                            ))}
-                                                        </ul>
-                                                    </div>
-                                                )}
+                                             {task.requirements && (
+  <div className="mt-2">
+    <div className="text-xs text-gray-500 mb-1">Requirements:</div>
+    <ul className="text-xs text-gray-400 space-y-1">
+      {task.requirements.map((req, i) => {
+        const urls = detectUrls(req);
+        let remainingText = req;
+        let elements = [];
+        
+        if (urls.length > 0) {
+          urls.forEach((url, urlIndex) => {
+            const parts = remainingText.split(url);
+            if (parts[0]) {
+              elements.push(<span key={`text-${i}-${urlIndex}`}>{parts[0]}</span>);
+            }
+            elements.push(
+              <a 
+                key={`link-${i}-${urlIndex}`}
+                href={url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-blue-400 hover:underline inline-flex items-center"
+              >
+                {url.includes('twitter.com') ? 'Twitter' : 
+                 url.includes('facebook.com') ? 'Facebook' : 
+                 url.includes('instagram.com') ? 'Instagram' : 
+                 url.includes('youtube.com') ? 'YouTube' : 
+                 url.includes('discord.gg') ? 'Discord' : 
+                 url.includes('tiktok.com') ? 'TikTok' : 
+                 url.includes('linkedin.com') ? 'LinkedIn' : 
+                 url.includes('reddit.com') ? 'Reddit' : 
+                 'Visit Link'}
+                <LinkIcon className="w-3 h-3 ml-1" />
+              </a>
+            );
+            remainingText = parts[1] || '';
+          });
+          if (remainingText) {
+            elements.push(<span key={`text-end-${i}`}>{remainingText}</span>);
+          }
+        } else {
+          elements = [<span key={`text-only-${i}`}>{req}</span>];
+        }
+
+        return (
+          <li key={i} className="flex items-start space-x-2">
+            <div className="w-1 h-1 bg-gray-400 rounded-full mt-1.5"></div>
+            <div className="flex flex-wrap gap-1">
+              {elements}
+            </div>
+          </li>
+        );
+      })}
+    </ul>
+  </div>
+)}
                                             </div>
                                         </div>
                                         <div className="text-green-400 font-bold">{task.reward}</div>

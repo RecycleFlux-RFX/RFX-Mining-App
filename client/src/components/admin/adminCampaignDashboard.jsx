@@ -96,44 +96,42 @@ const AdminCampaignDashboard = () => {
 
     // Fetch campaigns on mount
     useEffect(() => {
-// AdminCampaignDashboard.jsx
-const fetchCampaigns = async () => {
-    setLoading(true);
-    try {
-        const token = localStorage.getItem('authToken');
-        const isAdmin = localStorage.getItem('isAdmin');
-        
-        if (!token || !isAdmin) {
-            throw new Error('Admin not authenticated. Please log in.');
-        }
+        const fetchCampaigns = async () => {
+            setLoading(true);
+            try {
+                const token = localStorage.getItem('authToken');
+                const isAdmin = localStorage.getItem('isAdmin');
+                
+                if (!token || !isAdmin) {
+                    throw new Error('Admin not authenticated. Please log in.');
+                }
 
-        const response = await api.get('/admin/campaigns', {
-            headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-            params: {
-                createdByMe: showMyCampaigns,
-            },
-        });
-        setCampaigns(Array.isArray(response.data) ? response.data : []);
-    } catch (error) {
-        console.error('Error fetching campaigns:', error);
-        setError(error.response?.data?.message || error.message);
-        setCampaigns([]);
-        toast.error('Failed to fetch campaigns: ' + (error.response?.data?.message || error.message));
-        
-        // Redirect to login if not authenticated
-        if (error.response?.status === 401 || error.message.includes('authenticated')) {
-            navigate('/admin/login');
-        }
-    } finally {
-        setLoading(false);
-    }
-};
+                const response = await api.get('/admin/campaigns', {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/json',
+                    },
+                    params: {
+                        createdByMe: showMyCampaigns,
+                    },
+                });
+                setCampaigns(Array.isArray(response.data) ? response.data : []);
+            } catch (error) {
+                console.error('Error fetching campaigns:', error);
+                setError(error.response?.data?.message || error.message);
+                setCampaigns([]);
+                toast.error('Failed to fetch campaigns: ' + (error.response?.data?.message || error.message));
+                
+                if (error.response?.status === 401 || error.message.includes('authenticated')) {
+                    navigate('/admin/login');
+                }
+            } finally {
+                setLoading(false);
+            }
+        };
 
         fetchCampaigns();
-    }, [showMyCampaigns]);
+    }, [showMyCampaigns, navigate]);
 
     // Fetch campaign details when selected
     useEffect(() => {
@@ -157,8 +155,6 @@ const fetchCampaigns = async () => {
                             }
                         });
                         setProofs(proofsRes.data);
-                        
-                        // Check for new proofs and show notifications
                         checkNewProofs(proofsRes.data);
                     }
                 } catch (err) {
@@ -174,13 +170,13 @@ const fetchCampaigns = async () => {
     // Check for new proofs and show notifications
     const checkNewProofs = (newProofs) => {
         const pendingProofs = newProofs.flatMap(proofGroup => 
-            proofGroup.proofs.filter(p => p.status === 'pending')
+            proofGroup.proofs?.filter(p => p?.status === 'pending') || []
         );
         
         if (pendingProofs.length > 0) {
             const newNotifications = pendingProofs.map(proof => ({
-                id: `${proof.taskId}-${proof.userId}`,
-                message: `New proof submitted by ${proof.username} for task "${proof.taskTitle}"`,
+                id: `${proof?.taskId}-${proof?.userId}` || Math.random().toString(),
+                message: `New proof submitted by ${proof?.username || 'Anonymous'} for task "${proof?.taskTitle || 'Untitled Task'}"`,
                 timestamp: new Date(),
                 read: false
             }));
@@ -214,235 +210,256 @@ const fetchCampaigns = async () => {
     };
 
     // Submit campaign form
-const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
 
-    try {
-        const token = localStorage.getItem('authToken');
-        const formPayload = new FormData();
+        try {
+            const token = localStorage.getItem('authToken');
+            const formPayload = new FormData();
 
-        // Append all form data
-        formPayload.append('title', formData.title);
-        formPayload.append('description', formData.description);
-        formPayload.append('category', formData.category);
-        formPayload.append('reward', formData.reward);
-        formPayload.append('difficulty', formData.difficulty);
-        formPayload.append('duration', formData.duration);
-        formPayload.append('featured', formData.featured);
-        formPayload.append('new', formData.new);
-        formPayload.append('trending', formData.trending);
-        formPayload.append('ending', formData.ending);
-        formPayload.append('startDate', formData.startDate);
-        formPayload.append('status', formData.status);
-        
-        // Handle tasks
-        if (formData.tasksList.length > 0) {
-            formPayload.append('tasks', JSON.stringify(formData.tasksList));
-        }
-
-        // Handle image upload
-        if (formData.image) {
-            formPayload.append('image', formData.image);
-        } else if (selectedCampaign?.image) {
-            formPayload.append('image', '');
-        }
-
-        const config = {
-            headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'multipart/form-data'
+            // Append all form data
+            formPayload.append('title', formData.title);
+            formPayload.append('description', formData.description);
+            formPayload.append('category', formData.category);
+            formPayload.append('reward', formData.reward);
+            formPayload.append('difficulty', formData.difficulty);
+            formPayload.append('duration', formData.duration);
+            formPayload.append('featured', formData.featured);
+            formPayload.append('new', formData.new);
+            formPayload.append('trending', formData.trending);
+            formPayload.append('ending', formData.ending);
+            formPayload.append('startDate', formData.startDate);
+            formPayload.append('status', formData.status);
+            
+            // Handle tasks
+            if (formData.tasksList.length > 0) {
+                formPayload.append('tasks', JSON.stringify(formData.tasksList));
             }
-        };
 
-        let response;
-        if (selectedCampaign) {
-            response = await api.put(
-                `/admin/campaigns/${selectedCampaign._id}`,
-                formPayload,
-                config
-            );
-            toast.success('Campaign updated successfully');
-        } else {
-            response = await api.post(
-                '/admin/campaigns',
-                formPayload,
-                config
-            );
-            toast.success('Campaign created successfully');
-        }
-
-        // Update state and close modal
-        setCampaigns(prev => {
-            const existing = prev.find(c => c._id === response.data._id);
-            if (existing) {
-                return prev.map(c => c._id === response.data._id ? response.data : c);
+            // Handle image upload
+            if (formData.image) {
+                formPayload.append('image', formData.image);
+            } else if (selectedCampaign?.image) {
+                formPayload.append('image', '');
             }
-            return [response.data, ...prev];
-        });
 
-        setIsModalOpen(false);
-        resetFormData();
-    } catch (err) {
-        console.error('Error saving campaign:', err);
-        const errorMsg = err.response?.data?.message ||
-            err.response?.data?.error ||
-            'Failed to save campaign';
-        setError(errorMsg);
-        toast.error(errorMsg);
-    } finally {
-        setLoading(false);
-    }
-};
+            const config = {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'multipart/form-data'
+                }
+            };
+
+            let response;
+            if (selectedCampaign) {
+                response = await api.put(
+                    `/admin/campaigns/${selectedCampaign._id}`,
+                    formPayload,
+                    config
+                );
+                toast.success('Campaign updated successfully');
+            } else {
+                response = await api.post(
+                    '/admin/campaigns',
+                    formPayload,
+                    config
+                );
+                toast.success('Campaign created successfully');
+            }
+
+            // Update state and close modal
+            setCampaigns(prev => {
+                const existing = prev.find(c => c._id === response.data._id);
+                if (existing) {
+                    return prev.map(c => c._id === response.data._id ? response.data : c);
+                }
+                return [response.data, ...prev];
+            });
+
+            setIsModalOpen(false);
+            resetFormData();
+        } catch (err) {
+            console.error('Error saving campaign:', err);
+            const errorMsg = err.response?.data?.message ||
+                err.response?.data?.error ||
+                'Failed to save campaign';
+            setError(errorMsg);
+            toast.error(errorMsg);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // Add task to form
-// In your handleAddTask function:
-const handleAddTask = async (e) => {
-    e.preventDefault();
-    setLoading(true);
+    const handleAddTask = async (e) => {
+        e.preventDefault();
+        setLoading(true);
 
-    try {
-        const token = localStorage.getItem('authToken');
-        const formPayload = new FormData();
+        try {
+            const token = localStorage.getItem('authToken');
+            const formPayload = new FormData();
 
-        // Append all task data
-        formPayload.append('day', taskForm.day);
-        formPayload.append('title', taskForm.title);
-        formPayload.append('description', taskForm.description);
-        formPayload.append('type', taskForm.type);
-        formPayload.append('platform', taskForm.platform || '');
-        formPayload.append('reward', taskForm.reward);
-        formPayload.append('requirements', taskForm.requirements);
-        
-        if (taskForm.contentFile) {
-            formPayload.append('contentFile', taskForm.contentFile);
-        } else if (taskForm.contentUrl) {
-            formPayload.append('contentUrl', taskForm.contentUrl);
-        }
-
-        const response = await api.post(
-            `/admin/campaigns/${selectedCampaign._id}/tasks`,
-            formPayload,
-            {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'Content-Type': 'multipart/form-data'
-                }
+            // Append all task data
+            formPayload.append('day', taskForm.day);
+            formPayload.append('title', taskForm.title);
+            formPayload.append('description', taskForm.description);
+            formPayload.append('type', taskForm.type);
+            formPayload.append('platform', taskForm.platform || '');
+            formPayload.append('reward', taskForm.reward);
+            formPayload.append('requirements', taskForm.requirements);
+            
+            if (taskForm.contentFile) {
+                formPayload.append('contentFile', taskForm.contentFile);
+            } else if (taskForm.contentUrl) {
+                formPayload.append('contentUrl', taskForm.contentUrl);
             }
-        );
 
-        // Update UI
-        setSelectedCampaign(prev => ({
-            ...prev,
-            tasksList: [...prev.tasksList, response.data.task]
-        }));
+            const response = await api.post(
+                `/admin/campaigns/${selectedCampaign._id}/tasks`,
+                formPayload,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'multipart/form-data'
+                    }
+                }
+            );
 
-        // Reset form
-        setTaskForm({
-            day: taskForm.day,
-            title: '',
-            description: '',
-            type: taskForm.type,
-            platform: taskForm.platform,
-            reward: 0.001,
-            requirements: '',
-            contentUrl: '',
-            contentFile: null
-        });
+            // Update UI
+            setSelectedCampaign(prev => ({
+                ...prev,
+                tasksList: [...(prev.tasksList || []), response.data.task]
+            }));
 
-        toast.success('Task added successfully');
-        setIsTaskModalOpen(false);
-    } catch (err) {
-        const errorMsg = err.response?.data?.message || 'Failed to add task';
-        setError(errorMsg);
-        toast.error(errorMsg);
-    } finally {
-        setLoading(false);
-    }
-};
+            // Reset form
+            setTaskForm({
+                day: taskForm.day,
+                title: '',
+                description: '',
+                type: taskForm.type,
+                platform: taskForm.platform,
+                reward: 0.001,
+                requirements: '',
+                contentUrl: '',
+                contentFile: null
+            });
 
-// In your handleEditTask function:
+            toast.success('Task added successfully');
+            setIsTaskModalOpen(false);
+        } catch (err) {
+            const errorMsg = err.response?.data?.message || 'Failed to add task';
+            setError(errorMsg);
+            toast.error(errorMsg);
+        } finally {
+            setLoading(false);
+        }
+    };
 
+    // Edit task
 const handleEditTask = async (taskId, updatedTask) => {
-    setLoading(true);
-    try {
-        const token = localStorage.getItem('authToken');
-        const formPayload = new FormData();
+  setLoading(true);
+  try {
+    const token = localStorage.getItem('authToken');
+    const formPayload = new FormData();
 
-        // Append all updated task data
-        formPayload.append('day', updatedTask.day);
-        formPayload.append('title', updatedTask.title);
-        formPayload.append('description', updatedTask.description);
-        formPayload.append('type', updatedTask.type);
-        formPayload.append('platform', updatedTask.platform || '');
-        formPayload.append('reward', updatedTask.reward);
-        formPayload.append('requirements', updatedTask.requirements.join(','));
-        
-        if (updatedTask.contentFile) {
-            formPayload.append('contentFile', updatedTask.contentFile);
-        } else if (updatedTask.contentUrl) {
-            formPayload.append('contentUrl', updatedTask.contentUrl);
+    // Append all updated task data
+    formPayload.append('day', updatedTask.day);
+    formPayload.append('title', updatedTask.title);
+    formPayload.append('description', updatedTask.description);
+    formPayload.append('type', updatedTask.type);
+    formPayload.append('platform', updatedTask.platform || '');
+    formPayload.append('reward', updatedTask.reward);
+    
+    // Handle requirements - convert array to string if needed
+    const requirements = Array.isArray(updatedTask.requirements) 
+      ? updatedTask.requirements.join(',') 
+      : updatedTask.requirements;
+    formPayload.append('requirements', requirements || '');
+    
+    // Handle content - either URL or file
+    if (updatedTask.contentFile) {
+      formPayload.append('contentFile', updatedTask.contentFile);
+    } else if (updatedTask.contentUrl) {
+      formPayload.append('contentUrl', updatedTask.contentUrl);
+    }
+
+    await api.put(
+      `/admin/campaigns/${selectedCampaign._id}/tasks/${taskId}`,
+      formPayload,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      }
+    );
+
+    // Update the selected campaign with the updated task
+    setSelectedCampaign(prev => ({
+      ...prev,
+      tasksList: (prev.tasksList || []).map(task => 
+        task._id === taskId ? { 
+          ...task, 
+          ...updatedTask,
+          requirements: Array.isArray(updatedTask.requirements) 
+            ? updatedTask.requirements 
+            : (updatedTask.requirements?.split(',') || [])
+        } : task
+      )
+    }));
+
+    toast.success('Task updated successfully');
+  } catch (err) {
+    const errorMsg = err.response?.data?.message || 'Failed to update task';
+    setError(errorMsg);
+    toast.error(errorMsg);
+  } finally {
+    setLoading(false);
+  }
+};
+
+    // Delete task
+    const handleDeleteTask = async (taskId) => {
+        if (!window.confirm('Are you sure you want to delete this task? Any submitted proofs will be removed from the task but kept in user records.')) {
+            return;
         }
 
-        await api.put(
-            `/admin/campaigns/${selectedCampaign._id}/tasks/${taskId}`,
-            formPayload,
-            {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'Content-Type': 'multipart/form-data'
+        try {
+            const token = localStorage.getItem('authToken');
+            const response = await api.delete(
+                `/admin/campaigns/${selectedCampaign._id}/tasks/${taskId}`,
+                {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
                 }
+            );
+
+            // Update the selected campaign by removing the deleted task
+            setSelectedCampaign(prev => ({
+                ...prev,
+                tasksList: (prev.tasksList || []).filter(task => task._id !== taskId)
+            }));
+
+            toast.success(response.data.message || 'Task deleted successfully');
+            
+            // If there were proofs, show additional info
+            if (response.data.deletedProofsCount > 0) {
+                toast.info(`Note: ${response.data.deletedProofsCount} proof submissions were removed from this task`);
             }
-        );
-
-        // Update the selected campaign with the updated task
-        setSelectedCampaign(prev => ({
-            ...prev,
-            tasksList: prev.tasksList.map(task => 
-                task._id === taskId ? { ...task, ...updatedTask } : task
-            )
-        }));
-
-        toast.success('Task updated successfully');
-    } catch (err) {
-        const errorMsg = err.response?.data?.message || 'Failed to update task';
-        setError(errorMsg);
-        toast.error(errorMsg);
-    } finally {
-        setLoading(false);
-    }
-};
-
-const handleDeleteTask = async (taskId) => {
-    if (!window.confirm('Are you sure you want to delete this task? This action cannot be undone.')) {
-        return;
-    }
-
-    try {
-        const token = localStorage.getItem('authToken');
-        await api.delete(
-            `/admin/campaigns/${selectedCampaign._id}/tasks/${taskId}`,
-            {
-                headers: {
-                    Authorization: `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
+        } catch (err) {
+            const errorMsg = err.response?.data?.message || 'Failed to delete task';
+            setError(errorMsg);
+            toast.error(errorMsg);
+            
+            // If the error is about proofs, show a more user-friendly message
+            if (err.response?.status === 400 && err.response.data.message.includes('proofs')) {
+                toast.info('To delete this task, first approve or reject all pending proofs');
             }
-        );
-
-        // Update the selected campaign by removing the deleted task
-        setSelectedCampaign(prev => ({
-            ...prev,
-            tasksList: prev.tasksList.filter(task => task._id !== taskId)
-        }));
-
-        toast.success('Task deleted successfully');
-    } catch (err) {
-        const errorMsg = err.response?.data?.message || 'Failed to delete task';
-        setError(errorMsg);
-        toast.error(errorMsg);
-    }
-};
+        }
+    };
 
     // Delete campaign
     const handleDeleteCampaign = async (id) => {
@@ -498,7 +515,7 @@ const handleDeleteTask = async (taskId) => {
                 if (proofGroup.taskId === taskId) {
                     return {
                         ...proofGroup,
-                        proofs: proofGroup.proofs.map(p => {
+                        proofs: (proofGroup.proofs || []).map(p => {
                             if (p.userId === userId) {
                                 return { ...p, status: approve ? 'completed' : 'rejected' };
                             }
@@ -512,9 +529,9 @@ const handleDeleteTask = async (taskId) => {
             // Update selected campaign state
             setSelectedCampaign(prev => {
                 if (!prev) return prev;
-                const updatedTasks = prev.tasksList.map(task => {
+                const updatedTasks = (prev.tasksList || []).map(task => {
                     if (task._id === taskId) {
-                        const updatedCompletions = task.completedBy.map(cb => {
+                        const updatedCompletions = (task.completedBy || []).map(cb => {
                             if (cb.userId === userId) {
                                 return { ...cb, status: approve ? 'completed' : 'rejected' };
                             }
@@ -542,6 +559,7 @@ const handleDeleteTask = async (taskId) => {
         }
     };
 
+    // Bulk approve/reject proofs
     const handleBulkApprove = async (approve) => {
         if (selectedProofs.length === 0) return;
 
@@ -738,7 +756,7 @@ const handleDeleteTask = async (taskId) => {
     const getPendingProofCount = () => {
         if (!proofs.length) return 0;
         return proofs.reduce((count, proofGroup) => {
-            return count + proofGroup.proofs.filter(p => p.status === 'pending').length;
+            return count + (proofGroup.proofs?.filter(p => p?.status === 'pending')?.length || 0);
         }, 0);
     };
 
@@ -838,62 +856,61 @@ const handleDeleteTask = async (taskId) => {
 
             <main className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8 space-y-8">
                 {/* Stats Cards */}
-{/* Stats Cards */}
-<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
-        <div className="flex items-center justify-between">
-            <div>
-                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Campaigns</p>
-                <div className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{campaigns.length}</div>
-            </div>
-            <div className={`w-12 h-12 ${darkMode ? 'bg-blue-900/30' : 'bg-blue-100'} rounded-xl flex items-center justify-center`}>
-                <BarChart2 className={`w-6 h-6 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
-            </div>
-        </div>
-    </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Campaigns</p>
+                                <div className={`text-3xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{campaigns.length}</div>
+                            </div>
+                            <div className={`w-12 h-12 ${darkMode ? 'bg-blue-900/30' : 'bg-blue-100'} rounded-xl flex items-center justify-center`}>
+                                <BarChart2 className={`w-6 h-6 ${darkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+                            </div>
+                        </div>
+                    </div>
 
-    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
-        <div className="flex items-center justify-between">
-            <div>
-                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Active Campaigns</p>
-                <div className={`text-3xl font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
-                    {campaigns.filter(c => c.status === 'active').length}
-                </div>
-            </div>
-            <div className={`w-12 h-12 ${darkMode ? 'bg-green-900/30' : 'bg-green-100'} rounded-xl flex items-center justify-center`}>
-                <TrendingUp className={`w-6 h-6 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
-            </div>
-        </div>
-    </div>
+                    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Active Campaigns</p>
+                                <div className={`text-3xl font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>
+                                    {campaigns.filter(c => c.status === 'active').length}
+                                </div>
+                            </div>
+                            <div className={`w-12 h-12 ${darkMode ? 'bg-green-900/30' : 'bg-green-100'} rounded-xl flex items-center justify-center`}>
+                                <TrendingUp className={`w-6 h-6 ${darkMode ? 'text-green-400' : 'text-green-600'}`} />
+                            </div>
+                        </div>
+                    </div>
 
-    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
-        <div className="flex items-center justify-between">
-            <div>
-                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Participants</p>
-                <div className={`text-3xl font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
-                    {campaigns.reduce((sum, c) => sum + (c.participants || 0), 0)}
-                </div>
-            </div>
-            <div className={`w-12 h-12 ${darkMode ? 'bg-purple-900/30' : 'bg-purple-100'} rounded-xl flex items-center justify-center`}>
-                <Users className={`w-6 h-6 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
-            </div>
-        </div>
-    </div>
+                    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Total Participants</p>
+                                <div className={`text-3xl font-bold ${darkMode ? 'text-purple-400' : 'text-purple-600'}`}>
+                                    {campaigns.reduce((sum, c) => sum + (c.participants || 0), 0)}
+                                </div>
+                            </div>
+                            <div className={`w-12 h-12 ${darkMode ? 'bg-purple-900/30' : 'bg-purple-100'} rounded-xl flex items-center justify-center`}>
+                                <Users className={`w-6 h-6 ${darkMode ? 'text-purple-400' : 'text-purple-600'}`} />
+                            </div>
+                        </div>
+                    </div>
 
-    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
-        <div className="flex items-center justify-between">
-            <div>
-                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Pending Proofs</p>
-                <div className={`text-3xl font-bold ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>
-                    {getPendingProofCount()}
+                    <div className={`rounded-2xl shadow-lg p-6 border ${themeClasses.statsCard} transition-colors duration-200`}>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className={`text-sm font-medium ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>Pending Proofs</p>
+                                <div className={`text-3xl font-bold ${darkMode ? 'text-orange-400' : 'text-orange-600'}`}>
+                                    {getPendingProofCount()}
+                                </div>
+                            </div>
+                            <div className={`w-12 h-12 ${darkMode ? 'bg-orange-900/30' : 'bg-orange-100'} rounded-xl flex items-center justify-center`}>
+                                <Upload className={`w-6 h-6 ${darkMode ? 'text-orange-400' : 'text-orange-600'}`} />
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            <div className={`w-12 h-12 ${darkMode ? 'bg-orange-900/30' : 'bg-orange-100'} rounded-xl flex items-center justify-center`}>
-                <Upload className={`w-6 h-6 ${darkMode ? 'text-orange-400' : 'text-orange-600'}`} />
-            </div>
-        </div>
-    </div>
-</div>
 
                 {/* Campaign List Section */}
                 <div className={`rounded-2xl shadow-lg border ${themeClasses.card} overflow-hidden transition-colors duration-200`}>
@@ -985,7 +1002,7 @@ const handleDeleteTask = async (taskId) => {
 
                                     // Calculate pending proofs for this campaign
                                     const pendingProofs = campaign.tasksList?.reduce((count, task) => {
-                                        return count + (task.completedBy?.filter(p => p.status === 'pending').length || 0);
+                                        return count + (task.completedBy?.filter(p => p?.status === 'pending')?.length || 0);
                                     }, 0) || 0;
 
                                     return (
@@ -995,23 +1012,23 @@ const handleDeleteTask = async (taskId) => {
                                                 }`}
                                             onClick={() => setSelectedCampaign(campaign)}
                                         >
-{/* Campaign Image/Header */}
-<div className={`h-32 bg-gradient-to-r ${categoryConfig.gradient} rounded-t-2xl relative overflow-hidden`}>
-    {campaign.image ? (
-        <img
-            src={campaign.image && (campaign.image.startsWith('http') ? campaign.image : `/uploads/${campaign.image.split('uploads/')[1]}`)}
-            alt={campaign.title}
-            className="w-full h-full object-cover"
-            onError={(e) => {
-                e.target.onerror = null;
-                e.target.src = '';
-            }}
-        />
-    ) : (
-        <div className="w-full h-full flex items-center justify-center text-white text-4xl">
-            {categoryConfig.icon}
-        </div>
-    )}
+                                            {/* Campaign Image/Header */}
+                                            <div className={`h-32 bg-gradient-to-r ${categoryConfig.gradient} rounded-t-2xl relative overflow-hidden`}>
+                                                {campaign.image ? (
+                                                    <img
+                                                        src={campaign.image && (campaign.image.startsWith('http') ? campaign.image : `/uploads/${campaign.image.split('uploads/')[1]}`)}
+                                                        alt={campaign.title}
+                                                        className="w-full h-full object-cover"
+                                                        onError={(e) => {
+                                                            e.target.onerror = null;
+                                                            e.target.src = '';
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    <div className="w-full h-full flex items-center justify-center text-white text-4xl">
+                                                        {categoryConfig.icon}
+                                                    </div>
+                                                )}
 
                                                 {/* Status Badge */}
                                                 <div className="absolute top-3 left-3">
@@ -1186,21 +1203,21 @@ const handleDeleteTask = async (taskId) => {
                                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                         {/* Campaign Image */}
                                         <div className="lg:col-span-1">
-{selectedCampaign.image ? (
-    <img
-        src={selectedCampaign.image && (selectedCampaign.image.startsWith('http') ? selectedCampaign.image : `/uploads/${selectedCampaign.image.split('uploads/')[1]}`)}
-        alt={selectedCampaign.title}
-        className="w-full h-64 object-cover rounded-2xl shadow-lg"
-        onError={(e) => {
-            e.target.onerror = null;
-            e.target.src = '';
-        }}
-    />
-) : (
-    <div className={`w-full h-64 bg-gradient-to-r ${getCategoryConfig(selectedCampaign.category).gradient} rounded-2xl flex items-center justify-center text-white text-6xl shadow-lg`}>
-        {getCategoryConfig(selectedCampaign.category).icon}
-    </div>
-)}
+                                            {selectedCampaign.image ? (
+                                                <img
+                                                    src={selectedCampaign.image && (selectedCampaign.image.startsWith('http') ? selectedCampaign.image : `/uploads/${selectedCampaign.image.split('uploads/')[1]}`)}
+                                                    alt={selectedCampaign.title}
+                                                    className="w-full h-64 object-cover rounded-2xl shadow-lg"
+                                                    onError={(e) => {
+                                                        e.target.onerror = null;
+                                                        e.target.src = '';
+                                                    }}
+                                                />
+                                            ) : (
+                                                <div className={`w-full h-64 bg-gradient-to-r ${getCategoryConfig(selectedCampaign.category).gradient} rounded-2xl flex items-center justify-center text-white text-6xl shadow-lg`}>
+                                                    {getCategoryConfig(selectedCampaign.category).icon}
+                                                </div>
+                                            )}
                                         </div>
 
                                         {/* Campaign Details */}
@@ -1284,58 +1301,98 @@ const handleDeleteTask = async (taskId) => {
                                     </div>
 
                                     {selectedCampaign.participantsList?.length > 0 ? (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                            {selectedCampaign.participantsList.map((user) => {
-                                                const userCampaign = user.campaigns?.find(c => c.campaignId === selectedCampaign._id);
-                                                const completionPercentage = (userCampaign?.completed || 0) / (selectedCampaign.tasksList?.length || 1) * 100;
+                                        <div className="overflow-x-auto">
+                                            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                                                <thead className={`${darkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
+                                                    <tr>
+                                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
+                                                            User
+                                                        </th>
+                                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
+                                                            Progress
+                                                        </th>
+                                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
+                                                            Last Activity
+                                                        </th>
+                                                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider">
+                                                            Joined
+                                                        </th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className={`divide-y divide-gray-200 dark:divide-gray-700 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+                                             {selectedCampaign.participantsList?.map((participant) => {
+    const completionPercentage = participant.completedTasks / selectedCampaign.tasksList.length * 100;
+    const userId = participant.userId || {};
+    const username = userId.username || 'Anonymous';
+    const avatar = userId.avatar;
+    const email = userId.email || 'No email';
 
-                                                return (
-                                                    <div key={user._id} className={`border rounded-xl p-4 hover:shadow-md transition-shadow ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
-                                                        <div className="flex items-center space-x-3 mb-3">
-                                                            {user.avatar ? (
-                                                                <img
-                                                                    className="w-12 h-12 rounded-full border-2 border-gray-200"
-                                                                    src={user.avatar}
-                                                                    alt={user.username}
-                                                                    onError={(e) => {
-                                                                        e.target.onerror = null;
-                                                                        e.target.src = '';
-                                                                        e.target.className = 'w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-lg';
-                                                                        e.target.textContent = user.username?.charAt(0)?.toUpperCase() || 'N';
-                                                                    }}
-                                                                />
-                                                            ) : (
-                                                                <div className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-lg">
-                                                                    {user.username?.charAt(0)?.toUpperCase() || 'N'}
-                                                                </div>
-                                                            )}
-                                                            <div className="flex-1">
-                                                                <div className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{user.username || 'N/A'}</div>
-                                                                <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{user.email || 'N/A'}</div>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="space-y-2">
-                                                            <div className="flex justify-between text-sm">
-                                                                <span className={darkMode ? 'text-gray-400' : 'text-gray-600'}>Progress</span>
-                                                                <span className={`font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>{userCampaign?.completed || 0}/{selectedCampaign.tasksList?.length || 0}</span>
-                                                            </div>
-                                                            <div className={`w-full ${darkMode ? 'bg-gray-700' : 'bg-gray-200'} rounded-full h-2`}>
-                                                                <div
-                                                                    className={`h-2 rounded-full bg-gradient-to-r ${getCategoryConfig(selectedCampaign.category).gradient}`}
-                                                                    style={{ width: `${completionPercentage}%` }}
-                                                                ></div>
-                                                            </div>
-                                                            <div className={`flex justify-between text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                                                                <span>Earned: {((userCampaign?.completed || 0) * (selectedCampaign.reward || 0)).toFixed(5)} RFX</span>
-                                                                <span>
-                                                                    {userCampaign?.lastActivity ? format(new Date(userCampaign.lastActivity), 'MMM d') : 'No activity'}
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
+    return (
+        <tr key={userId._id || Math.random()}>
+            <td className="px-6 py-4 whitespace-nowrap">
+                <div className="flex items-center">
+                    {avatar ? (
+                        <img
+                            className="h-10 w-10 rounded-full"
+                            src={avatar}
+                            alt={username}
+                            onError={(e) => {
+                                e.target.onerror = null;
+                                e.target.src = '';
+                                e.target.className = 'h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold';
+                                e.target.textContent = username.charAt(0).toUpperCase() || 'N';
+                            }}
+                        />
+                    ) : (
+                        <div className="h-10 w-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold">
+                            {username.charAt(0).toUpperCase()}
+                        </div>
+                    )}
+                    <div className="ml-4">
+                        <div className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                            {username}
+                        </div>
+                        <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                            {email}
+                        </div>
+                    </div>
+                </div>
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap">
+                <div className="flex items-center">
+                    <div className="w-full mr-2">
+                        <div className="flex justify-between text-xs mb-1">
+                            <span className={darkMode ? 'text-gray-400' : 'text-gray-500'}>
+                                {participant.completedTasks}/{selectedCampaign.tasksList.length}
+                            </span>
+                            <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
+                                {Math.round(completionPercentage)}%
+                            </span>
+                        </div>
+                        <div className={`w-full ${darkMode ? 'bg-gray-700' : 'bg-gray-200'} rounded-full h-2`}>
+                            <div
+                                className={`h-2 rounded-full bg-gradient-to-r ${getCategoryConfig(selectedCampaign.category).gradient}`}
+                                style={{ width: `${completionPercentage}%` }}
+                            ></div>
+                        </div>
+                    </div>
+                </div>
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap">
+                <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-900'}`}>
+                    {participant.lastActivity ? format(new Date(participant.lastActivity), 'MMM d, yyyy HH:mm') : 'Never'}
+                </div>
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap">
+                <div className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-900'}`}>
+                    {format(new Date(participant.joinedAt), 'MMM d, yyyy')}
+                </div>
+            </td>
+        </tr>
+    );
+})}
+                                                </tbody>
+                                            </table>
                                         </div>
                                     ) : (
                                         <div className="text-center py-12">
@@ -1347,123 +1404,124 @@ const handleDeleteTask = async (taskId) => {
                                 </div>
                             </TabPanel>
 
-<TabPanel>
-    <div className="p-6">
-        <div className="flex justify-between items-center mb-6">
-            <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                Tasks ({selectedCampaign.tasksList?.length || 0})
-            </h3>
-            <button
-                onClick={() => setIsTaskModalOpen(true)}
-                className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-4 py-2 rounded-xl transition-all duration-200"
-            >
-                <Plus size={16} />
-                <span>Add Task</span>
-            </button>
-        </div>
+                            <TabPanel>
+                                <div className="p-6">
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                            Tasks ({selectedCampaign.tasksList?.length || 0})
+                                        </h3>
+                                        <button
+                                            onClick={() => setIsTaskModalOpen(true)}
+                                            className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-4 py-2 rounded-xl transition-all duration-200"
+                                        >
+                                            <Plus size={16} />
+                                            <span>Add Task</span>
+                                        </button>
+                                    </div>
 
-        {selectedCampaign.tasksList?.length > 0 ? (
-            <div className="space-y-4">
-                {selectedCampaign.tasksList.map((task) => (
-                    <div key={task._id} className={`border rounded-xl p-6 hover:shadow-md transition-shadow ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0">
-                            <div className="flex-1">
-                                <div className="flex items-center space-x-3 mb-2">
-                                    <span className="bg-gradient-to-r from-blue-500 to-purple-500 text-white font-bold px-3 py-1 rounded-lg text-sm">
-                                        Day {task.day}
-                                    </span>
-                                    <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{task.title}</h4>
-                                </div>
-                                <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-3`}>{task.description}</p>
+                                    {selectedCampaign.tasksList?.length > 0 ? (
+                                        <div className="space-y-4">
+                                            {selectedCampaign.tasksList.map((task) => (
+                                                <div key={task._id} className={`border rounded-xl p-6 hover:shadow-md transition-shadow ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
+                                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center space-y-3 md:space-y-0">
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center space-x-3 mb-2">
+                                                                <span className="bg-gradient-to-r from-blue-500 to-purple-500 text-white font-bold px-3 py-1 rounded-lg text-sm">
+                                                                    Day {task.day}
+                                                                </span>
+                                                                <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>{task.title}</h4>
+                                                            </div>
+                                                            <p className={`${darkMode ? 'text-gray-300' : 'text-gray-600'} mb-3`}>{task.description}</p>
 
-                                {task.requirements?.length > 0 && (
-                                    <div className="mb-3">
-                                        <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Requirements:</span>
-                                        <div className="flex flex-wrap gap-2 mt-1">
-                                            {task.requirements.map((req, i) => (
-                                                <span key={i} className={`px-2 py-1 rounded-md text-xs ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
-                                                    {req}
-                                                </span>
+                                                            {task.requirements?.length > 0 && (
+                                                                <div className="mb-3">
+                                                                    <span className={`text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>Requirements:</span>
+                                                                    <div className="flex flex-wrap gap-2 mt-1">
+                                                                        {task.requirements.map((req, i) => (
+                                                                            <span key={i} className={`px-2 py-1 rounded-md text-xs ${darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-700'}`}>
+                                                                                {req}
+                                                                            </span>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+
+                                                        <div className="text-right space-y-2">
+                                                            <div className={`text-xl font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>{task.reward} RFX</div>
+                                                            <div className="space-x-2">
+                                                                <span className={`px-2 py-1 rounded-md text-xs font-medium capitalize ${darkMode ? 'bg-blue-900/30 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
+                                                                    {task.type}
+                                                                </span>
+                                                                {task.platform && (
+                                                                    <span className={`px-2 py-1 rounded-md text-xs font-medium ${darkMode ? 'bg-purple-900/30 text-purple-300' : 'bg-purple-100 text-purple-700'}`}>
+                                                                        {task.platform}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {task.contentUrl && (
+                                                        <div className={`mt-4 pt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
+                                                            <a
+                                                                href={task.contentUrl}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className={`inline-flex items-center font-medium ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}
+                                                            >
+                                                                <Eye size={16} className="mr-2" />
+                                                                View Content
+                                                            </a>
+                                                        </div>
+                                                    )}
+
+                                                    <div className={`mt-4 pt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'} flex justify-end space-x-2`}>
+                                                        <button
+                                                            onClick={() => {
+                                                                setTaskForm({
+                                                                    _id: task._id,
+                                                                    day: task.day.toString(),
+                                                                    title: task.title,
+                                                                    description: task.description,
+                                                                    type: task.type,
+                                                                    platform: task.platform || '',
+                                                                    reward: task.reward,
+                                                                    requirements: task.requirements?.join(',') || '',
+                                                                    contentUrl: task.contentUrl || '',
+                                                                    contentFile: null
+                                                                });
+                                                                setIsTaskModalOpen(true);
+                                                            }}
+                                                            className={`px-3 py-1 rounded-lg ${darkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white text-sm`}
+                                                        >
+                                                            Edit
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeleteTask(task._id)}
+                                                            className={`px-3 py-1 rounded-lg ${darkMode ? 'bg-red-600 hover:bg-red-700' : 'bg-red-500 hover:bg-red-600'} text-white text-sm`}
+                                                        >
+                                                            Delete
+                                                        </button>
+                                                    </div>
+                                                </div>
                                             ))}
                                         </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="text-right space-y-2">
-                                <div className={`text-xl font-bold ${darkMode ? 'text-green-400' : 'text-green-600'}`}>{task.reward} RFX</div>
-                                <div className="space-x-2">
-                                    <span className={`px-2 py-1 rounded-md text-xs font-medium capitalize ${darkMode ? 'bg-blue-900/30 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
-                                        {task.type}
-                                    </span>
-                                    {task.platform && (
-                                        <span className={`px-2 py-1 rounded-md text-xs font-medium ${darkMode ? 'bg-purple-900/30 text-purple-300' : 'bg-purple-100 text-purple-700'}`}>
-                                            {task.platform}
-                                        </span>
+                                    ) : (
+                                        <div className="text-center py-12">
+                                            <div className={`text-6xl mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>📝</div>
+                                            <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>No tasks added yet</h3>
+                                            <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-6`}>Add tasks to make your campaign interactive</p>
+                                            <button
+                                                onClick={() => setIsTaskModalOpen(true)}
+                                                className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200"
+                                            >
+                                                Add First Task
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
-                            </div>
-                        </div>
-
-                        {task.contentUrl && (
-                            <div className={`mt-4 pt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'}`}>
-                                <a
-                                    href={task.contentUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className={`inline-flex items-center font-medium ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}
-                                >
-                                    <Eye size={16} className="mr-2" />
-                                    View Content
-                                </a>
-                            </div>
-                        )}
-
-                        <div className={`mt-4 pt-4 border-t ${darkMode ? 'border-gray-700' : 'border-gray-100'} flex justify-end space-x-2`}>
-                            <button
-                                onClick={() => {
-                                    setTaskForm({
-                                        day: task.day.toString(),
-                                        title: task.title,
-                                        description: task.description,
-                                        type: task.type,
-                                        platform: task.platform || '',
-                                        reward: task.reward,
-                                        requirements: task.requirements?.join(',') || '',
-                                        contentUrl: task.contentUrl || '',
-                                        contentFile: null
-                                    });
-                                    setIsTaskModalOpen(true);
-                                }}
-                                className={`px-3 py-1 rounded-lg ${darkMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-500 hover:bg-blue-600'} text-white text-sm`}
-                            >
-                                Edit
-                            </button>
-                            <button
-                                onClick={() => handleDeleteTask(task._id)}
-                                className={`px-3 py-1 rounded-lg ${darkMode ? 'bg-red-600 hover:bg-red-700' : 'bg-red-500 hover:bg-red-600'} text-white text-sm`}
-                            >
-                                Delete
-                            </button>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        ) : (
-            <div className="text-center py-12">
-                <div className={`text-6xl mb-4 ${darkMode ? 'text-gray-600' : 'text-gray-400'}`}>📝</div>
-                <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'} mb-2`}>No tasks added yet</h3>
-                <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mb-6`}>Add tasks to make your campaign interactive</p>
-                <button
-                    onClick={() => setIsTaskModalOpen(true)}
-                    className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-3 rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200"
-                >
-                    Add First Task
-                </button>
-            </div>
-        )}
-    </div>
-</TabPanel>
+                            </TabPanel>
 
                             <TabPanel>
                                 <div className="p-6">
@@ -1492,93 +1550,122 @@ const handleDeleteTask = async (taskId) => {
                                     {proofs.length > 0 ? (
                                         <div className="space-y-6">
                                             {proofs.map((proofGroup) => (
-                                                <div key={proofGroup.taskId} className={`rounded-xl overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border`}>
+                                                <div 
+                                                    key={proofGroup.taskId} 
+                                                    className={`rounded-xl overflow-hidden ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border`}
+                                                >
                                                     <div className={`px-6 py-4 border-b ${darkMode ? 'border-gray-700 bg-gray-800/50' : 'border-gray-200 bg-gray-50'}`}>
                                                         <div className="flex justify-between items-center">
                                                             <h4 className={`font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
-                                                                {proofGroup.taskTitle} (Day {proofGroup.day})
+                                                                {proofGroup.taskTitle || 'Untitled Task'} (Day {proofGroup.day || 1})
                                                             </h4>
                                                             <div className={`text-sm ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                                {proofGroup.proofs.filter(p => p.status === 'completed').length} / {proofGroup.proofs.length} approved
+                                                                {proofGroup.proofs?.filter(p => p?.status === 'completed')?.length || 0} / {proofGroup.proofs?.length || 0} approved
                                                             </div>
                                                         </div>
                                                     </div>
 
                                                     <div className="p-6">
                                                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                                            {proofGroup.proofs.map((proof) => (
-                                                                <div key={`${proofGroup.taskId}-${proof.userId}`} className={`border rounded-lg p-4 ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}>
-                                                                    <div className="flex items-center space-x-2 mb-3">
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            checked={selectedProofs.some(p => p.taskId === proofGroup.taskId && p.userId === proof.userId)}
-                                                                            onChange={() => toggleProofSelection(proofGroup.taskId, proof.userId)}
-                                                                            className={`w-4 h-4 text-blue-600 focus:ring-blue-500 rounded ${darkMode ? 'border-gray-500 bg-gray-700' : 'border-gray-300'}`}
-                                                                        />
-                                                                        {proof.avatar ? (
-                                                                            <img
-                                                                                className="w-8 h-8 rounded-full"
-                                                                                src={proof.avatar}
-                                                                                alt={proof.username}
-                                                                                onError={(e) => {
-                                                                                    e.target.onerror = null;
-                                                                                    e.target.src = '';
-                                                                                    e.target.className = 'w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm font-bold';
-                                                                                    e.target.textContent = proof.username?.charAt(0)?.toUpperCase() || 'N';
-                                                                                }}
+                                                            {proofGroup.proofs?.map((proof) => {
+                                                                // Safely handle proof data with fallbacks
+                                                                const proofData = proof || {};
+                                                                const username = proofData.username || 'Anonymous';
+                                                                const email = proofData.email || 'No email';
+                                                                const userId = proofData.userId || '';
+                                                                const proofUrl = proofData.proofUrl 
+                                                                    ? (proofData.proofUrl.startsWith('http') 
+                                                                        ? proofData.proofUrl 
+                                                                        : `/uploads/${proofData.proofUrl.split('uploads/')[1]}`)
+                                                                    : '#';
+
+                                                                // Safely handle avatar with fallback
+                                                                const avatarContent = proofData.avatar ? (
+                                                                    <img
+                                                                        className="w-8 h-8 rounded-full"
+                                                                        src={proofData.avatar}
+                                                                        alt={username}
+                                                                        onError={(e) => {
+                                                                            e.target.onerror = null;
+                                                                            e.target.src = '';
+                                                                            e.target.className = 'w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm font-bold';
+                                                                            e.target.textContent = username?.charAt(0)?.toUpperCase() || 'N';
+                                                                        }}
+                                                                    />
+                                                                ) : (
+                                                                    <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm font-bold">
+                                                                        {username?.charAt(0)?.toUpperCase() || 'N'}
+                                                                    </div>
+                                                                );
+
+                                                                return (
+                                                                    <div 
+                                                                        key={`${proofGroup.taskId}-${userId || Math.random()}`} 
+                                                                        className={`border rounded-lg p-4 ${darkMode ? 'border-gray-700 bg-gray-800' : 'border-gray-200 bg-white'}`}
+                                                                    >
+                                                                        <div className="flex items-center space-x-2 mb-3">
+                                                                            <input
+                                                                                type="checkbox"
+                                                                                checked={selectedProofs.some(p => p.taskId === proofGroup.taskId && p.userId === proof?.userId)}
+                                                                                onChange={() => toggleProofSelection(proofGroup.taskId, proof?.userId)}
+                                                                                className={`w-4 h-4 text-blue-600 focus:ring-blue-500 rounded ${darkMode ? 'border-gray-500 bg-gray-700' : 'border-gray-300'}`}
                                                                             />
-                                                                        ) : (
-                                                                            <div className="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm font-bold">
-                                                                                {proof.username?.charAt(0)?.toUpperCase() || 'N'}
+                                                                            {avatarContent}
+                                                                            <div className="flex-1">
+                                                                                <div className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                                                    {username}
+                                                                                </div>
+                                                                                <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                                                                                    {email}
+                                                                                </div>
                                                                             </div>
-                                                                        )}
-                                                                        <div className="flex-1">
-                                                                            <div className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-gray-900'}`}>{proof.username || 'N/A'}</div>
-                                                                            <div className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>{proof.email || 'N/A'}</div>
                                                                         </div>
-                                                                    </div>
 
-                                                                    <div className="space-y-2">
-                                                                        <a
-                                                                            href={proof.proofUrl.startsWith('http') ? proof.proofUrl : `/uploads/${proof.proofUrl.split('uploads/')[1]}`}
-                                                                            target="_blank"
-                                                                            rel="noopener noreferrer"
-                                                                            className={`inline-flex items-center text-sm font-medium ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}
-                                                                        >
-                                                                            <Eye size={14} className="mr-1" />
-                                                                            View Proof
-                                                                        </a>
+                                                                        <div className="space-y-2">
+                                                                            <a
+                                                                                href={proofUrl}
+                                                                                target="_blank"
+                                                                                rel="noopener noreferrer"
+                                                                                className={`inline-flex items-center text-sm font-medium ${darkMode ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'}`}
+                                                                            >
+                                                                                <Eye size={14} className="mr-1" />
+                                                                                View Proof
+                                                                            </a>
 
-                                                                        <div className="flex items-center justify-between">
-                                                                            <span className={`px-2 py-1 text-xs font-semibold rounded-full ${proof.status === 'completed' ? (darkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-800') :
-                                                                                    proof.status === 'rejected' ? (darkMode ? 'bg-red-900/30 text-red-300' : 'bg-red-100 text-red-800') :
-                                                                                        (darkMode ? 'bg-yellow-900/30 text-yellow-300' : 'bg-yellow-100 text-yellow-800')
+                                                                            <div className="flex items-center justify-between">
+                                                                                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+                                                                                    proof?.status === 'completed' 
+                                                                                        ? (darkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-800')
+                                                                                        : proof?.status === 'rejected' 
+                                                                                            ? (darkMode ? 'bg-red-900/30 text-red-300' : 'bg-red-100 text-red-800')
+                                                                                            : (darkMode ? 'bg-yellow-900/30 text-yellow-300' : 'bg-yellow-100 text-yellow-800')
                                                                                 }`}>
-                                                                                {proof.status || 'pending'}
-                                                                            </span>
+                                                                                    {proof?.status || 'pending'}
+                                                                                </span>
 
-                                                                            <div className="flex space-x-1">
-                                                                                {proof.status !== 'completed' && (
-                                                                                    <button
-                                                                                        onClick={() => handleApproveProof(proofGroup.taskId, proof.userId, true)}
-                                                                                        className={`p-1 rounded ${darkMode ? 'text-green-400 hover:bg-gray-700' : 'text-green-600 hover:bg-green-50'}`}
-                                                                                    >
-                                                                                        <Check size={14} />
-                                                                                    </button>
-                                                                                )}
-                                                                                {proof.status !== 'rejected' && (
-                                                                                    <button
-                                                                                        onClick={() => handleApproveProof(proofGroup.taskId, proof.userId, false)}
-                                                                                        className={`p-1 rounded ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-red-50'}`}
-                                                                                    >
-                                                                                        <X size={14} />
-                                                                                    </button>
-                                                                                )}
+                                                                                <div className="flex space-x-1">
+                                                                                    {proof?.status !== 'completed' && (
+                                                                                        <button
+                                                                                            onClick={() => handleApproveProof(proofGroup.taskId, proof?.userId, true)}
+                                                                                            className={`p-1 rounded ${darkMode ? 'text-green-400 hover:bg-gray-700' : 'text-green-600 hover:bg-green-50'}`}
+                                                                                        >
+                                                                                            <Check size={14} />
+                                                                                        </button>
+                                                                                    )}
+                                                                                    {proof?.status !== 'rejected' && (
+                                                                                        <button
+                                                                                            onClick={() => handleApproveProof(proofGroup.taskId, proof?.userId, false)}
+                                                                                            className={`p-1 rounded ${darkMode ? 'text-red-400 hover:bg-gray-700' : 'text-red-600 hover:bg-red-50'}`}
+                                                                                        >
+                                                                                            <X size={14} />
+                                                                                        </button>
+                                                                                    )}
+                                                                                </div>
                                                                             </div>
                                                                         </div>
                                                                     </div>
-                                                                </div>
-                                                            ))}
+                                                                );
+                                                            })}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -1954,229 +2041,229 @@ const handleDeleteTask = async (taskId) => {
             </Modal>
 
             {/* Enhanced Task Form Modal */}
-<Modal
-    isOpen={isTaskModalOpen}
-    onRequestClose={() => setIsTaskModalOpen(false)}
-    className={`rounded-2xl shadow-2xl max-w-2xl w-full mx-auto my-8 overflow-y-auto max-h-[90vh] ${themeClasses.modal} transition-colors duration-200`}
-    overlayClassName={`fixed inset-0 ${themeClasses.modalOverlay} backdrop-blur-sm flex items-start justify-center p-4 z-50`}
-    contentLabel="Task Form"
->
-    <div className="p-8">
-        <div className="flex justify-between items-center mb-8">
-            <div>
-                <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                    {taskForm._id ? 'Edit Task' : 'Add New Task'}
-                </h2>
-                <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>Configure a task for your campaign</p>
-            </div>
-            <button
-                onClick={() => setIsTaskModalOpen(false)}
-                className={`p-2 ${darkMode ? 'text-gray-400 hover:text-gray-300 hover:bg-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'} rounded-lg transition-colors`}
+            <Modal
+                isOpen={isTaskModalOpen}
+                onRequestClose={() => setIsTaskModalOpen(false)}
+                className={`rounded-2xl shadow-2xl max-w-2xl w-full mx-auto my-8 overflow-y-auto max-h-[90vh] ${themeClasses.modal} transition-colors duration-200`}
+                overlayClassName={`fixed inset-0 ${themeClasses.modalOverlay} backdrop-blur-sm flex items-start justify-center p-4 z-50`}
+                contentLabel="Task Form"
             >
-                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-            </button>
-        </div>
-
-        <form onSubmit={taskForm._id ? (e) => {
-            e.preventDefault();
-            handleEditTask(taskForm._id, taskForm);
-        } : handleAddTask} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <label htmlFor="task-day" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                        Day Number *
-                    </label>
-                    <input
-                        type="number"
-                        id="task-day"
-                        name="day"
-                        value={taskForm.day}
-                        onChange={handleTaskChange}
-                        min="1"
-                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
-                        placeholder="1"
-                        required
-                    />
-                </div>
-
-                <div>
-                    <label htmlFor="task-reward" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                        Reward (RFX) *
-                    </label>
-                    <input
-                        type="number"
-                        id="task-reward"
-                        name="reward"
-                        value={taskForm.reward}
-                        onChange={handleTaskChange}
-                        step="0.00001"
-                        min="0"
-                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
-                        placeholder="0.001"
-                        required
-                    />
-                </div>
-            </div>
-
-            <div>
-                <label htmlFor="task-title" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Task Title *
-                </label>
-                <input
-                    type="text"
-                    id="task-title"
-                    name="title"
-                    value={taskForm.title}
-                    onChange={handleTaskChange}
-                    className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
-                    placeholder="Enter task title"
-                    required
-                />
-            </div>
-
-            <div>
-                <label htmlFor="task-description" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Description *
-                </label>
-                <textarea
-                    id="task-description"
-                    name="description"
-                    value={taskForm.description}
-                    onChange={handleTaskChange}
-                    rows={3}
-                    className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none ${themeClasses.input}`}
-                    placeholder="Describe what participants need to do"
-                    required
-                />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <label htmlFor="task-type" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                        Task Type *
-                    </label>
-                    <select
-                        id="task-type"
-                        name="type"
-                        value={taskForm.type}
-                        onChange={handleTaskChange}
-                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
-                        required
-                    >
-                        <option value="social-follow">📱 Social Follow</option>
-                        <option value="social-post">📝 Social Post</option>
-                        <option value="video-watch">🎥 Video Watch</option>
-                        <option value="article-read">📖 Article Read</option>
-                        <option value="discord-join">💬 Discord Join</option>
-                        <option value="proof-upload">📸 Proof Upload</option>
-                    </select>
-                </div>
-
-                {(taskForm.type === 'social-follow' || taskForm.type === 'social-post') && (
-                    <div>
-                        <label htmlFor="task-platform" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                            Platform *
-                        </label>
-                        <select
-                            id="task-platform"
-                            name="platform"
-                            value={taskForm.platform}
-                            onChange={handleTaskChange}
-                            className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
-                            required
-                        >
-                            <option value="Twitter">🐦 Twitter</option>
-                            <option value="Facebook">📘 Facebook</option>
-                            <option value="Instagram">📷 Instagram</option>
-                            <option value="YouTube">📺 YouTube</option>
-                            <option value="Discord">💬 Discord</option>
-                            <option value="Telegram">✈️ Telegram</option>
-                            <option value="Reddit">🤖 Reddit</option>
-                            <option value="TikTok">🎵 TikTok</option>
-                            <option value="LinkedIn">💼 LinkedIn</option>
-                        </select>
-                    </div>
-                )}
-            </div>
-
-            {(taskForm.type === 'video-watch' || taskForm.type === 'article-read') && (
-                <div className="space-y-4">
-                    <div>
-                        <label htmlFor="task-contentUrl" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                            Content URL
-                        </label>
-                        <input
-                            type="url"
-                            id="task-contentUrl"
-                            name="contentUrl"
-                            value={taskForm.contentUrl}
-                            onChange={handleTaskChange}
-                            className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
-                            placeholder="https://example.com/content"
-                        />
-                        <p className={`mt-1 text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Or upload content file below</p>
-                    </div>
-
-                    <div>
-                        <label htmlFor="task-contentFile" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                            Content File
-                        </label>
-                        <input
-                            type="file"
-                            id="task-contentFile"
-                            name="contentFile"
-                            onChange={handleTaskChange}
-                            className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${darkMode ? 'file:text-white file:bg-gray-700' : ''}`}
-                            accept={taskForm.type === 'video-watch' ? 'video/*' : 'application/pdf,text/*'}
-                        />
-                    </div>
-                </div>
-            )}
-
-            <div>
-                <label htmlFor="task-requirements" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Requirements (comma separated)
-                </label>
-                <input
-                    type="text"
-                    id="task-requirements"
-                    name="requirements"
-                    value={taskForm.requirements}
-                    onChange={handleTaskChange}
-                    className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
-                    placeholder="e.g., Twitter account, Email verification"
-                />
-                <p className={`mt-1 text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Optional requirements participants must meet</p>
-            </div>
-
-            <div className={`flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-4 pt-6 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
-                <button
-                    type="button"
-                    onClick={() => setIsTaskModalOpen(false)}
-                    className={`px-6 py-3 border rounded-lg font-medium transition-colors ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
-                >
-                    Cancel
-                </button>
-                <button
-                    type="submit"
-                    className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium rounded-lg transition-all duration-200 disabled:opacity-50"
-                    disabled={loading}
-                >
-                    {loading ? (
-                        <div className="flex items-center space-x-2">
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            <span>{taskForm._id ? 'Updating...' : 'Adding...'}</span>
+                <div className="p-8">
+                    <div className="flex justify-between items-center mb-8">
+                        <div>
+                            <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                                {taskForm._id ? 'Edit Task' : 'Add New Task'}
+                            </h2>
+                            <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'} mt-1`}>Configure a task for your campaign</p>
                         </div>
-                    ) : (
-                        taskForm._id ? 'Update Task' : 'Add Task'
-                    )}
-                </button>
-            </div>
-        </form>
-    </div>
-</Modal>
+                        <button
+                            onClick={() => setIsTaskModalOpen(false)}
+                            className={`p-2 ${darkMode ? 'text-gray-400 hover:text-gray-300 hover:bg-gray-700' : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'} rounded-lg transition-colors`}
+                        >
+                            <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <form onSubmit={taskForm._id ? (e) => {
+                        e.preventDefault();
+                        handleEditTask(taskForm._id, taskForm);
+                    } : handleAddTask} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label htmlFor="task-day" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    Day Number *
+                                </label>
+                                <input
+                                    type="number"
+                                    id="task-day"
+                                    name="day"
+                                    value={taskForm.day}
+                                    onChange={handleTaskChange}
+                                    min="1"
+                                    className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
+                                    placeholder="1"
+                                    required
+                                />
+                            </div>
+
+                            <div>
+                                <label htmlFor="task-reward" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    Reward (RFX) *
+                                </label>
+                                <input
+                                    type="number"
+                                    id="task-reward"
+                                    name="reward"
+                                    value={taskForm.reward}
+                                    onChange={handleTaskChange}
+                                    step="0.00001"
+                                    min="0"
+                                    className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
+                                    placeholder="0.001"
+                                    required
+                                />
+                            </div>
+                        </div>
+
+                        <div>
+                            <label htmlFor="task-title" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                Task Title *
+                            </label>
+                            <input
+                                type="text"
+                                id="task-title"
+                                name="title"
+                                value={taskForm.title}
+                                onChange={handleTaskChange}
+                                className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
+                                placeholder="Enter task title"
+                                required
+                            />
+                        </div>
+
+                        <div>
+                            <label htmlFor="task-description" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                Description *
+                            </label>
+                            <textarea
+                                id="task-description"
+                                name="description"
+                                value={taskForm.description}
+                                onChange={handleTaskChange}
+                                rows={3}
+                                className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none ${themeClasses.input}`}
+                                placeholder="Describe what participants need to do"
+                                required
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label htmlFor="task-type" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                    Task Type *
+                                </label>
+                                <select
+                                    id="task-type"
+                                    name="type"
+                                    value={taskForm.type}
+                                    onChange={handleTaskChange}
+                                    className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
+                                    required
+                                >
+                                    <option value="social-follow">📱 Social Follow</option>
+                                    <option value="social-post">📝 Social Post</option>
+                                    <option value="video-watch">🎥 Video Watch</option>
+                                    <option value="article-read">📖 Article Read</option>
+                                    <option value="discord-join">💬 Discord Join</option>
+                                    <option value="proof-upload">📸 Proof Upload</option>
+                                </select>
+                            </div>
+
+                            {(taskForm.type === 'social-follow' || taskForm.type === 'social-post') && (
+                                <div>
+                                    <label htmlFor="task-platform" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                        Platform *
+                                    </label>
+                                    <select
+                                        id="task-platform"
+                                        name="platform"
+                                        value={taskForm.platform}
+                                        onChange={handleTaskChange}
+                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
+                                        required
+                                    >
+                                        <option value="Twitter">🐦 Twitter</option>
+                                        <option value="Facebook">📘 Facebook</option>
+                                        <option value="Instagram">📷 Instagram</option>
+                                        <option value="YouTube">📺 YouTube</option>
+                                        <option value="Discord">💬 Discord</option>
+                                        <option value="Telegram">✈️ Telegram</option>
+                                        <option value="Reddit">🤖 Reddit</option>
+                                        <option value="TikTok">🎵 TikTok</option>
+                                        <option value="LinkedIn">💼 LinkedIn</option>
+                                    </select>
+                                </div>
+                            )}
+                        </div>
+
+                        {(taskForm.type === 'video-watch' || taskForm.type === 'article-read') && (
+                            <div className="space-y-4">
+                                <div>
+                                    <label htmlFor="task-contentUrl" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                        Content URL
+                                    </label>
+                                    <input
+                                        type="url"
+                                        id="task-contentUrl"
+                                        name="contentUrl"
+                                        value={taskForm.contentUrl}
+                                        onChange={handleTaskChange}
+                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
+                                        placeholder="https://example.com/content"
+                                    />
+                                    <p className={`mt-1 text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Or upload content file below</p>
+                                </div>
+
+                                <div>
+                                    <label htmlFor="task-contentFile" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                        Content File
+                                    </label>
+                                    <input
+                                        type="file"
+                                        id="task-contentFile"
+                                        name="contentFile"
+                                        onChange={handleTaskChange}
+                                        className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${darkMode ? 'file:text-white file:bg-gray-700' : ''}`}
+                                        accept={taskForm.type === 'video-watch' ? 'video/*' : 'application/pdf,text/*'}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        <div>
+                            <label htmlFor="task-requirements" className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                                Requirements (comma separated)
+                            </label>
+                            <input
+                                type="text"
+                                id="task-requirements"
+                                name="requirements"
+                                value={taskForm.requirements}
+                                onChange={handleTaskChange}
+                                className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
+                                placeholder="e.g., Twitter account, Email verification"
+                            />
+                            <p className={`mt-1 text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Optional requirements participants must meet</p>
+                        </div>
+
+                        <div className={`flex flex-col sm:flex-row justify-end space-y-3 sm:space-y-0 sm:space-x-4 pt-6 border-t ${darkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                            <button
+                                type="button"
+                                onClick={() => setIsTaskModalOpen(false)}
+                                className={`px-6 py-3 border rounded-lg font-medium transition-colors ${darkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : 'border-gray-300 text-gray-700 hover:bg-gray-50'}`}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                className="px-8 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium rounded-lg transition-all duration-200 disabled:opacity-50"
+                                disabled={loading}
+                            >
+                                {loading ? (
+                                    <div className="flex items-center space-x-2">
+                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        <span>{taskForm._id ? 'Updating...' : 'Adding...'}</span>
+                                    </div>
+                                ) : (
+                                    taskForm._id ? 'Update Task' : 'Add Task'
+                                )}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </Modal>
         </div>
     );
 };
