@@ -49,11 +49,11 @@ const RecycleRush = () => {
     ];
 
     const scoreRewards = [
-        { threshold: 100, xp: 5, tokens: 0.0001 },
-        { threshold: 200, xp: 10, tokens: 0.0002 },
-        { threshold: 300, xp: 15, tokens: 0.0003 },
-        { threshold: 400, xp: 20, tokens: 0.0004 },
-        { threshold: 500, xp: 25, tokens: 0.0005 },
+        { threshold: 100, xp: 5, tokens: 0.00010 },
+        { threshold: 200, xp: 10, tokens: 0.00020 },
+        { threshold: 300, xp: 15, tokens: 0.00030 },
+        { threshold: 400, xp: 20, tokens: 0.00040 },
+        { threshold: 500, xp: 25, tokens: 0.00050 },
     ];
 
     const calculateRewards = useCallback((finalScore) => {
@@ -472,7 +472,7 @@ const RecycleRush = () => {
                                 <div className="flex justify-between">
                                     <span className="text-gray-700">Tokens Earned:</span>
                                     <span className="font-bold text-green-600">
-                                        RFX {rewardTiers.reduce((sum, tier) => sum + tier.tokens, 0).toFixed(6)}
+                                        RFX {rewardTiers.reduce((sum, tier) => sum + tier.tokens, 0).toFixed(5)}
                                     </span>
                                 </div>
                             </div>
@@ -488,7 +488,7 @@ const RecycleRush = () => {
                                                 {tier.threshold ? `Score ${tier.threshold}+` : tier.description}
                                             </span>
                                             <span className="font-medium">
-                                                +{tier.xp} XP{tier.tokens > 0 ? ` +RFX ${tier.tokens.toFixed(6)}` : ''}
+                                                +{tier.xp} XP{tier.tokens > 0 ? ` +RFX ${tier.tokens.toFixed(5)}` : ''}
                                             </span>
                                         </li>
                                     ))}

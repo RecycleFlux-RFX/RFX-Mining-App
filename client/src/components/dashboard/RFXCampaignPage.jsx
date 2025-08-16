@@ -29,7 +29,14 @@ const CAMPAIGN_CATEGORIES = {
   Forest: TreePine,
   Air: Wind,
   Community: Recycle,
+  //Default
+  default: Recycle
 };
+
+
+const Icon = CAMPAIGN_CATEGORIES[campaign.category] || CAMPAIGN_CATEGORIES.default;
+const IconComponent = CAMPAIGN_CATEGORIES[campaign.category] || Droplets;
+
 
 const PLATFORM_ICONS = {
   twitter: Twitter,
@@ -42,6 +49,8 @@ const PLATFORM_ICONS = {
   tiktok: TikTok,
   default: LinkIcon
 };
+
+const PlatformIconComponent = PLATFORM_ICONS[task.platform?.toLowerCase()] || LinkIcon;
 
 const COLOR_SCHEMES = {
   Ocean: {
@@ -89,6 +98,30 @@ const BOTTOM_NAV_ITEMS = [
   { id: 'wallet', icon: Wallet, label: 'Wallet', path: '/wallet' },
   { id: 'settings', icon: Settings, label: 'Notifications', path: '/settings' },
 ];
+
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <div className="text-red-500 p-4">Something went wrong. Please check the console for errors.</div>;
+    }
+
+    return this.props.children;
+  }
+}
 
 export default function RFXCampaignPage() {
   const location = useLocation();
@@ -179,12 +212,13 @@ export default function RFXCampaignPage() {
         credentials: 'include'
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const error = new Error(errorData.message || `Request failed with status ${response.status}`);
-        error.status = response.status;
-        throw error;
-      }
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    const error = new Error(errorData.message || `Request failed with status ${response.status}`);
+    error.status = response.status;
+    error.code = errorData.code; // Add this line to capture error codes
+    throw error;
+  }
 
       return await response.json();
     } catch (error) {
@@ -519,111 +553,86 @@ const handleCompleteTask = async (campaignId, taskId) => {
     }
 };
 
-const handleProofUpload = async (campaignId, taskId, file) => {
-    try {
-        if (!file) {
-            Swal.fire({
-                title: 'No File Selected',
-                text: 'Please select a file to upload',
-                icon: 'error',
-                background: '#1a202c',
-                color: '#ffffff',
-                confirmButtonColor: '#38a169'
-            });
-            return;
-        }
-
-        const task = tasks.find(t => t.id === taskId);
-        if (!task) throw new Error('Task not found');
-
-        // Check if task is already completed
-        if (task.status === 'completed') {
-            Swal.fire({
-                title: 'Already Completed',
-                text: 'This task is already completed',
-                icon: 'warning',
-                background: '#1a202c',
-                color: '#ffffff',
-                confirmButtonColor: '#38a169'
-            });
-            return;
-        }
-
-        // Check if task is already pending verification
-        if (task.status === 'pending') {
-            Swal.fire({
-                title: 'Already Submitted',
-                text: 'Your proof is already submitted and pending review',
-                icon: 'warning',
-                background: '#1a202c',
-                color: '#ffffff',
-                confirmButtonColor: '#38a169'
-            });
-            return;
-        }
-
-        setUploadingTaskId(taskId);
-        setUploading(true);
-        
-        const formData = new FormData();
-        formData.append('proof', file);
-        
-        const token = localStorage.getItem('authToken');
-        if (!token) throw new Error('No authentication token found');
-
-        const response = await axios.post(
-            `${BASE_URL}/campaigns/${campaignId}/tasks/${taskId}/proof`,
-            formData,
-            {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'multipart/form-data'
-                }
-            }
-        );
-
-        // Update the task status to 'pending' immediately
-        setTasks(prev => prev.map(t => 
-            t.id === taskId ? { 
-                ...t, 
-                status: 'pending', 
-                proof: response.data.proofUrl,
-                completed: false 
-            } : t
-        ));
-        
-        setShowUploadSuccess(true);
-        setTimeout(() => setShowUploadSuccess(false), 3000);
-        
-        await fetchCampaignDetails(campaignId);
-        
-        Swal.fire({
-            title: 'Upload Successful!',
-            text: 'Your proof has been submitted and is pending verification',
-            icon: 'success',
-            background: '#1a202c',
-            color: '#ffffff',
-            confirmButtonColor: '#38a169'
-        });
-    } catch (error) {
-        console.error('Proof upload error:', error);
-        Swal.fire({
-            title: 'Upload Failed',
-            text: error.response?.data?.message || error.message || 'Failed to upload proof',
-            icon: 'error',
-            background: '#1a202c',
-            color: '#ffffff',
-            confirmButtonColor: '#38a169'
-        });
-        
-        // Roll back to 'open' status if upload fails
-        setTasks(prev => prev.map(t => 
-            t.id === taskId ? { ...t, status: 'open', proof: null } : t
-        ));
-    } finally {
-        setUploadingTaskId(null);
-        setUploading(false);
+const repairCampaignParticipation = async (campaignId) => {
+  try {
+    const response = await fetchWithAuth(
+      `${BASE_URL}/campaigns/${campaignId}/repair-participation`,
+      { method: 'POST' }
+    );
+    
+    if (response.success) {
+      await fetchInitialData(); // Refresh all data
+      await fetchCampaignDetails(campaignId); // Refresh campaign details
+      return true;
     }
+    return false;
+  } catch (error) {
+    console.error('Repair failed:', error);
+    return false;
+  }
+}
+
+
+  
+const handleProofUpload = async (campaignId, taskId, file) => {
+  setUploadingTaskId(taskId);
+  try {
+    const formData = new FormData();
+    formData.append('proof', file);
+    
+    const response = await axios.post(
+      `${BASE_URL}/campaigns/${campaignId}/tasks/${taskId}/proof`,
+      formData,
+      {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+          'Content-Type': 'multipart/form-data'
+        }
+      }
+    );
+
+    // Update UI state
+    setTasks(prev => prev.map(t => 
+      t.id === taskId ? { 
+        ...t, 
+        status: 'pending',
+        proof: response.data.proofUrl
+      } : t
+    ));
+
+    setShowUploadSuccess(true);
+    setTimeout(() => setShowUploadSuccess(false), 3000);
+
+  } catch (error) {
+    console.error('Upload failed:', error);
+    
+    let errorMessage = 'Proof upload failed';
+    if (error.response) {
+      switch(error.response.data?.code) {
+        case 'USER_NOT_IN_CAMPAIGN':
+          errorMessage = 'Please join the campaign first';
+          break;
+        case 'PARTICIPATION_MISMATCH':
+          // Attempt repair automatically
+          const repaired = await repairCampaignParticipation(campaignId);
+          if (repaired) {
+            return handleProofUpload(campaignId, taskId, file); // Retry
+          }
+          errorMessage = 'Could not verify your participation';
+          break;
+        default:
+          errorMessage = error.response.data?.message || errorMessage;
+      }
+    }
+
+    Swal.fire({
+      title: 'Upload Failed',
+      text: errorMessage,
+      icon: 'error'
+    });
+  } finally {
+    setUploadingTaskId(null);
+  }
 };
 
   const handleJoinCampaign = async (campaignId) => {

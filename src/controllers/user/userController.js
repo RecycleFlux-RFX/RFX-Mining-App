@@ -96,27 +96,18 @@ const getReferralLink = async (req, res) => {
 
 const getReferralInfo = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId)
-      .select('username referrals referralEarnings referralCode')
-      .populate({
-        path: 'referrals',
-        select: 'username createdAt earnings',
-        options: { sort: { createdAt: -1 } }
-      });
-    
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
-    }
+    const user = await User.findById(req.user.userId);
+    if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const baseUrl = process.env.FRONTEND_URL || 'rfx-mining1-app.vercel.app';
+    // Generate short URL
+    const baseUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const referralLink = `${baseUrl}/join/${user.referralCode}`;
-    
-    res.status(200).json({ 
+
+    res.status(200).json({
       referralLink,
       referralCode: user.referralCode,
-      referralCount: user.referrals.length,
-      referralEarnings: user.referralEarnings || 0,
-      referrals: user.referrals
+      referralCount: user.referrals?.length || 0,
+      referralEarnings: user.referralEarnings || 0
     });
   } catch (err) {
     console.error('Get referral info error:', err);

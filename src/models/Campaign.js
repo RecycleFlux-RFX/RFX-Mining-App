@@ -38,6 +38,27 @@ const campaignSchema = new mongoose.Schema({
         min: 2,
         max: 14
     },
+     color: {
+    type: String,
+    required: [true, 'Color is required'],
+  },
+  description: {
+    type: String,
+    required: [true, 'Description is required'],
+  },
+  activity: {
+    type: String,
+    required: [true, 'Activity is required'],
+  },
+  category: {
+    type: String,
+    required: [true, 'Category is required'],
+  },
+  type: {
+    type: String,
+    enum: ['proof', 'verification', 'otherValidValues'], // Add your valid enum values here
+    required: true
+  },
     startDate: {
         type: Date,
         required: true

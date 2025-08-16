@@ -10,7 +10,7 @@ router.get('/', [authenticateToken, adminAuth], campaignController.getAdminCampa
 router.get('/:id', [authenticateToken, adminAuth], campaignController.getAdminCampaignDetails);
 router.get('/:id/proofs', [authenticateToken, adminAuth], campaignController.getCampaignProofs);
 router.get('/admin/campaigns', [authenticateToken, adminAuth], campaignController.getAdminCampaigns);
-router.post('/:id/approve-proof', [authenticateToken, adminAuth], campaignController.approveProof);
+router.post('/:campaignId/approve-proof', [authenticateToken, adminAuth], campaignController.approveProof);
 
 // Task management
 router.get('/:id/tasks/:taskId', [authenticateToken, adminAuth], campaignTaskController.getTask);

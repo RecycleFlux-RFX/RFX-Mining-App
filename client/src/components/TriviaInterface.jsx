@@ -12,14 +12,15 @@ export default function TriviaInterface() {
     const [score, setScore] = useState(0);
     const [streak, setStreak] = useState(0);
     const [timeLeft, setTimeLeft] = useState(15);
-    const [gameCompleted, setGameCompleted] = useState(false);
+    const [gameState, setGameState] = useState('menu');
     const [questionsAnswered, setQuestionsAnswered] = useState(0);
-    const [rewards, setRewards] = useState([]);
-    const [selectedQuestions, setSelectedQuestions] = useState([]);
+    const [correctAnswers, setCorrectAnswers] = useState(0);
     const [error, setError] = useState(null);
+    const [selectedQuestions, setSelectedQuestions] = useState([]);
     const [highScore, setHighScore] = useState(0);
     const [rewardTiers, setRewardTiers] = useState([]);
-    const [gameState, setGameState] = useState('menu');
+    const [showInstructions, setShowInstructions] = useState(false);
+    const [difficulty, setDifficulty] = useState(1);
 
     const gameId = '688d176754cb10bba40ace71';
     const BASE_URL = 'http://localhost:3000';
@@ -1011,6 +1012,10 @@ export default function TriviaInterface() {
             explanation: "Recycling bins collect recyclable materials for processing and reuse."
         }
     ];
+    const getAccuracy = useCallback(
+        () => (questionsAnswered > 0 ? Math.round((correctAnswers / questionsAnswered) * 100) : 0),
+        [questionsAnswered, correctAnswers]
+    );
 
     const calculateRewards = useCallback((finalScore) => {
         let earnedXp = 0;
@@ -1041,11 +1046,21 @@ export default function TriviaInterface() {
             });
         }
 
-        return { xpEarned: earnedXp, tokensEarned: earnedTokens, achievedTiers };
-    }, [streak]);
+        if (getAccuracy() >= 90) {
+            earnedXp += 10;
+            achievedTiers.push({
+                description: "90%+ Accuracy Bonus",
+                xp: 10,
+                tokens: 0,
+            });
+        }
 
-    const startGame = async () => {
+        return { xpEarned: earnedXp, tokensEarned: earnedTokens, achievedTiers };
+    }, [streak, getAccuracy]);
+
+    const startGame = async (selectedDifficulty = 1) => {
         try {
+            setDifficulty(selectedDifficulty);
             const token = localStorage.getItem('authToken');
             if (!token) {
                 throw new Error('Please log in to play the game');
@@ -1085,11 +1100,13 @@ export default function TriviaInterface() {
             setShowResult(false);
             setShowAnimation(false);
             setQuestionsAnswered(0);
-            setRewards([]);
+            setCorrectAnswers(0);
             setRewardTiers([]);
-            setGameCompleted(false);
+            setShowInstructions(true);
             setHighScore(response.data.highScore || 0);
             setError(null);
+
+            setTimeout(() => setShowInstructions(false), 5000);
 
         } catch (error) {
             console.error('Error starting game:', error);
@@ -1145,7 +1162,6 @@ export default function TriviaInterface() {
 
             setHighScore(response.data.newHighScore || score);
             setRewardTiers(achievedTiers);
-            setGameCompleted(true);
             setGameState('gameOver');
             setError(null);
         } catch (error) {
@@ -1177,18 +1193,9 @@ export default function TriviaInterface() {
                 const timeBonus = Math.floor(timeLeft / 3);
                 const newScore = score + 100 + timeBonus;
                 const newStreak = streak + 1;
-
+                setCorrectAnswers(prev => prev + 1);
                 setScore(newScore);
                 setStreak(newStreak);
-
-                if (newStreak % 3 === 0) {
-                    const streakReward = {
-                        type: 'streak',
-                        amount: newStreak * 10,
-                        message: `${newStreak}-question streak!`
-                    };
-                    setRewards([...rewards, streakReward]);
-                }
             } else {
                 setStreak(0);
             }
@@ -1210,18 +1217,18 @@ export default function TriviaInterface() {
                 }
             }, 2000);
         }
-    }, [currentQuestion, questionsAnswered, score, showResult, streak, timeLeft, selectedQuestions, rewards, submitScore]);
+    }, [currentQuestion, questionsAnswered, score, showResult, streak, timeLeft, selectedQuestions, submitScore]);
 
     useEffect(() => {
-        if (gameState === 'playing' && timeLeft > 0) {
+        if (gameState === 'playing' && timeLeft > 0 && !showResult) {
             timerRef.current = setTimeout(() => {
                 setTimeLeft(prev => prev - 1);
             }, 1000);
             return () => clearTimeout(timerRef.current);
-        } else if (timeLeft === 0 && gameState === 'playing') {
+        } else if (timeLeft === 0 && !showResult && gameState === 'playing') {
             handleAnswerSelect(-1);
         }
-    }, [timeLeft, gameState, handleAnswerSelect]);
+    }, [timeLeft, gameState, showResult, handleAnswerSelect]);
 
     useEffect(() => {
         return () => {
@@ -1230,14 +1237,6 @@ export default function TriviaInterface() {
             }
         };
     }, []);
-
-    const handleRestart = async () => {
-        await startGame();
-    };
-
-    const handleExit = () => {
-        navigate('/games');
-    };
 
     if (error) {
         return (
@@ -1259,25 +1258,61 @@ export default function TriviaInterface() {
     if (gameState === 'menu') {
         return (
             <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-700 flex items-center justify-center p-4">
-                <div className="bg-white rounded-2xl shadow-2xl p-8 text-center max-w-md w-full">
-                    <h1 className="text-4xl font-bold text-gray-800 mb-4">🧠 Trivia Challenge</h1>
-                    <p className="text-gray-600 mb-6">Test your knowledge of blockchain and recycling!</p>
+                <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center">
+                    <div className="mb-6">
+                        <h1 className="text-4xl font-bold text-gray-800 mb-2">🧠 Trivia Challenge</h1>
+                        <p className="text-gray-600">Test your knowledge of blockchain and recycling!</p>
+                    </div>
+
+                    <div className="mb-8 space-y-3 text-left">
+                        <div className="flex items-center space-x-3">
+                            <span className="text-2xl">🎯</span>
+                            <span className="text-sm">Answer 10 questions correctly</span>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                            <span className="text-2xl">⏱️</span>
+                            <span className="text-sm">Only 15 seconds per question</span>
+                        </div>
+                        <div className="flex items-center space-x-3">
+                            <span className="text-2xl">🔥</span>
+                            <span className="text-sm">Build streaks for bonus points</span>
+                        </div>
+                    </div>
+
+                    <div className="mb-6">
+                        <h3 className="font-bold mb-2">Select Difficulty:</h3>
+                        <div className="flex justify-center space-x-4">
+                            <button
+                                onClick={() => startGame(1)}
+                                className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg"
+                            >
+                                Easy
+                            </button>
+                            <button
+                                onClick={() => startGame(2)}
+                                className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 px-6 rounded-lg"
+                            >
+                                Medium
+                            </button>
+                            <button
+                                onClick={() => startGame(3)}
+                                className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-lg"
+                            >
+                                Hard
+                            </button>
+                        </div>
+                    </div>
+
                     <div className="mb-6">
                         <p className="text-sm text-gray-500">High Score</p>
-                        <p className="text-2xl font-bold text-green-600">{highScore}</p>
+                        <p className="text-2xl font-bold text-purple-600">{highScore}</p>
                     </div>
-                    <button
-                        onClick={startGame}
-                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-8 rounded-lg text-xl transition-colors"
-                    >
-                        Start Game
-                    </button>
                 </div>
             </div>
         );
     }
 
-    if (gameCompleted) {
+    if (gameState === 'gameOver') {
         return (
             <div className="min-h-screen bg-gradient-to-br from-purple-400 via-pink-500 to-red-500 flex items-center justify-center p-4">
                 <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-md w-full text-center">
@@ -1294,12 +1329,12 @@ export default function TriviaInterface() {
 
                         <div className="grid grid-cols-2 gap-4">
                             <div className="bg-gray-50 rounded-lg p-3">
-                                <div className="text-2xl font-bold text-gray-700">{streak}x</div>
-                                <div className="text-xs text-gray-500">Highest Streak</div>
+                                <div className="text-2xl font-bold text-gray-700">{correctAnswers}/{MAX_QUESTIONS}</div>
+                                <div className="text-xs text-gray-500">Correct Answers</div>
                             </div>
                             <div className="bg-gray-50 rounded-lg p-3">
-                                <div className="text-2xl font-bold text-gray-700">{highScore}</div>
-                                <div className="text-xs text-gray-500">High Score</div>
+                                <div className="text-2xl font-bold text-gray-700">{getAccuracy()}%</div>
+                                <div className="text-xs text-gray-500">Accuracy</div>
                             </div>
                         </div>
 
@@ -1342,13 +1377,13 @@ export default function TriviaInterface() {
 
                     <div className="flex justify-center space-x-4">
                         <button
-                            onClick={handleRestart}
+                            onClick={() => startGame(difficulty)}
                             className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-4 px-8 rounded-full text-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
                         >
                             Play Again
                         </button>
                         <button
-                            onClick={handleExit}
+                            onClick={() => navigate('/games')}
                             className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-4 px-8 rounded-full text-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
                         >
                             Back to Games
@@ -1363,7 +1398,15 @@ export default function TriviaInterface() {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-700 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-8">
+            {showInstructions && (
+                <div className="fixed top-24 left-4 right-4 text-center z-20">
+                    <p className="text-white text-sm font-semibold bg-black bg-opacity-40 rounded-lg px-3 py-1 inline-block">
+                        Select the correct answer before time runs out! Streaks earn bonus points!
+                    </p>
+                </div>
+            )}
+
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl p-8 relative">
                 {showAnimation && (
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
                         <div className={`animate-bounce ${isAnswerCorrect ? 'text-green-400' : 'text-red-400'}`}>
@@ -1393,7 +1436,7 @@ export default function TriviaInterface() {
                                 <span className="text-yellow-800 font-semibold">Streak: {streak}</span>
                             </div>
                         )}
-                        <div className={`text-xl font-bold ${timeLeft <= 5 ? 'text-red-500' : 'text-gray-700'}`}>
+                        <div className={`text-xl font-bold ${timeLeft <= 5 ? 'text-red-500 animate-pulse' : 'text-gray-700'}`}>
                             {timeLeft}s
                         </div>
                     </div>
@@ -1470,7 +1513,7 @@ export default function TriviaInterface() {
 
                 <div className="flex justify-between items-center mt-6">
                     <button
-                        onClick={handleExit}
+                        onClick={() => navigate('/games')}
                         className="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-all duration-200"
                     >
                         Exit Game

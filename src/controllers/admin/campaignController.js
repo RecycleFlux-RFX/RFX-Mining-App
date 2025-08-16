@@ -1,4 +1,5 @@
 const Campaign = require('../../models/Campaign');
+const Transaction  = require('../../models/Transaction');
 const User = require('../../models/User');
 const path = require('path');
 const fs = require('fs');
@@ -43,6 +44,66 @@ const getAdminCampaignDetails = async (req, res) => {
   } catch (err) {
     console.error('Get admin campaign details error:', err);
     res.status(500).json({ message: 'Failed to fetch campaign details' });
+  }
+};
+
+// Add this to your campaign controller
+const repairCampaignParticipation = async (req, res) => {
+  try {
+    const { id: campaignId } = req.params;
+    const userId = req.user.userId;
+
+    const [user, campaign] = await Promise.all([
+      User.findById(userId),
+      Campaign.findById(campaignId)
+    ]);
+
+    if (!user || !campaign) {
+      return res.status(404).json({ message: 'User or campaign not found' });
+    }
+
+    // Check if repair is needed
+    const userHasJoined = user.campaigns.some(c => 
+      c.campaignId && c.campaignId.toString() === campaignId.toString()
+    );
+    
+    const isInParticipants = campaign.participantsList.some(p => 
+      p.userId && p.userId.toString() === userId.toString()
+    );
+
+    if (userHasJoined && !isInParticipants) {
+      // Add to participants list
+      campaign.participantsList.push({
+        userId: user._id,
+        username: user.username,
+        email: user.email,
+        joinedAt: new Date(),
+        lastActivity: new Date(),
+        tasks: campaign.tasksList.map(task => ({
+          taskId: task._id,
+          status: 'open'
+        }))
+      });
+      
+      await campaign.save();
+      return res.json({ 
+        success: true, 
+        repaired: true,
+        message: 'Participation record repaired successfully'
+      });
+    }
+
+    return res.json({ 
+      success: true, 
+      repaired: false,
+      message: 'No repair needed - user participation is consistent'
+    });
+  } catch (error) {
+    console.error('Repair error:', error);
+    res.status(500).json({ 
+      message: 'Repair failed', 
+      error: error.message 
+    });
   }
 };
 
@@ -94,92 +155,39 @@ const getCampaignProofs = async (req, res) => {
 
 const approveProof = async (req, res) => {
   try {
-    const { taskId, userId, approve } = req.body;
-    const campaignId = req.params.id;
+    const { campaignId } = req.params;
+    const { proofs, approve } = req.body; // Now expects array of {taskId, userId}
 
-    const campaign = await Campaign.findById(campaignId); 
+    if (!proofs || !proofs.length || typeof approve !== 'boolean') {
+      return res.status(400).json({ message: 'Invalid request data' });
+    }
+
+    const campaign = await Campaign.findById(campaignId);
     if (!campaign) {
       return res.status(404).json({ message: 'Campaign not found' });
     }
 
-    const task = campaign.tasksList.id(taskId);
-    if (!task) {
-      return res.status(404).json({ message: 'Task not found' });
+    // Process each proof
+    const results = [];
+    for (const { taskId, userId } of proofs) {
+      const task = campaign.tasksList.id(taskId);
+      if (!task) {
+        results.push({ taskId, userId, success: false, message: 'Task not found' });
+        continue;
+      }
+
+      const proof = task.completedBy.find(p => p.userId.toString() === userId);
+      if (!proof) {
+        results.push({ taskId, userId, success: false, message: 'Proof not found' });
+        continue;
+      }
+
+      proof.status = approve ? 'completed' : 'rejected';
+      results.push({ taskId, userId, success: true });
     }
 
-    const proof = task.completedBy.find(p => p.userId.toString() === userId);
-    if (!proof) {
-      return res.status(404).json({ message: 'Proof not found' });
-    }
-
-    proof.status = approve ? 'completed' : 'rejected';
-
-    const participant = campaign.participantsList.find(p => p.userId.toString() === userId);
-    if (participant) {
-      const participantTask = participant.tasks.find(t => t.taskId.toString() === taskId);
-      if (participantTask) {
-        participantTask.status = approve ? 'completed' : 'rejected';
-        if (approve) {
-          participantTask.completedAt = new Date();
-        }
-      }
-    }
-
-    let user;
-    if (approve) {
-      user = await User.findById(userId);
-      if (!user) {
-        return res.status(404).json({ message: 'User not found' });
-      }
-
-      const userCampaign = user.campaigns.find(c => c.campaignId.toString() === campaignId);
-      if (userCampaign) {
-        userCampaign.completed += 1;
-        userCampaign.lastActivity = new Date();
-      }
-
-      const userTask = user.tasks.find(t =>
-        t.taskId.toString() === taskId && t.campaignId.toString() === campaignId
-      );
-      if (userTask) {
-        userTask.status = 'completed';
-        userTask.completedAt = new Date();
-      }
-
-      let co2Impact = parseFloat(task.co2Impact);
-      if (isNaN(co2Impact) || co2Impact <= 0.01) {
-        console.warn(`Invalid co2Impact (${task.co2Impact}) for task ${task.title}, updating to 2.0`);
-        task.co2Impact = 2.0;
-        await campaign.save();
-      }
-      co2Impact = parseFloat(task.co2Impact) || 2.0;
-      user.earnings += task.reward || 0;
-      const newCo2Saved = (parseFloat(user.co2Saved || '0') + co2Impact).toFixed(2);
-      user.co2Saved = newCo2Saved;
-
-      const transaction = new Transaction({
-        userId: user._id,
-        amount: task.reward || 0,
-        type: 'earn',
-        category: 'Campaign',
-        activity: `Completed task: ${task.title}`,
-        description: `Earned ${task.reward || 0} RFX for completing task in ${campaign.title}`,
-        color: 'green',
-        timestamp: new Date()
-      });
-
-      await transaction.save();
-      await user.save();
-    }
-
-    campaign.completedTasks += 1;
     await campaign.save();
-
-    res.json({
-      message: `Proof ${approve ? 'approved' : 'rejected'} successfully`,
-      status: approve ? 'completed' : 'rejected',
-      co2Saved: approve ? user.co2Saved : undefined
-    });
+    res.json({ success: true, results });
   } catch (err) {
     console.error('Approve proof error:', err);
     res.status(500).json({ message: 'Failed to update proof status' });

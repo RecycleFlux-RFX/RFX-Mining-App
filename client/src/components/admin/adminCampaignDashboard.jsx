@@ -560,52 +560,49 @@ const handleEditTask = async (taskId, updatedTask) => {
     };
 
     // Bulk approve/reject proofs
-    const handleBulkApprove = async (approve) => {
-        if (selectedProofs.length === 0) return;
+const handleBulkApprove = async (approve) => {
+  if (selectedProofs.length === 0) return;
 
-        try {
-            const token = localStorage.getItem('authToken');
-            await Promise.all(selectedProofs.map(async ({ taskId, userId }) => {
-                await api.post(
-                    `/admin/campaigns/${selectedCampaign._id}/approve-proof`,
-                    { taskId, userId, approve },
-                    {
-                        headers: {
-                            Authorization: `Bearer ${token}`,
-                            'Content-Type': 'application/json'
-                        }
-                    }
-                );
-            }));
-
-            // Refresh proofs after bulk action
-            const proofsRes = await api.get(
-                `/admin/campaigns/${selectedCampaign._id}/proofs`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        'Content-Type': 'application/json'
-                    }
-                }
-            );
-            setProofs(proofsRes.data);
-            setSelectedProofs([]);
-
-            // Mark notifications as read
-            setNotifications(prev => 
-                prev.map(n => {
-                    const isSelected = selectedProofs.some(p => n.id === `${p.taskId}-${p.userId}`);
-                    return isSelected ? { ...n, read: true } : n;
-                })
-            );
-
-            toast.success(`Bulk ${approve ? 'approval' : 'rejection'} completed for ${selectedProofs.length} proofs`);
-        } catch (err) {
-            const errorMsg = err.response?.data?.message || 'Failed to bulk update proofs';
-            setError(errorMsg);
-            toast.error(errorMsg);
+  try {
+    const token = localStorage.getItem('authToken');
+    const response = await api.post(
+      `/admin/campaigns/${selectedCampaign._id}/approve-proof`,
+      {
+        approve,
+        proofs: selectedProofs.map(p => ({
+          taskId: p.taskId,
+          userId: p.userId
+        }))
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
         }
-    };
+      }
+    );
+
+    if (response.data.success) {
+      // Refresh proofs after bulk action
+      const proofsRes = await api.get(
+        `/admin/campaigns/${selectedCampaign._id}/proofs`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      setProofs(proofsRes.data);
+      setSelectedProofs([]);
+      toast.success(`Bulk ${approve ? 'approval' : 'rejection'} completed for ${selectedProofs.length} proofs`);
+    }
+  } catch (err) {
+    const errorMsg = err.response?.data?.message || 'Failed to bulk update proofs';
+    toast.error(errorMsg);
+  }
+};
 
     // Select proof for bulk action
     const toggleProofSelection = (taskId, userId) => {
@@ -1528,22 +1525,24 @@ const handleEditTask = async (taskId, updatedTask) => {
                                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center space-y-4 sm:space-y-0 mb-6">
                                         <h3 className={`text-xl font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Submitted Proofs</h3>
                                         {selectedProofs.length > 0 && (
-                                            <div className="flex space-x-2">
-                                                <button
-                                                    onClick={() => handleBulkApprove(true)}
-                                                    className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl transition-colors"
-                                                >
-                                                    <Check size={16} />
-                                                    <span>Approve Selected</span>
-                                                </button>
-                                                <button
-                                                    onClick={() => handleBulkApprove(false)}
-                                                    className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl transition-colors"
-                                                >
-                                                    <X size={16} />
-                                                    <span>Reject Selected</span>
-                                                </button>
-                                            </div>
+<div className="flex space-x-2">
+  <button
+    onClick={() => handleBulkApprove(true)}
+    className="flex items-center space-x-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl transition-colors"
+    disabled={selectedProofs.length === 0}
+  >
+    <Check size={16} />
+    <span>Approve Selected ({selectedProofs.length})</span>
+  </button>
+  <button
+    onClick={() => handleBulkApprove(false)}
+    className="flex items-center space-x-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-xl transition-colors"
+    disabled={selectedProofs.length === 0}
+  >
+    <X size={16} />
+    <span>Reject Selected ({selectedProofs.length})</span>
+  </button>
+</div>
                                         )}
                                     </div>
 
@@ -1633,15 +1632,15 @@ const handleEditTask = async (taskId, updatedTask) => {
                                                                             </a>
 
                                                                             <div className="flex items-center justify-between">
-                                                                                <span className={`px-2 py-1 text-xs font-semibold rounded-full ${
-                                                                                    proof?.status === 'completed' 
-                                                                                        ? (darkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-800')
-                                                                                        : proof?.status === 'rejected' 
-                                                                                            ? (darkMode ? 'bg-red-900/30 text-red-300' : 'bg-red-100 text-red-800')
-                                                                                            : (darkMode ? 'bg-yellow-900/30 text-yellow-300' : 'bg-yellow-100 text-yellow-800')
-                                                                                }`}>
-                                                                                    {proof?.status || 'pending'}
-                                                                                </span>
+<span className={`px-2 py-1 text-xs font-semibold rounded-full ${
+  proof?.status === 'completed' 
+    ? (darkMode ? 'bg-green-900/30 text-green-300' : 'bg-green-100 text-green-800')
+    : proof?.status === 'rejected' 
+      ? (darkMode ? 'bg-red-900/30 text-red-300' : 'bg-red-100 text-red-800')
+      : (darkMode ? 'bg-yellow-900/30 text-yellow-300' : 'bg-yellow-100 text-yellow-800')
+}`}>
+  {proof?.status || 'pending'}
+</span>
 
                                                                                 <div className="flex space-x-1">
                                                                                     {proof?.status !== 'completed' && (

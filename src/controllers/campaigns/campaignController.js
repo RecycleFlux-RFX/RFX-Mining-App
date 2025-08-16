@@ -3,6 +3,7 @@ const User = require('../../models/User');
 const Transaction = require('../../models/Transaction');
 const mongoose = require('mongoose');
 
+
 const getAllCampaigns = async (req, res) => {
   try {
     const { status, category, featured } = req.query;
@@ -35,6 +36,34 @@ const getAllCampaigns = async (req, res) => {
     res.status(500).json({ message: 'Failed to fetch campaigns' });
   }
 };
+
+
+const findCampaignParticipant = (campaign, userId) => {
+  if (!campaign?.participantsList || !userId) return null;
+  
+  return campaign.participantsList.find(p => 
+    p.userId && p.userId.toString() === userId.toString()
+  ) || null;
+};
+
+// Usage in uploadProof:
+/* const participant = findCampaignParticipant(campaign, userId);
+if (!participant) {
+  console.error('Participation mismatch:', {
+    userId,
+    campaignId: campaign._id,
+    participantCount: campaign.participantsList.length
+  });
+  return res.status(400).json({
+    code: 'USER_NOT_IN_CAMPAIGN',
+    message: 'Participation record not found',
+    details: {
+      requiresRepair: true,
+      userInCampaigns: user.campaigns.some(c => c.campaignId.toString() === campaignId.toString())
+    }
+  });
+} */
+ 
 
 const getCampaignDetails = async (req, res) => {
   try {
@@ -200,117 +229,259 @@ const uploadProof = async (req, res) => {
     const { campaignId, taskId } = req.params;
     const userId = req.user.userId;
 
+    // Validate file exists
     if (!req.file) {
-      return res.status(400).json({ message: 'Proof file is required' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Proof file is required',
+        code: 'MISSING_PROOF_FILE'
+      });
     }
 
+    // Find campaign, user, and task in parallel
     const [campaign, user] = await Promise.all([
-      Campaign.findById(campaignId),
-      User.findById(userId)
+      Campaign.findById(campaignId).lean(),
+      User.findById(userId).lean()
     ]);
 
-    if (!campaign) return res.status(404).json({ message: 'Campaign not found' });
-    if (!user) return res.status(404).json({ message: 'User not found' });
-
-    const task = campaign.tasksList.id(taskId);
-    if (!task) return res.status(404).json({ message: 'Task not found' });
-
-    // Check if user has joined the campaign
-    const userCampaign = user.campaigns.find(c => c.campaignId.toString() === campaignId);
-    if (!userCampaign) {
-      return res.status(400).json({ message: 'Join the campaign first' });
+    // Validate entities exist
+    if (!campaign) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Campaign not found',
+        code: 'CAMPAIGN_NOT_FOUND'
+      });
+    }
+    if (!user) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'User not found',
+        code: 'USER_NOT_FOUND' 
+      });
     }
 
-    // Check if task is already completed
+    const task = campaign.tasksList.find(t => t._id.toString() === taskId);
+    if (!task) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Task not found',
+        code: 'TASK_NOT_FOUND'
+      });
+    }
+
+    // Check campaign participation
+    const userCampaign = user.campaigns.find(c => 
+      c.campaignId.toString() === campaignId
+    );
+    
+    if (!userCampaign) {
+      return res.status(400).json({ 
+        success: false,
+        message: 'Join the campaign first',
+        code: 'USER_NOT_IN_CAMPAIGN',
+        requiresRepair: false
+      });
+    }
+
+    // Check existing task status
     const existingUserTask = user.tasks.find(t => 
       t.taskId.toString() === taskId && 
       t.campaignId.toString() === campaignId
     );
     
     if (existingUserTask?.status === 'completed') {
-      return res.status(400).json({ message: 'Task already completed' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Task already completed',
+        code: 'TASK_ALREADY_COMPLETED'
+      });
     }
 
     if (existingUserTask?.status === 'pending') {
-      return res.status(400).json({ message: 'Proof already submitted and pending review' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'Proof already submitted and pending review',
+        code: 'PROOF_PENDING_REVIEW'
+      });
     }
     
-    // Cloudinary provides the URL in req.file.path
+    // Get proof URL from Cloudinary
     const proofUrl = req.file.path;
 
+    // Refresh documents for updates
+    const [updatedUser, updatedCampaign] = await Promise.all([
+      User.findById(userId),
+      Campaign.findById(campaignId)
+    ]);
+
     // Update user's task
+    const userUpdate = {
+      $set: {
+        'campaigns.$[campaign].lastActivity': new Date()
+      }
+    };
+
     if (!existingUserTask) {
-      user.tasks.push({
-        campaignId,
-        taskId,
-        status: 'pending',
-        proof: proofUrl,
-        submittedAt: new Date()
-      });
+      userUpdate.$push = {
+        tasks: {
+          campaignId,
+          taskId,
+          status: 'pending',
+          proof: proofUrl,
+          submittedAt: new Date()
+        }
+      };
     } else {
-      existingUserTask.status = 'pending';
-      existingUserTask.proof = proofUrl;
-      existingUserTask.submittedAt = new Date();
+      userUpdate.$set['tasks.$[task].status'] = 'pending';
+      userUpdate.$set['tasks.$[task].proof'] = proofUrl;
+      userUpdate.$set['tasks.$[task].submittedAt'] = new Date();
     }
 
     // Update campaign participant's task
-    const participant = campaign.participantsList.find(p => 
+    let participant = updatedCampaign.participantsList.find(p => 
       p.userId.toString() === userId
     );
-    
+
+    // Attempt to repair participation if missing
     if (!participant) {
-      return res.status(400).json({ message: 'User not found in participants list' });
+      const repaired = await repairCampaignParticipation(userId, campaignId);
+      if (!repaired) {
+        return res.status(400).json({ 
+          success: false,
+          message: 'Participation record not found',
+          code: 'PARTICIPATION_MISMATCH',
+          requiresRepair: true
+        });
+      }
+      // Refresh campaign after repair
+      await updatedCampaign.save();
+      participant = updatedCampaign.participantsList.find(p => 
+        p.userId.toString() === userId
+      );
     }
 
-    let participantTask = participant.tasks.find(t => t.taskId.toString() === taskId);
-    if (!participantTask) {
-      participant.tasks.push({
-        taskId,
-        status: 'pending',
-        proof: proofUrl,
-        submittedAt: new Date()
-      });
+    const participantTaskIndex = participant.tasks.findIndex(t => 
+      t.taskId.toString() === taskId
+    );
+
+    const campaignUpdate = {
+      $set: {
+        'participantsList.$[participant].lastActivity': new Date()
+      }
+    };
+
+    if (participantTaskIndex === -1) {
+      campaignUpdate.$push = {
+        'participantsList.$[participant].tasks': {
+          taskId,
+          status: 'pending',
+          proof: proofUrl,
+          submittedAt: new Date()
+        }
+      };
     } else {
-      participantTask.status = 'pending';
-      participantTask.proof = proofUrl;
-      participantTask.submittedAt = new Date();
+      campaignUpdate.$set[`participantsList.$[participant].tasks.${participantTaskIndex}.status`] = 'pending';
+      campaignUpdate.$set[`participantsList.$[participant].tasks.${participantTaskIndex}.proof`] = proofUrl;
+      campaignUpdate.$set[`participantsList.$[participant].tasks.${participantTaskIndex}.submittedAt`] = new Date();
     }
 
     // Update task's completedBy
-    let completedByEntry = task.completedBy.find(entry => 
+    const completedByIndex = task.completedBy.findIndex(entry => 
       entry.userId.toString() === userId
     );
-    
-    if (!completedByEntry) {
-      task.completedBy.push({
-        userId,
-        proofUrl,
-        status: 'pending',
-        submittedAt: new Date()
-      });
+
+    if (completedByIndex === -1) {
+      campaignUpdate.$push = {
+        'tasksList.$[task].completedBy': {
+          userId,
+          proofUrl,
+          status: 'pending',
+          submittedAt: new Date()
+        }
+      };
     } else {
-      completedByEntry.proofUrl = proofUrl;
-      completedByEntry.status = 'pending';
-      completedByEntry.submittedAt = new Date();
+      campaignUpdate.$set[`tasksList.$[task].completedBy.${completedByIndex}.proofUrl`] = proofUrl;
+      campaignUpdate.$set[`tasksList.$[task].completedBy.${completedByIndex}.status`] = 'pending';
+      campaignUpdate.$set[`tasksList.$[task].completedBy.${completedByIndex}.submittedAt`] = new Date();
     }
 
-    // Update last activity
-    userCampaign.lastActivity = new Date();
-    participant.lastActivity = new Date();
-
-    await Promise.all([user.save(), campaign.save()]);
+    // Execute all updates
+    await Promise.all([
+      User.updateOne(
+        { _id: userId },
+        userUpdate,
+        {
+          arrayFilters: [
+            { 'campaign.campaignId': campaignId },
+            ...(existingUserTask ? [{ 'task.taskId': taskId }] : [])
+          ]
+        }
+      ),
+      Campaign.updateOne(
+        { _id: campaignId },
+        campaignUpdate,
+        {
+          arrayFilters: [
+            { 'participant.userId': userId },
+            { 'task._id': taskId }
+          ]
+        }
+      )
+    ]);
 
     res.json({
+      success: true,
       message: 'Proof uploaded successfully, pending verification',
-      proofUrl,
-      taskId,
-      status: 'pending'
+      data: {
+        proofUrl,
+        taskId,
+        status: 'pending',
+        submittedAt: new Date()
+      }
     });
+
   } catch (err) {
     console.error('Upload proof error:', err);
-    res.status(500).json({ message: 'Failed to upload proof' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Failed to upload proof',
+      error: err.message,
+      code: 'UPLOAD_ERROR'
+    });
   }
 };
+
+
+async function repairCampaignParticipation(userId, campaignId) {
+  const [user, campaign] = await Promise.all([
+    User.findById(userId),
+    Campaign.findById(campaignId)
+  ]);
+
+  if (!user || !campaign) return false;
+
+  // Check if user is in campaign but not in participantsList
+  const hasJoined = user.campaigns.some(c => c.campaignId.toString() === campaignId);
+  const isParticipant = campaign.participantsList.some(p => p.userId.toString() === userId);
+
+  if (hasJoined && !isParticipant) {
+    campaign.participantsList.push({
+      userId: user._id,
+      username: user.username,
+      email: user.email,
+      joinedAt: new Date(),
+      lastActivity: new Date(),
+      tasks: campaign.tasksList.map(task => ({
+        taskId: task._id,
+        status: 'open'
+      }))
+    });
+    await campaign.save();
+    return true;
+  }
+
+  return false;
+}
 
 const completeTask = async (req, res) => {
   try {
@@ -832,6 +1003,9 @@ const deleteCampaign = async (req, res) => {
   }
 };
 
+
+
+
 module.exports = {
   getAllCampaigns,
   getCampaignDetails,
@@ -841,5 +1015,6 @@ module.exports = {
   completeTask,
   createCampaign,
   updateCampaign,
-  deleteCampaign
+  deleteCampaign,
+  repairCampaignParticipation
 };

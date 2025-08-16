@@ -1988,7 +1988,7 @@ app.post('/games/complete', authenticateToken, async (req, res) => {
         userGame.highScore = Math.max(userGame.highScore, score || 0);
         userGame.totalXp += xpEarned || game.xpReward;
         user.xp += xpEarned || game.xpReward;
-        user.earnings += parseFloat(game.reward.replace('₿ ', ''));
+        user.earnings += parseFloat(game.reward.replace('RFX ', ''));
 
         // Level up logic
         while (user.xp >= user.totalXp) {
@@ -2155,7 +2155,7 @@ app.post('/admin/games', [authenticateToken, adminAuth], async (req, res) => {
         const gameData = req.body;
         const game = new Game({
             ...gameData,
-            reward: `₿ ${parseFloat(gameData.reward).toFixed(5)}`
+            reward: `RFX ${parseFloat(gameData.reward).toFixed(5)}`
         });
         await game.save();
         res.status(201).json(game);
@@ -2172,7 +2172,7 @@ app.put('/admin/games/:id', [authenticateToken, adminAuth], async (req, res) => 
             return res.status(404).json({ message: 'Game not found' });
         }
         Object.assign(game, req.body);
-        game.reward = `₿ ${parseFloat(req.body.reward).toFixed(5)}`;
+        game.reward = `RFX ${parseFloat(req.body.reward).toFixed(5)}`;
         await game.save();
         res.json(game);
     } catch (err) {

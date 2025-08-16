@@ -72,6 +72,11 @@ const userSchema = new mongoose.Schema({
         type: Date,
         default: null
     },
+     referralCode: {
+    type: String,
+    unique: true,
+    default: shortid.generate
+  },
     campaigns: [{
         campaignId: {
             type: mongoose.Schema.Types.ObjectId,
