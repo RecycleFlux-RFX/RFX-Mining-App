@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import Swal from 'sweetalert2';
 import {
     Home, MapPin, Gamepad2, Wallet, Settings,
     Play, Trophy, Star, Clock, Users, Zap,
@@ -39,11 +40,10 @@ export default function RFXGamesPage() {
         gamesPlayed: 0,
         tokensEarned: 0
     });
-    const [error, setError] = useState(null);
     const [gameCooldowns, setGameCooldowns] = useState({});
     const [lastPlays, setLastPlays] = useState({});
 
-    const categories = ["All", "Puzzle", "Action", "Simulation", "Strategy"];
+    const categories = ["All"];
     const [selectedCategory, setSelectedCategory] = useState("All");
 
     const navItems = [
@@ -59,6 +59,15 @@ export default function RFXGamesPage() {
         const token = localStorage.getItem('authToken');
         if (!token) {
             console.error('No auth token found');
+            await Swal.fire({
+                title: 'Session Expired',
+                text: 'Please log in again',
+                icon: 'error',
+                confirmButtonText: 'OK',
+                background: '#1f2937',
+                color: '#fff',
+                confirmButtonColor: '#8b5cf6'
+            });
             navigate('/dashboard');
             throw new Error('No authentication token found');
         }
@@ -77,23 +86,36 @@ export default function RFXGamesPage() {
                 if (response.status === 401) {
                     console.error('Unauthorized request:', errorMessage);
                     localStorage.removeItem('authToken');
+                    await Swal.fire({
+                        title: 'Session Expired',
+                        text: 'Your session has expired. Please log in again.',
+                        icon: 'error',
+                        confirmButtonText: 'OK',
+                        background: '#1f2937',
+                        color: '#fff',
+                        confirmButtonColor: '#8b5cf6'
+                    });
                     navigate('/dashboard');
                 }
                 throw new Error(errorMessage);
             }
-
             return await response.json();
         } catch (error) {
             console.error(`API request failed for ${url}:`, error.message);
-            setError({
-                type: 'error',
-                message: error.message || 'Failed to complete request',
+            await Swal.fire({
+                title: 'Error',
+                text: error.message || 'Failed to complete request',
+                icon: 'error',
+                confirmButtonText: 'OK',
+                background: '#1f2937',
+                color: '#fff',
+                confirmButtonColor: '#8b5cf6'
             });
             throw error;
         }
     };
 
-    // Fetch games
+    // Fetch games with proper error handling
     useEffect(() => {
         const fetchGames = async () => {
             setLoading(prev => ({ ...prev, games: true }));
@@ -101,9 +123,8 @@ export default function RFXGamesPage() {
                 const response = await fetchWithAuth(`${BASE_URL}/games`);
                 if (response && Array.isArray(response)) {
                     const validatedGames = response.map(game => ({
-                        ...game,
                         id: game._id || game.id,
-                        path: game.path || `/game/${game.title.toLowerCase().replace(/\s+/g, '-')}`,
+                        path: game.path || `/game/${game.title?.toLowerCase()?.replace(/\s+/g, '-')}`,
                         bgColor: game.bgColor || 'from-purple-500 to-blue-500',
                         cardColor: game.cardColor || 'bg-purple-100',
                         canPlay: game.canPlay !== undefined ? game.canPlay : true,
@@ -111,7 +132,13 @@ export default function RFXGamesPage() {
                         plays: game.plays || 0,
                         rating: game.rating || 0,
                         reward: game.reward || 'RFX 0.00000',
-                        xpReward: game.xpReward || 0
+                        xpReward: game.xpReward || 0,
+                        players: game.players || 0,
+                        avgTime: game.avgTime || 'N/A',
+                        title: game.title || 'Untitled Game',
+                        subtitle: game.subtitle || '',
+                        description: game.description || '',
+                        category: game.category || 'Default'
                     }));
                     setGames(validatedGames);
                 } else {
@@ -119,9 +146,14 @@ export default function RFXGamesPage() {
                 }
             } catch (err) {
                 console.error('Error fetching games:', err);
-                setError({
-                    type: 'error',
-                    message: err.message || 'Failed to load games. Please try again later.',
+                await Swal.fire({
+                    title: 'Error',
+                    text: err.message || 'Failed to load games. Please try again later.',
+                    icon: 'error',
+                    confirmButtonText: 'OK',
+                    background: '#1f2937',
+                    color: '#fff',
+                    confirmButtonColor: '#8b5cf6'
                 });
             } finally {
                 setLoading(prev => ({ ...prev, games: false }));
@@ -130,7 +162,7 @@ export default function RFXGamesPage() {
         fetchGames();
     }, [navigate]);
 
-    // Fetch player stats and game plays
+    // Fetch player stats with proper error handling
     useEffect(() => {
         const fetchPlayerStats = async () => {
             setLoading(prev => ({ ...prev, stats: true }));
@@ -160,9 +192,14 @@ export default function RFXGamesPage() {
                 }
             } catch (err) {
                 console.error('Error fetching player stats:', err);
-                setError({
-                    type: 'error',
-                    message: err.message || 'Failed to load player stats.',
+                await Swal.fire({
+                    title: 'Error',
+                    text: err.message || 'Failed to load player stats.',
+                    icon: 'error',
+                    confirmButtonText: 'OK',
+                    background: '#1f2937',
+                    color: '#fff',
+                    confirmButtonColor: '#8b5cf6'
                 });
             } finally {
                 setLoading(prev => ({ ...prev, stats: false }));
@@ -178,12 +215,18 @@ export default function RFXGamesPage() {
             const now = new Date();
             
             Object.keys(lastPlays).forEach(gameId => {
-                const lastPlayTime = lastPlays[gameId];
-                const timeSinceLastPlay = now - lastPlayTime;
-                const cooldownPeriod = 5 * 60 * 60 * 1000; // 5 hours in milliseconds
+                const playTimes = lastPlays[gameId];
+                const playsArray = Array.isArray(playTimes) ? playTimes : [playTimes];
                 
-                if (timeSinceLastPlay < cooldownPeriod) {
-                    cooldowns[gameId] = cooldownPeriod - timeSinceLastPlay;
+                const sortedPlays = [...playsArray].sort((a, b) => b - a);
+                
+                if (sortedPlays.length >= 2) {
+                    const timeSinceLastPlay = now - sortedPlays[0];
+                    const cooldownPeriod = 5 * 60 * 60 * 1000;
+                    
+                    if (timeSinceLastPlay < cooldownPeriod) {
+                        cooldowns[gameId] = cooldownPeriod - timeSinceLastPlay;
+                    }
                 }
             });
             
@@ -193,47 +236,23 @@ export default function RFXGamesPage() {
         return () => clearInterval(interval);
     }, [lastPlays]);
 
-    // Update active tab based on location
-    useEffect(() => {
-        const currentNavItem = navItems.find((item) => item.path === location.pathname);
-        if (currentNavItem) {
-            setActiveTab(currentNavItem.id);
-        }
-    }, [location.pathname]);
-
-    // Fetch leaderboard when game is selected
-    useEffect(() => {
-        if (selectedGame) {
-            const fetchLeaderboard = async () => {
-                setLoading(prev => ({ ...prev, leaderboard: true }));
-                try {
-                    const response = await fetchWithAuth(`${BASE_URL}/games/${selectedGame.id}/leaderboard`);
-                    setLeaderboard(response.scores.slice(0, 3)); // Get top 3
-                    setUserRank(response.userRank);
-                } catch (err) {
-                    console.error('Error fetching leaderboard:', err);
-                    setError({
-                        type: 'error',
-                        message: 'Failed to load leaderboard data'
-                    });
-                } finally {
-                    setLoading(prev => ({ ...prev, leaderboard: false }));
-                }
-            };
-            fetchLeaderboard();
-        }
-    }, [selectedGame, navigate]);
-
-    // Start game session
+    // Start game session with proper error handling
     const startGameSession = async (game) => {
-        if (game.locked || !game.canPlay) return;
+        if (!game || game.locked || !game.canPlay) return;
 
-        // Check cooldown
-        if (gameCooldowns[game.id]) {
+        const currentPlays = lastPlays[game.id] || [];
+        const playsArray = Array.isArray(currentPlays) ? currentPlays : currentPlays ? [currentPlays] : [];
+        
+        if (playsArray.length >= 2 && gameCooldowns[game.id]) {
             const hoursLeft = Math.ceil(gameCooldowns[game.id] / (60 * 60 * 1000));
-            setError({
-                type: 'error',
-                message: `You can play this game again in ${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`
+            await Swal.fire({
+                title: 'Game Cooldown',
+                text: `You've played this game twice. You can play again in ${hoursLeft} hour${hoursLeft > 1 ? 's' : ''}`,
+                icon: 'warning',
+                confirmButtonText: 'OK',
+                background: '#1f2937',
+                color: '#fff',
+                confirmButtonColor: '#8b5cf6'
             });
             return;
         }
@@ -248,47 +267,59 @@ export default function RFXGamesPage() {
                 }),
             });
 
-            if (response.success === false) {
-                setError({
-                    type: 'error',
-                    message: response.message || 'Failed to start game session'
+            if (response?.success === false) {
+                await Swal.fire({
+                    title: 'Error',
+                    text: response.message || 'Failed to start game session',
+                    icon: 'error',
+                    confirmButtonText: 'OK',
+                    background: '#1f2937',
+                    color: '#fff',
+                    confirmButtonColor: '#8b5cf6'
                 });
                 return;
             }
 
-            // Update last play time for this game
-            setLastPlays(prev => ({
-                ...prev,
-                [game.id]: new Date()
-            }));
+            setLastPlays(prev => {
+                const existingPlays = prev[game.id] || [];
+                const newPlays = Array.isArray(existingPlays) 
+                    ? [...existingPlays, new Date()] 
+                    : [new Date()];
+                
+                return {
+                    ...prev,
+                    [game.id]: newPlays
+                };
+            });
 
-            if (response.path) {
-                navigate(response.path);
-            } else {
-                navigate(game.path);
-            }
+            navigate(response?.path || game.path || '/games');
         } catch (err) {
             console.error('Error starting game:', err);
-            setError({
-                type: 'error',
-                message: err.message || 'Failed to start game session. Please try again.',
+            await Swal.fire({
+                title: 'Error',
+                text: err.message || 'Failed to start game session. Please try again.',
+                icon: 'error',
+                confirmButtonText: 'OK',
+                background: '#1f2937',
+                color: '#fff',
+                confirmButtonColor: '#8b5cf6'
             });
         }
     };
 
-    // Format time for display
+    // Helper functions with proper null checks
     const formatCooldownTime = (ms) => {
         const hours = Math.floor(ms / (1000 * 60 * 60));
         const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
         return `${hours}h ${minutes}m`;
     };
 
-    // Check if game is on cooldown
     const isGameOnCooldown = (gameId) => {
-        return gameCooldowns[gameId] > 0;
+        const currentPlays = lastPlays[gameId] || [];
+        const playsCount = Array.isArray(currentPlays) ? currentPlays.length : currentPlays ? 1 : 0;
+        return playsCount >= 2 && gameCooldowns[gameId] > 0;
     };
 
-    // Helper functions
     const filteredGames = selectedCategory === "All"
         ? games
         : games.filter(game => game.category === selectedCategory);
@@ -309,16 +340,6 @@ export default function RFXGamesPage() {
         }
     };
 
-    const getErrorColor = () => {
-        if (!error) return '';
-        switch (error.type) {
-            case 'success': return 'bg-green-500/50';
-            case 'error': return 'bg-red-500/50';
-            case 'info': return 'bg-blue-500/50';
-            default: return 'bg-gray-500/50';
-        }
-    };
-
     // Loading state
     if (loading.games || loading.stats) {
         return (
@@ -328,6 +349,7 @@ export default function RFXGamesPage() {
         );
     }
 
+    // Main component rendering with proper null checks
     return (
         <div className="w-full min-h-screen bg-gradient-to-br from-black via-gray-900 to-black overflow-hidden relative">
             {/* Animated Background */}
@@ -350,19 +372,6 @@ export default function RFXGamesPage() {
             </div>
 
             <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 pb-24">
-                {/* Error Message */}
-                {error && (
-                    <div className={`mb-4 p-4 rounded-xl text-white ${getErrorColor()} flex justify-between items-center`}>
-                        <span>{error.message}</span>
-                        <button
-                            onClick={() => setError(null)}
-                            className="text-white hover:text-gray-300 ml-4"
-                        >
-                            ✕
-                        </button>
-                    </div>
-                )}
-
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row items-center justify-between mb-8 pt-4 space-y-4 sm:space-y-0">
                     <div className="flex items-center space-x-3">
@@ -390,7 +399,7 @@ export default function RFXGamesPage() {
                             <span className="text-gray-300 text-sm font-mono">RFX {playerStats.tokensEarned.toFixed(5)}</span>
                         </div>
                     </div>
-                </div>
+                </div> 
 
                 {/* Player Stats */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

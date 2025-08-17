@@ -21,6 +21,9 @@ export default function TriviaInterface() {
     const [rewardTiers, setRewardTiers] = useState([]);
     const [showInstructions, setShowInstructions] = useState(false);
     const [difficulty, setDifficulty] = useState(1);
+    const [playCount, setPlayCount] = useState(0);
+    const [cooldownActive, setCooldownActive] = useState(false);
+    const [cooldownTime, setCooldownTime] = useState(0);
 
     const gameId = '688d176754cb10bba40ace71';
     const BASE_URL = 'http://localhost:3000';
@@ -1012,6 +1015,25 @@ export default function TriviaInterface() {
             explanation: "Recycling bins collect recyclable materials for processing and reuse."
         }
     ];
+    // Cooldown timer effect
+    useEffect(() => {
+        let interval;
+        if (cooldownActive && cooldownTime > 0) {
+            interval = setInterval(() => {
+                setCooldownTime(prev => {
+                    if (prev <= 1) {
+                        clearInterval(interval);
+                        setCooldownActive(false);
+                        setPlayCount(0);
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+        }
+        return () => clearInterval(interval);
+    }, [cooldownActive, cooldownTime]);
+
     const getAccuracy = useCallback(
         () => (questionsAnswered > 0 ? Math.round((correctAnswers / questionsAnswered) * 100) : 0),
         [questionsAnswered, correctAnswers]
@@ -1058,23 +1080,23 @@ export default function TriviaInterface() {
         return { xpEarned: earnedXp, tokensEarned: earnedTokens, achievedTiers };
     }, [streak, getAccuracy]);
 
-    const startGame = async (selectedDifficulty = 1) => {
+    const startGame = async (difficultyLevel) => {
         try {
-            setDifficulty(selectedDifficulty);
             const token = localStorage.getItem('authToken');
             if (!token) {
                 throw new Error('Please log in to play the game');
             }
 
-            if (!/^[0-9a-fA-F]{24}$/.test(gameId)) {
-                throw new Error('Invalid game ID format');
+            // Check if in cooldown
+            if (cooldownActive) {
+                throw new Error(`You've played this game twice. Cooldown active for ${Math.ceil(cooldownTime / 60)} minutes`);
             }
 
             const response = await axios.post(
                 `${BASE_URL}/games/start`,
                 {
                     gameId,
-                    title: 'Blockchain & Recycling Trivia'
+                    title: 'Trivia Challenge'
                 },
                 {
                     headers: {
@@ -1088,6 +1110,10 @@ export default function TriviaInterface() {
             if (response.data.success === false) {
                 throw new Error(response.data.message || 'Failed to start game');
             }
+
+            // Increment play count
+            setPlayCount(prev => prev + 1);
+            setDifficulty(difficultyLevel);
 
             const shuffled = [...allTriviaQuestions].sort(() => 0.5 - Math.random());
             setSelectedQuestions(shuffled.slice(0, MAX_QUESTIONS));
@@ -1122,6 +1148,8 @@ export default function TriviaInterface() {
                 errorMessage = 'This game is currently unavailable.';
             } else if (errorMessage.includes('daily limit')) {
                 errorMessage = 'You\'ve reached your daily play limit for this game.';
+            } else if (errorMessage.includes('Cooldown active')) {
+                // Keep the cooldown message as is
             }
 
             setError(errorMessage);
@@ -1164,6 +1192,14 @@ export default function TriviaInterface() {
             setRewardTiers(achievedTiers);
             setGameState('gameOver');
             setError(null);
+
+            // Check if we need to start cooldown
+            if (playCount >= 2) {
+                const cooldownMinutes = 5 * 60; // 5 hours in minutes
+                setCooldownActive(true);
+                setCooldownTime(cooldownMinutes);
+            }
+
         } catch (error) {
             console.error('Error submitting score:', error);
             let errorMessage = error.response?.data?.message || error.message || 'Failed to submit score';
@@ -1178,7 +1214,7 @@ export default function TriviaInterface() {
 
             setError(errorMessage);
         }
-    }, [score, streak, calculateRewards, gameId, navigate, BASE_URL]);
+    }, [score, streak, calculateRewards, gameId, navigate, BASE_URL, playCount]);
 
     const handleAnswerSelect = useCallback((optionIndex) => {
         if (!showResult && questionsAnswered < MAX_QUESTIONS && selectedQuestions.length > 0) {
@@ -1264,6 +1300,17 @@ export default function TriviaInterface() {
                         <p className="text-gray-600">Test your knowledge of blockchain and recycling!</p>
                     </div>
 
+                    {cooldownActive ? (
+                        <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-4 rounded">
+                            <p className="font-bold">Cooldown Active</p>
+                            <p>You can play again in {Math.floor(cooldownTime / 60)}:{String(cooldownTime % 60).padStart(2, '0')}</p>
+                        </div>
+                    ) : (
+                        <div className="bg-blue-100 border-l-4 border-blue-500 text-blue-700 p-4 mb-4 rounded">
+                            <p>Plays remaining today: {2 - playCount}</p>
+                        </div>
+                    )}
+
                     <div className="mb-8 space-y-3 text-left">
                         <div className="flex items-center space-x-3">
                             <span className="text-2xl">🎯</span>
@@ -1284,19 +1331,22 @@ export default function TriviaInterface() {
                         <div className="flex justify-center space-x-4">
                             <button
                                 onClick={() => startGame(1)}
-                                className="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-6 rounded-lg"
+                                disabled={cooldownActive || playCount >= 2}
+                                className={`${cooldownActive || playCount >= 2 ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-500 hover:bg-green-600'} text-white font-bold py-3 px-6 rounded-lg`}
                             >
                                 Easy
                             </button>
                             <button
                                 onClick={() => startGame(2)}
-                                className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-3 px-6 rounded-lg"
+                                disabled={cooldownActive || playCount >= 2}
+                                className={`${cooldownActive || playCount >= 2 ? 'bg-gray-400 cursor-not-allowed' : 'bg-yellow-500 hover:bg-yellow-600'} text-white font-bold py-3 px-6 rounded-lg`}
                             >
                                 Medium
                             </button>
                             <button
                                 onClick={() => startGame(3)}
-                                className="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-lg"
+                                disabled={cooldownActive || playCount >= 2}
+                                className={`${cooldownActive || playCount >= 2 ? 'bg-gray-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600'} text-white font-bold py-3 px-6 rounded-lg`}
                             >
                                 Hard
                             </button>
@@ -1378,9 +1428,10 @@ export default function TriviaInterface() {
                     <div className="flex justify-center space-x-4">
                         <button
                             onClick={() => startGame(difficulty)}
-                            className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-4 px-8 rounded-full text-lg transition-all duration-200 transform hover:scale-105 shadow-lg"
+                            disabled={cooldownActive || playCount >= 2}
+                            className={`${cooldownActive || playCount >= 2 ? 'bg-gray-400 cursor-not-allowed' : 'bg-purple-500 hover:bg-purple-600'} text-white font-bold py-4 px-8 rounded-full text-lg transition-all duration-200 transform hover:scale-105 shadow-lg`}
                         >
-                            Play Again
+                            {cooldownActive ? 'In Cooldown' : playCount >= 2 ? 'Limit Reached' : 'Play Again'}
                         </button>
                         <button
                             onClick={() => navigate('/games')}

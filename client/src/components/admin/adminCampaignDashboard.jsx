@@ -647,13 +647,13 @@ const handleBulkApprove = async (approve) => {
                 gradient: darkMode ? 'from-blue-600 to-cyan-600' : 'from-blue-500 to-cyan-500',
                 textColor: darkMode ? 'text-blue-100' : 'text-white'
             },
-            Forest: {
+            School: {
                 color: darkMode ? 'bg-green-600' : 'bg-green-500',
                 icon: '🌲',
                 gradient: darkMode ? 'from-green-600 to-emerald-600' : 'from-green-500 to-emerald-500',
                 textColor: darkMode ? 'text-green-100' : 'text-white'
             },
-            Air: {
+            City: {
                 color: darkMode ? 'bg-cyan-600' : 'bg-cyan-500',
                 icon: '💨',
                 gradient: darkMode ? 'from-cyan-600 to-sky-600' : 'from-cyan-500 to-sky-500',
@@ -967,8 +967,8 @@ const handleBulkApprove = async (approve) => {
                                     >
                                         <option value="all">All Categories</option>
                                         <option value="Ocean">Ocean</option>
-                                        <option value="Forest">Forest</option>
-                                        <option value="Air">Air</option>
+                                        <option value="School">School</option>
+                                        <option value="City">City</option>
                                         <option value="Community">Community</option>
                                     </select>
                                 </div>
@@ -1760,8 +1760,8 @@ const handleBulkApprove = async (approve) => {
                                         required
                                     >
                                         <option value="Ocean">🌊 Ocean</option>
-                                        <option value="Forest">🌲 Forest</option>
-                                        <option value="Air">💨 Air</option>
+                                        <option value="School">🌲 School</option>
+                                        <option value="City">City</option>
                                         <option value="Community">👥 Community</option>
                                     </select>
                                 </div>
@@ -2232,7 +2232,7 @@ const handleBulkApprove = async (approve) => {
                                 value={taskForm.requirements}
                                 onChange={handleTaskChange}
                                 className={`w-full px-4 py-3 border rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all ${themeClasses.input}`}
-                                placeholder="e.g., Twitter account, Email verification"
+                                placeholder="e.g.,Like the post on X: http://example.com"
                             />
                             <p className={`mt-1 text-sm ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>Optional requirements participants must meet</p>
                         </div>

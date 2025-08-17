@@ -15,6 +15,9 @@ const RecycleRush = () => {
     const [showInstructions, setShowInstructions] = useState(true);
     const [error, setError] = useState(null);
     const [rewardTiers, setRewardTiers] = useState([]);
+    const [playCount, setPlayCount] = useState(0);
+const [cooldownActive, setCooldownActive] = useState(false);
+const [cooldownTime, setCooldownTime] = useState(0);
 
     const gameAreaRef = useRef(null);
     const itemIdCounter = useRef(0);
@@ -160,57 +163,65 @@ const RecycleRush = () => {
         }
     };
 
-    const submitScore = useCallback(async () => {
-        try {
-            const token = localStorage.getItem('authToken');
-            if (!token) {
-                throw new Error('Authentication missing');
-            }
-
-            const { xpEarned, tokensEarned, achievedTiers } = calculateRewards(score);
-            const achievements = combo >= 5 ? ['High Combo'] : [];
-
-            const response = await axios.post(
-                `${BASE_URL}/games/${gameId}/score`,
-                {
-                    gameId,
-                    score,
-                    xpEarned,
-                    tokensEarned,
-                    achievements,
-                },
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        'Content-Type': 'application/json',
-                    },
-                    validateStatus: (status) => status < 500,
-                }
-            );
-
-            if (response.data.success === false) {
-                throw new Error(response.data.message || 'Failed to submit score');
-            }
-
-            setHighScore(response.data.newHighScore || score);
-            setRewardTiers(achievedTiers);
-            setGameState('gameOver');
-            setError(null);
-        } catch (error) {
-            console.error('Error submitting score:', error);
-            let errorMessage = error.response?.data?.message || error.message || 'Failed to submit score';
-
-            if (errorMessage.includes('authentication') || errorMessage.includes('token')) {
-                errorMessage = 'Session expired. Please log in again.';
-                localStorage.removeItem('authToken');
-                navigate('/dashboard');
-            } else if (errorMessage.includes('ObjectId') || errorMessage.includes('Cast to ObjectId')) {
-                errorMessage = 'Game configuration error. Please try another game.';
-            }
-
-            setError(errorMessage);
+const submitScore = useCallback(async () => {
+    try {
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+            throw new Error('Authentication missing');
         }
-    }, [score, combo, calculateRewards, gameId, navigate, BASE_URL]);
+
+        const { xpEarned, tokensEarned, achievedTiers } = calculateRewards(score);
+        const achievements = combo >= 5 ? ['High Combo'] : [];
+
+        const response = await axios.post(
+            `${BASE_URL}/games/${gameId}/score`,
+            {
+                gameId,
+                score,
+                xpEarned,
+                tokensEarned,
+                achievements,
+            },
+            {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                    'Content-Type': 'application/json',
+                },
+                validateStatus: (status) => status < 500,
+            }
+        );
+
+        if (response.data.success === false) {
+            throw new Error(response.data.message || 'Failed to submit score');
+        }
+
+        setHighScore(response.data.newHighScore || score);
+        setRewardTiers(achievedTiers);
+        setGameState('gameOver');
+        setError(null);
+
+        // Check if we need to start cooldown
+        if (playCount >= 2) {
+            const cooldownMinutes = 5 * 60; // 5 hours in minutes
+            setCooldownActive(true);
+            setCooldownTime(cooldownMinutes);
+        }
+
+    } catch (error) {
+        console.error('Error submitting score:', error);
+        let errorMessage = error.response?.data?.message || error.message || 'Failed to submit score';
+
+        if (errorMessage.includes('authentication') || errorMessage.includes('token')) {
+            errorMessage = 'Session expired. Please log in again.';
+            localStorage.removeItem('authToken');
+            navigate('/dashboard');
+        } else if (errorMessage.includes('ObjectId') || errorMessage.includes('Cast to ObjectId')) {
+            errorMessage = 'Game configuration error. Please try another game.';
+        }
+
+        setError(errorMessage);
+    }
+}, [score, combo, calculateRewards, gameId, navigate, BASE_URL, playCount]);
 
     const endGame = () => {
         submitScore();

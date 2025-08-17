@@ -26,17 +26,11 @@ const BASE_URL = 'http://localhost:3000';
 
 const CAMPAIGN_CATEGORIES = {
   Ocean: Droplets,
-  Forest: TreePine,
-  Air: Wind,
+  School: TreePine,
+  City: Wind,
   Community: Recycle,
-  //Default
   default: Recycle
 };
-
-
-const Icon = CAMPAIGN_CATEGORIES[campaign.category] || CAMPAIGN_CATEGORIES.default;
-const IconComponent = CAMPAIGN_CATEGORIES[campaign.category] || Droplets;
-
 
 const PLATFORM_ICONS = {
   twitter: Twitter,
@@ -50,8 +44,6 @@ const PLATFORM_ICONS = {
   default: LinkIcon
 };
 
-const PlatformIconComponent = PLATFORM_ICONS[task.platform?.toLowerCase()] || LinkIcon;
-
 const COLOR_SCHEMES = {
   Ocean: {
     gradient: 'from-blue-400 to-blue-600',
@@ -60,14 +52,14 @@ const COLOR_SCHEMES = {
     border: 'border-blue-400/20',
     button: 'from-blue-400 to-blue-500'
   },
-  Forest: {
+  School: {
     gradient: 'from-green-400 to-green-600',
     text: 'text-green-400',
     bg: 'bg-green-400/20',
     border: 'border-green-400/20',
     button: 'from-green-400 to-green-500'
   },
-  Air: {
+  City: {
     gradient: 'from-cyan-400 to-cyan-600',
     text: 'text-cyan-400',
     bg: 'bg-cyan-400/20',
@@ -99,7 +91,6 @@ const BOTTOM_NAV_ITEMS = [
   { id: 'settings', icon: Settings, label: 'Notifications', path: '/settings' },
 ];
 
-
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
@@ -118,10 +109,17 @@ class ErrorBoundary extends React.Component {
     if (this.state.hasError) {
       return <div className="text-red-500 p-4">Something went wrong. Please check the console for errors.</div>;
     }
-
     return this.props.children;
   }
 }
+
+const getCampaignIcon = (category) => {
+  return CAMPAIGN_CATEGORIES[category] || CAMPAIGN_CATEGORIES.default;
+};
+
+const getPlatformIcon = (platform) => {
+  return PLATFORM_ICONS[platform?.toLowerCase()] || PLATFORM_ICONS.default;
+};
 
 export default function RFXCampaignPage() {
   const location = useLocation();
@@ -164,7 +162,6 @@ export default function RFXCampaignPage() {
     minutes: 59, 
     seconds: 59 
   });
-    
   const [completingTask, setCompletingTask] = useState(null);
 
   const getColorClasses = (category) => {
@@ -182,9 +179,9 @@ export default function RFXCampaignPage() {
   };
 
   const detectUrls = (text) => {
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
-  return text.match(urlRegex) || [];
-};
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return text.match(urlRegex) || [];
+  };
 
   const areAllTasksCompleted = (tasks, currentDay) => {
     const todayTasks = tasks.filter(task => task.day === currentDay);
@@ -212,13 +209,13 @@ export default function RFXCampaignPage() {
         credentials: 'include'
       });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    const error = new Error(errorData.message || `Request failed with status ${response.status}`);
-    error.status = response.status;
-    error.code = errorData.code; // Add this line to capture error codes
-    throw error;
-  }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        const error = new Error(errorData.message || `Request failed with status ${response.status}`);
+        error.status = response.status;
+        error.code = errorData.code;
+        throw error;
+      }
 
       return await response.json();
     } catch (error) {
@@ -231,49 +228,40 @@ export default function RFXCampaignPage() {
     }
   };
 
-const calculateDayProgress = (campaign) => {
-  if (!campaign?.startDate || !campaign?.duration) {
-    return { currentDay: 1, timeLeft: { hours: 23, minutes: 59, seconds: 59 } };
-  }
-
-  try {
-    const startDate = new Date(campaign.startDate);
-    const now = new Date();
-    
-    // Ensure startDate is valid
-    if (isNaN(startDate.getTime())) {
+  const calculateDayProgress = (campaign) => {
+    if (!campaign?.startDate || !campaign?.duration) {
       return { currentDay: 1, timeLeft: { hours: 23, minutes: 59, seconds: 59 } };
     }
 
-    // Calculate elapsed time in milliseconds
-    const elapsedMs = now - startDate;
-    
-    // Calculate elapsed days (1-based)
-    const elapsedDays = Math.max(1, Math.floor(elapsedMs / (1000 * 60 * 60 * 24)) + 1);
-    
-    // Ensure we don't exceed campaign duration
-    const currentDay = Math.min(elapsedDays, parseInt(campaign.duration) || 1);
-    
-    // Calculate time until next day
-    const nextDayStart = new Date(startDate);
-    nextDayStart.setDate(startDate.getDate() + currentDay);
-    const timeUntilNextDay = nextDayStart - now;
-
-    // Ensure time values are valid numbers
-    return {
-      currentDay,
-      timeLeft: {
-        hours: Math.max(0, Math.floor((timeUntilNextDay % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))),
-        minutes: Math.max(0, Math.floor((timeUntilNextDay % (1000 * 60 * 60)) / (1000 * 60))),
-        seconds: Math.max(0, Math.floor((timeUntilNextDay % (1000 * 60)) / 1000))
+    try {
+      const startDate = new Date(campaign.startDate);
+      const now = new Date();
+      
+      if (isNaN(startDate.getTime())) {
+        return { currentDay: 1, timeLeft: { hours: 23, minutes: 59, seconds: 59 } };
       }
-    };
-  } catch (error) {
-    console.error('Error calculating day progress:', error);
-    return { currentDay: 1, timeLeft: { hours: 23, minutes: 59, seconds: 59 } };
-  }
-};
 
+      const elapsedMs = now - startDate;
+      const elapsedDays = Math.max(1, Math.floor(elapsedMs / (1000 * 60 * 60 * 24)) + 1);
+      const currentDay = Math.min(elapsedDays, parseInt(campaign.duration) || 1);
+      
+      const nextDayStart = new Date(startDate);
+      nextDayStart.setDate(startDate.getDate() + currentDay);
+      const timeUntilNextDay = nextDayStart - now;
+
+      return {
+        currentDay,
+        timeLeft: {
+          hours: Math.max(0, Math.floor((timeUntilNextDay % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))),
+          minutes: Math.max(0, Math.floor((timeUntilNextDay % (1000 * 60 * 60)) / (1000 * 60))),
+          seconds: Math.max(0, Math.floor((timeUntilNextDay % (1000 * 60)) / 1000))
+        }
+      };
+    } catch (error) {
+      console.error('Error calculating day progress:', error);
+      return { currentDay: 1, timeLeft: { hours: 23, minutes: 59, seconds: 59 } };
+    }
+  };
 
   const fetchInitialData = async () => {
     setLoading(true);
@@ -352,288 +340,272 @@ const calculateDayProgress = (campaign) => {
     }
   };
 
-const fetchCampaignDetails = async (campaignId) => {
-  try {
-    const response = await fetchWithAuth(`${BASE_URL}/campaigns/${campaignId}/user`);
+  const fetchCampaignDetails = async (campaignId) => {
+    try {
+      const response = await fetchWithAuth(`${BASE_URL}/campaigns/${campaignId}/user`);
 
-    // When mapping tasks, add the index to each task
-    const mappedTasks = (response.tasksList || []).map((task, index) => {
-      const userTask = response.participantsList
-        ?.find(p => p.userId?.toString() === localStorage.getItem('userId'))
-        ?.tasks?.find(t => t.taskId?.toString() === task._id?.toString()) || {};
+      const mappedTasks = (response.tasksList || []).map((task, index) => {
+        const userTask = response.participantsList
+          ?.find(p => p.userId?.toString() === localStorage.getItem('userId'))
+          ?.tasks?.find(t => t.taskId?.toString() === task._id?.toString()) || {};
+        
+        return {
+          ...task,
+          id: task._id || `temp-${Math.random()}`,
+          status: userTask.status || 'open',
+          reward: task.reward ? `${task.reward} RFX` : '0 RFX',
+          completed: userTask.status === 'completed',
+          proof: userTask.proof || null,
+          day: task.day || 1,
+          taskNumber: index + 1
+        };
+      });
+
+      const { currentDay, timeLeft } = calculateDayProgress(response);
       
-      return {
-        ...task,
-        id: task._id || `temp-${Math.random()}`,
-        status: userTask.status || 'open',
-        reward: task.reward ? `${task.reward} RFX` : '0 RFX',
-        completed: userTask.status === 'completed',
-        proof: userTask.proof || null,
-        day: task.day || 1,
-        taskNumber: index + 1
-      };
-    });
+      const userCampaign = response.participantsList?.find(p => 
+        p.userId?.toString() === localStorage.getItem('userId')
+      );
+      const progress = response.tasksList?.length > 0 
+        ? ((userCampaign?.completed || 0) / response.tasksList.length) * 100 
+        : 0;
 
-    const { currentDay, timeLeft } = calculateDayProgress(response);
-    
-    // Calculate progress
-    const userCampaign = response.participantsList?.find(p => 
-      p.userId?.toString() === localStorage.getItem('userId')
-    );
-    const progress = response.tasksList?.length > 0 
-      ? ((userCampaign?.completed || 0) / response.tasksList.length) * 100 
-      : 0;
+      setTasks(mappedTasks);
+      setSelectedCampaign({
+        ...response,
+        id: response._id,
+        tasks: mappedTasks.length,
+        reward: response.reward ? `${response.reward} RFX` : '0 RFX',
+        duration: response.duration ? `${response.duration} days` : '1 day',
+        startDate: response.startDate ? new Date(response.startDate).toISOString() : new Date().toISOString(),
+        currentDay,
+        dayTimeLeft: timeLeft,
+        progress: Math.min(100, Math.max(0, progress))
+      });
+      setCurrentDay(currentDay);
+      setDayTimeLeft(timeLeft);
+    } catch (error) {
+      console.error('Fetch campaign error:', error);
+      setError({
+        type: 'error',
+        message: error.message || 'Failed to load campaign details',
+      });
+    }
+  };
 
-    setTasks(mappedTasks);
-    setSelectedCampaign({
-      ...response,
-      id: response._id,
-      tasks: mappedTasks.length,
-      reward: response.reward ? `${response.reward} RFX` : '0 RFX',
-      duration: response.duration ? `${response.duration} days` : '1 day',
-      startDate: response.startDate ? new Date(response.startDate).toISOString() : new Date().toISOString(),
-      currentDay,
-      dayTimeLeft: timeLeft,
-      progress: Math.min(100, Math.max(0, progress))
-    });
-    setCurrentDay(currentDay);
-    setDayTimeLeft(timeLeft);
-  } catch (error) {
-    console.error('Fetch campaign error:', error);
-    setError({
-      type: 'error',
-      message: error.message || 'Failed to load campaign details',
-    });
-  }
-};
-
-const handleCompleteTask = async (campaignId, taskId) => {
+  const handleCompleteTask = async (campaignId, taskId) => {
     setCompletingTask(taskId);
     
     try {
-        // Optimistic update
+      setTasks(prev => prev.map(t => 
+        t.id === taskId ? { ...t, status: 'completing' } : t
+      ));
+      
+      setDailyTasks(prev => prev.map(t => 
+        t.id === taskId ? { ...t, status: 'completing' } : t
+      ));
+
+      const response = await fetchWithAuth(
+        `${BASE_URL}/campaigns/${campaignId}/tasks/${taskId}/complete`, 
+        { 
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        }
+      );
+
+      if (!response) {
+        throw new Error('Server did not respond');
+      }
+
+      const responseText = await response.text();
+      let responseData;
+      
+      try {
+        responseData = JSON.parse(responseText);
+      } catch (e) {
+        console.error('Failed to parse JSON:', e, 'Response text:', responseText);
+        throw new Error('Server returned invalid data');
+      }
+
+      if (!response.ok || responseData.error) {
+        throw new Error(responseData.message || 'Task completion failed');
+      }
+
+      if (responseData.success) {
         setTasks(prev => prev.map(t => 
-            t.id === taskId ? { ...t, status: 'completing' } : t
+          t.id === taskId ? { 
+            ...t, 
+            status: 'completed',
+            completed: true,
+            reward: responseData.task?.reward || t.reward
+          } : t
+        ));
+
+        setDailyTasks(prev => prev.map(t => 
+          t.id === taskId ? { 
+            ...t, 
+            status: 'completed',
+            completed: true
+          } : t
+        ));
+
+        setUserStats(prev => ({
+          ...prev,
+          earnings: responseData.userStats?.earnings || prev.earnings,
+          co2Saved: responseData.userStats?.co2Saved || prev.co2Saved
+        }));
+
+        setSelectedCampaign(prev => ({
+          ...prev,
+          tasks: prev.tasks.map(t => 
+            t.id === taskId ? { 
+              ...t, 
+              status: 'completed',
+              completed: true
+            } : t
+          ),
+          userCompleted: responseData.campaignProgress?.completed || prev.userCompleted
+        }));
+
+        Swal.fire({
+          title: 'Task Completed!',
+          text: `You earned ${(responseData.task?.reward || 0).toFixed(5)} RFX`,
+          icon: 'success',
+          background: '#1a202c',
+          color: '#ffffff',
+          confirmButtonColor: '#38a169'
+        });
+      }
+    } catch (error) {
+      console.error('Complete task error:', error);
+      
+      if (error.message.includes('already completed')) {
+        setTasks(prev => prev.map(t => 
+          t.id === taskId ? { 
+            ...t, 
+            status: 'completed',
+            completed: true
+          } : t
         ));
         
         setDailyTasks(prev => prev.map(t => 
-            t.id === taskId ? { ...t, status: 'completing' } : t
+          t.id === taskId ? { 
+            ...t, 
+            status: 'completed',
+            completed: true
+          } : t
         ));
 
-        const response = await fetchWithAuth(
-            `${BASE_URL}/campaigns/${campaignId}/tasks/${taskId}/complete`, 
-            { 
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json' // Explicitly ask for JSON
-                }
-            }
-        );
-
-        // Check if response exists
-        if (!response) {
-            throw new Error('Server did not respond');
-        }
-
-        // Get response text first for debugging
-        const responseText = await response.text();
-        let responseData;
+        Swal.fire({
+          title: 'Already Completed',
+          text: 'This task was already completed',
+          icon: 'info',
+          background: '#1a202c',
+          color: '#ffffff',
+          confirmButtonColor: '#38a169'
+        });
+      } else {
+        setTasks(prev => prev.map(t => 
+          t.id === taskId ? { ...t, status: 'open' } : t
+        ));
         
-        try {
-            responseData = JSON.parse(responseText);
-        } catch (e) {
-            console.error('Failed to parse JSON:', e, 'Response text:', responseText);
-            throw new Error('Server returned invalid data');
-        }
+        setDailyTasks(prev => prev.map(t => 
+          t.id === taskId ? { ...t, status: 'open' } : t
+        ));
 
-        // Check for error response
-        if (!response.ok || responseData.error) {
-            throw new Error(responseData.message || 'Task completion failed');
-        }
-
-        // Only update state if we got valid data
-        if (responseData.success) {
-            setTasks(prev => prev.map(t => 
-                t.id === taskId ? { 
-                    ...t, 
-                    status: 'completed',
-                    completed: true,
-                    reward: responseData.task?.reward || t.reward
-                } : t
-            ));
-
-            setDailyTasks(prev => prev.map(t => 
-                t.id === taskId ? { 
-                    ...t, 
-                    status: 'completed',
-                    completed: true
-                } : t
-            ));
-
-            setUserStats(prev => ({
-                ...prev,
-                earnings: responseData.userStats?.earnings || prev.earnings,
-                co2Saved: responseData.userStats?.co2Saved || prev.co2Saved
-            }));
-
-            setSelectedCampaign(prev => ({
-                ...prev,
-                tasks: prev.tasks.map(t => 
-                    t.id === taskId ? { 
-                        ...t, 
-                        status: 'completed',
-                        completed: true
-                    } : t
-                ),
-                userCompleted: responseData.campaignProgress?.completed || prev.userCompleted
-            }));
-
-            Swal.fire({
-                title: 'Task Completed!',
-                text: `You earned ${(responseData.task?.reward || 0).toFixed(5)} RFX`,
-                icon: 'success',
-                background: '#1a202c',
-                color: '#ffffff',
-                confirmButtonColor: '#38a169'
-            });
-        }
-
-    } catch (error) {
-        console.error('Complete task error:', error);
-        
-        // Check if this is a "already completed" error
-        if (error.message.includes('already completed')) {
-            // Update state to reflect completion
-            setTasks(prev => prev.map(t => 
-                t.id === taskId ? { 
-                    ...t, 
-                    status: 'completed',
-                    completed: true
-                } : t
-            ));
-            
-            setDailyTasks(prev => prev.map(t => 
-                t.id === taskId ? { 
-                    ...t, 
-                    status: 'completed',
-                    completed: true
-                } : t
-            ));
-
-            Swal.fire({
-                title: 'Already Completed',
-                text: 'This task was already completed',
-                icon: 'info',
-                background: '#1a202c',
-                color: '#ffffff',
-                confirmButtonColor: '#38a169'
-            });
-        } else {
-            // For other errors, reset to open status
-            setTasks(prev => prev.map(t => 
-                t.id === taskId ? { ...t, status: 'open' } : t
-            ));
-            
-            setDailyTasks(prev => prev.map(t => 
-                t.id === taskId ? { ...t, status: 'open' } : t
-            ));
-
-            Swal.fire({
-                title: 'Error',
-                text: error.message || 'Failed to complete task',
-                icon: 'error',
-                background: '#1a202c',
-                color: '#ffffff',
-                confirmButtonColor: '#38a169'
-            });
-        }
+        Swal.fire({
+          title: 'Error',
+          text: error.message || 'Failed to complete task',
+          icon: 'error',
+          background: '#1a202c',
+          color: '#ffffff',
+          confirmButtonColor: '#38a169'
+        });
+      }
     } finally {
-        setCompletingTask(null);
+      setCompletingTask(null);
     }
-};
+  };
 
-const repairCampaignParticipation = async (campaignId) => {
-  try {
-    const response = await fetchWithAuth(
-      `${BASE_URL}/campaigns/${campaignId}/repair-participation`,
-      { method: 'POST' }
-    );
-    
-    if (response.success) {
-      await fetchInitialData(); // Refresh all data
-      await fetchCampaignDetails(campaignId); // Refresh campaign details
-      return true;
+  const repairCampaignParticipation = async (campaignId) => {
+    try {
+      const response = await fetchWithAuth(
+        `${BASE_URL}/campaigns/${campaignId}/repair-participation`,
+        { method: 'POST' }
+      );
+      
+      if (response.success) {
+        await fetchInitialData();
+        await fetchCampaignDetails(campaignId);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Repair failed:', error);
+      return false;
     }
-    return false;
-  } catch (error) {
-    console.error('Repair failed:', error);
-    return false;
   }
-}
 
+  const handleProofUpload = async (campaignId, taskId, file) => {
+    setUploadingTaskId(taskId);
+    try {
+      const formData = new FormData();
+      formData.append('proof', file);
+      
+      const response = await axios.post(
+        `${BASE_URL}/campaigns/${campaignId}/tasks/${taskId}/proof`,
+        formData,
+        {
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      );
 
-  
-const handleProofUpload = async (campaignId, taskId, file) => {
-  setUploadingTaskId(taskId);
-  try {
-    const formData = new FormData();
-    formData.append('proof', file);
-    
-    const response = await axios.post(
-      `${BASE_URL}/campaigns/${campaignId}/tasks/${taskId}/proof`,
-      formData,
-      {
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('authToken')}`,
-          'Content-Type': 'multipart/form-data'
+      setTasks(prev => prev.map(t => 
+        t.id === taskId ? { 
+          ...t, 
+          status: 'pending',
+          proof: response.data.proofUrl
+        } : t
+      ));
+
+      setShowUploadSuccess(true);
+      setTimeout(() => setShowUploadSuccess(false), 3000);
+    } catch (error) {
+      console.error('Upload failed:', error);
+      
+      let errorMessage = 'Proof upload failed';
+      if (error.response) {
+        switch(error.response.data?.code) {
+          case 'USER_NOT_IN_CAMPAIGN':
+            errorMessage = 'Please join the campaign first';
+            break;
+          case 'PARTICIPATION_MISMATCH':
+            const repaired = await repairCampaignParticipation(campaignId);
+            if (repaired) {
+              return handleProofUpload(campaignId, taskId, file);
+            }
+            errorMessage = 'Could not verify your participation';
+            break;
+          default:
+            errorMessage = error.response.data?.message || errorMessage;
         }
       }
-    );
 
-    // Update UI state
-    setTasks(prev => prev.map(t => 
-      t.id === taskId ? { 
-        ...t, 
-        status: 'pending',
-        proof: response.data.proofUrl
-      } : t
-    ));
-
-    setShowUploadSuccess(true);
-    setTimeout(() => setShowUploadSuccess(false), 3000);
-
-  } catch (error) {
-    console.error('Upload failed:', error);
-    
-    let errorMessage = 'Proof upload failed';
-    if (error.response) {
-      switch(error.response.data?.code) {
-        case 'USER_NOT_IN_CAMPAIGN':
-          errorMessage = 'Please join the campaign first';
-          break;
-        case 'PARTICIPATION_MISMATCH':
-          // Attempt repair automatically
-          const repaired = await repairCampaignParticipation(campaignId);
-          if (repaired) {
-            return handleProofUpload(campaignId, taskId, file); // Retry
-          }
-          errorMessage = 'Could not verify your participation';
-          break;
-        default:
-          errorMessage = error.response.data?.message || errorMessage;
-      }
+      Swal.fire({
+        title: 'Upload Failed',
+        text: errorMessage,
+        icon: 'error'
+      });
+    } finally {
+      setUploadingTaskId(null);
     }
-
-    Swal.fire({
-      title: 'Upload Failed',
-      text: errorMessage,
-      icon: 'error'
-    });
-  } finally {
-    setUploadingTaskId(null);
-  }
-};
+  };
 
   const handleJoinCampaign = async (campaignId) => {
     setLoading(true);
@@ -871,7 +843,7 @@ const handleProofUpload = async (campaignId, taskId, file) => {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {userCampaigns.map((campaign) => {
-                const Icon = CAMPAIGN_CATEGORIES[campaign.category];
+                const Icon = getCampaignIcon(campaign.category);
                 const colors = getColorClasses(campaign.category);
                 
                 return (
@@ -991,7 +963,7 @@ const handleProofUpload = async (campaignId, taskId, file) => {
             
             {(() => {
               const featured = campaigns.find(c => c.featured);
-              const Icon = CAMPAIGN_CATEGORIES[featured.category];
+              const Icon = getCampaignIcon(featured.category);
               const colors = getColorClasses(featured.category);
               
               return (
@@ -1095,7 +1067,7 @@ const handleProofUpload = async (campaignId, taskId, file) => {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {ActiveCampaigns.map((campaign) => {
-                const Icon = CAMPAIGN_CATEGORIES[campaign.category];
+                const Icon = getCampaignIcon(campaign.category);
                 const colors = getColorClasses(campaign.category);
                 
                 return (
@@ -1216,7 +1188,7 @@ const handleProofUpload = async (campaignId, taskId, file) => {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {CompletedCampaigns.map((campaign) => {
-                  const Icon = CAMPAIGN_CATEGORIES[campaign.category];
+                  const Icon = getCampaignIcon(campaign.category);
                   const colors = getColorClasses(campaign.category);
                   
                   return (
@@ -1259,398 +1231,396 @@ const handleProofUpload = async (campaignId, taskId, file) => {
         </div>
 
         {/* Campaign Modal */}
-<Modal
-    isOpen={modalIsOpen}
-    onRequestClose={() => setModalIsOpen(false)}
-    className="relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-6 max-w-4xl mx-auto mt-16 border border-gray-700 shadow-2xl"
-    overlayClassName="fixed inset-0 bg-black bg-opacity-75 flex items-start justify-center p-4 z-50 overflow-y-auto"
->
-    {showUploadSuccess && (
-        <div className="fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-md shadow-lg z-50 animate-slideIn">
-            <div className="flex items-center space-x-2">
+        <Modal
+          isOpen={modalIsOpen}
+          onRequestClose={() => setModalIsOpen(false)}
+          className="relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-3xl p-6 max-w-4xl mx-auto mt-16 border border-gray-700 shadow-2xl"
+          overlayClassName="fixed inset-0 bg-black bg-opacity-75 flex items-start justify-center p-4 z-50 overflow-y-auto"
+        >
+          {showUploadSuccess && (
+            <div className="fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-md shadow-lg z-50 animate-slideIn">
+              <div className="flex items-center space-x-2">
                 <CheckCircle className="w-5 h-5" />
                 <span>Proof uploaded successfully!</span>
+              </div>
             </div>
-        </div>
-    )}
+          )}
 
-    {selectedCampaign ? (
-        <div>
-            {/* Modal header */}
-            <div className="flex items-center justify-between mb-6">
+          {selectedCampaign ? (
+            <div>
+              {/* Modal header */}
+              <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center space-x-4">
-                    <button 
-                        onClick={() => fetchCampaignDetails(selectedCampaign.id)}
-                        className="flex items-center text-gray-400 hover:text-white transition-colors"
-                    >
-                        <RefreshCw className="w-4 h-4 mr-1" />
-                        <span className="text-sm">Refresh</span>
-                    </button>
-                    {(() => {
-                        const Icon = CAMPAIGN_CATEGORIES[selectedCampaign.category];
-                        const colors = getColorClasses(selectedCampaign.category);
-                        
-                        return (
-                            <div className={`w-16 h-16 bg-gradient-to-br ${colors.gradient} rounded-2xl flex items-center justify-center`}>
-                                <Icon className="w-8 h-8 text-black" />
-                            </div>
-                        );
-                    })()}
-                    <div>
-                        <h2 className="text-2xl font-bold text-white">{selectedCampaign.title}</h2>
-                        <p className="text-gray-400">{selectedCampaign.description}</p>
-                    </div>
+                  <button 
+                    onClick={() => fetchCampaignDetails(selectedCampaign.id)}
+                    className="flex items-center text-gray-400 hover:text-white transition-colors"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-1" />
+                    <span className="text-sm">Refresh</span>
+                  </button>
+                  {(() => {
+                    const Icon = getCampaignIcon(selectedCampaign.category);
+                    const colors = getColorClasses(selectedCampaign.category);
+                    
+                    return (
+                      <div className={`w-16 h-16 bg-gradient-to-br ${colors.gradient} rounded-2xl flex items-center justify-center`}>
+                        <Icon className="w-8 h-8 text-black" />
+                      </div>
+                    );
+                  })()}
+                  <div>
+                    <h2 className="text-2xl font-bold text-white">{selectedCampaign.title}</h2>
+                    <p className="text-gray-400">{selectedCampaign.description}</p>
+                  </div>
                 </div>
                 <button
-                    onClick={() => setModalIsOpen(false)}
-                    className="text-gray-400 hover:text-white transition-colors"
+                  onClick={() => setModalIsOpen(false)}
+                  className="text-gray-400 hover:text-white transition-colors"
                 >
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
                 </button>
-            </div>
+              </div>
 
-            {/* Campaign stats */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
+              {/* Campaign stats */}
+              <div className="grid grid-cols-3 gap-4 mb-6">
                 <div className="bg-gray-800/50 rounded-xl p-4 text-center">
-                    <div className="text-green-400 font-bold text-xl">{selectedCampaign.reward}</div>
-                    <div className="text-gray-400 text-sm">Total Reward</div>
+                  <div className="text-green-400 font-bold text-xl">{selectedCampaign.reward}</div>
+                  <div className="text-gray-400 text-sm">Total Reward</div>
                 </div>
                 <div className="bg-gray-800/50 rounded-xl p-4 text-center">
-                    <div className="text-blue-400 font-bold text-xl">{selectedCampaign.tasks}</div>
-                    <div className="text-gray-400 text-sm">Total Tasks</div>
+                  <div className="text-blue-400 font-bold text-xl">{selectedCampaign.tasks}</div>
+                  <div className="text-gray-400 text-sm">Total Tasks</div>
                 </div>
                 <div className="bg-gray-800/50 rounded-xl p-4 text-center">
-                    <div className="text-orange-400 font-bold text-xl">{selectedCampaign.duration}</div>
-                    <div className="text-gray-400 text-sm">Duration</div>
+                  <div className="text-orange-400 font-bold text-xl">{selectedCampaign.duration}</div>
+                  <div className="text-gray-400 text-sm">Duration</div>
                 </div>
-            </div>
+              </div>
 
-            {/* Daily tasks section */}
-            <div>
+              {/* Daily tasks section */}
+              <div>
                 <h3 className="text-xl font-bold text-white mb-4">Daily Tasks</h3>
                 
                 {areAllTasksCompleted(dailyTasks, currentDay) ? (
-                    <div className="text-center py-8">
-                        <div className="inline-block p-4 bg-green-400/20 rounded-full mb-4">
-                            <CheckCircle className="w-12 h-12 text-green-400" />
-                        </div>
-                        <h3 className="text-2xl font-bold text-white mb-2">All Tasks Completed!</h3>
-                        <p className="text-gray-400 mb-6">
-                            You've completed all tasks for today. Come back tomorrow for new tasks!
-                        </p>
-                        <div className="text-sm text-gray-500">
-                            Next tasks unlock in: {String(dayTimeLeft.hours).padStart(2, '0')}:
-                            {String(dayTimeLeft.minutes).padStart(2, '0')}:
-                            {String(dayTimeLeft.seconds).padStart(2, '0')}
-                        </div>
+                  <div className="text-center py-8">
+                    <div className="inline-block p-4 bg-green-400/20 rounded-full mb-4">
+                      <CheckCircle className="w-12 h-12 text-green-400" />
                     </div>
+                    <h3 className="text-2xl font-bold text-white mb-2">All Tasks Completed!</h3>
+                    <p className="text-gray-400 mb-6">
+                      You've completed all tasks for today. Come back tomorrow for new tasks!
+                    </p>
+                    <div className="text-sm text-gray-500">
+                      Next tasks unlock in: {String(dayTimeLeft.hours).padStart(2, '0')}:
+                      {String(dayTimeLeft.minutes).padStart(2, '0')}:
+                      {String(dayTimeLeft.seconds).padStart(2, '0')}
+                    </div>
+                  </div>
                 ) : dailyTasks.length > 0 ? (
-                    <div className="space-y-4 max-h-96 overflow-y-auto">
-<div className="bg-gray-800 p-3 rounded-xl mb-4 text-center">
-  <div className="text-sm text-gray-400 mb-1">
-    {!isNaN(currentDay) && !isNaN(selectedCampaign?.duration) ? (
-      `Day ${currentDay} of ${selectedCampaign.duration}`
-    ) : (
-      "Day 1 of 7"
-    )}
-  </div>
-  <div className="text-lg font-bold text-white">
-    {!isNaN(dayTimeLeft?.hours) && !isNaN(dayTimeLeft?.minutes) && !isNaN(dayTimeLeft?.seconds) ? (
-      `${String(dayTimeLeft.hours).padStart(2, '0')}:${String(dayTimeLeft.minutes).padStart(2, '0')}:${String(dayTimeLeft.seconds).padStart(2, '0')}`
-    ) : (
-      "23:59:59"
-    )}
-  </div>
-  <div className="text-xs text-gray-400">Time remaining to complete today's tasks</div>
-</div>
-                        
-                        {dailyTasks.map((task) => {
-                            const colors = getColorClasses(selectedCampaign.category);
-                            const PlatformIcon = task.platform 
-                                ? PLATFORM_ICONS[task.platform.toLowerCase()] || PLATFORM_ICONS.default
-                                : PLATFORM_ICONS.default;
-                            const isUploading = uploadingTaskId === task.id;
-                            const isLocked = task.status === 'completed' || task.status === 'pending' || task.status === 'completing';
-                            
-                            return (
-                                <div key={task.id} className="bg-gray-800/50 rounded-xl p-4 relative">
-                                    {isLocked && (
-                                        <div className="absolute inset-0 bg-black bg-opacity-70 rounded-xl flex items-center justify-center z-10">
-                                            <div className="text-center p-4">
-                                                {task.status === 'completed' ? (
-                                                    <>
-                                                        <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
-                                                        <p className="text-white font-medium">Task Completed</p>
-                                                        <p className="text-gray-300 text-sm mt-1">You earned {task.reward}</p>
-                                                        {task.proof && (
-                                                            <a 
-                                                                href={task.proof} 
-                                                                target="_blank" 
-                                                                rel="noopener noreferrer"
-                                                                className="text-blue-400 text-xs mt-2 inline-block hover:underline"
-                                                            >
-                                                                View Submitted Proof
-                                                            </a>
-                                                        )}
-                                                    </>
-                                                ) : task.status === 'completing' ? (
-                                                    <>
-                                                        <RefreshCw className="w-8 h-8 text-blue-400 mx-auto mb-2 animate-spin" />
-                                                        <p className="text-white font-medium">Completing Task</p>
-                                                        <p className="text-gray-300 text-sm mt-1">
-                                                            Please wait while we process your completion
-                                                        </p>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <Clock className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
-                                                        <p className="text-white font-medium">Pending Verification</p>
-                                                        <p className="text-gray-300 text-sm mt-1">
-                                                            Your proof is being reviewed
-                                                        </p>
-                                                        {task.proof && (
-                                                            <a 
-                                                                href={task.proof} 
-                                                                target="_blank" 
-                                                                rel="noopener noreferrer"
-                                                                className="text-blue-400 text-xs mt-2 inline-block hover:underline"
-                                                            >
-                                                                View Submitted Proof
-                                                            </a>
-                                                        )}
-                                                    </>
-                                                )}
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Task header */}
-                                    <div className="flex items-start justify-between mb-3">
-                                        <div className="flex items-start space-x-3">
-                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                                                task.status === 'completed' ? 'bg-green-400 text-black' :
-                                                task.status === 'pending' ? 'bg-yellow-400 text-black' :
-                                                task.status === 'completing' ? 'bg-blue-400 text-black' :
-                                                'bg-gray-600 text-white'
-                                            }`}>
-                                                {task.status === 'completed' ? <CheckCircle className="w-4 h-4" /> : 
-                                                 task.status === 'completing' ? <RefreshCw className="w-4 h-4 animate-spin" /> : 
-                                                 task.taskNumber}
-                                            </div>
-                                            <div className="flex-1">
-                                                <h4 className="text-white font-semibold">{task.title}</h4>
-                                                <p className="text-gray-400 text-sm">{task.description}</p>
-                                                
-                                                {/* Status indicator */}
-                                                <div className="flex items-center mt-2">
-                                                    <div className={`w-2 h-2 rounded-full mr-2 ${
-                                                        task.status === 'completed' ? 'bg-green-400' :
-                                                        task.status === 'pending' ? 'bg-yellow-400' :
-                                                        task.status === 'completing' ? 'bg-blue-400 animate-pulse' :
-                                                        'bg-gray-400'
-                                                    }`}></div>
-                                                    <span className={`text-xs ${
-                                                        task.status === 'completed' ? 'text-green-400' :
-                                                        task.status === 'pending' ? 'text-yellow-400' :
-                                                        task.status === 'completing' ? 'text-blue-400' :
-                                                        'text-gray-400'
-                                                    }`}>
-                                                        {task.status === 'completed' ? 'Completed' :
-                                                         task.status === 'pending' ? 'Pending Review' :
-                                                         task.status === 'completing' ? 'Processing...' : 
-                                                         'Not Started'}
-                                                    </span>
-                                                </div>
-                                                
-                                                {(task.type === 'video-watch' || task.type === 'article-read') && task.contentUrl && (
-                                                    <button
-                                                        onClick={() => window.open(task.contentUrl, '_blank')}
-                                                        className="text-blue-400 text-sm flex items-center hover:underline mt-2"
-                                                        disabled={isLocked}
-                                                    >
-                                                        {task.type === 'video-watch' ? (
-                                                            <><Play className="w-3 h-3 mr-1" /> Watch Video</>
-                                                        ) : (
-                                                            <><BookOpen className="w-3 h-3 mr-1" /> Read Article</>
-                                                        )}
-                                                    </button>
-                                                )}
-                                                
-                                             {task.requirements && (
-  <div className="mt-2">
-    <div className="text-xs text-gray-500 mb-1">Requirements:</div>
-    <ul className="text-xs text-gray-400 space-y-1">
-      {task.requirements.map((req, i) => {
-        const urls = detectUrls(req);
-        let remainingText = req;
-        let elements = [];
-        
-        if (urls.length > 0) {
-          urls.forEach((url, urlIndex) => {
-            const parts = remainingText.split(url);
-            if (parts[0]) {
-              elements.push(<span key={`text-${i}-${urlIndex}`}>{parts[0]}</span>);
-            }
-            elements.push(
-              <a 
-                key={`link-${i}-${urlIndex}`}
-                href={url} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-blue-400 hover:underline inline-flex items-center"
-              >
-                {url.includes('twitter.com') ? 'Twitter' : 
-                 url.includes('facebook.com') ? 'Facebook' : 
-                 url.includes('instagram.com') ? 'Instagram' : 
-                 url.includes('youtube.com') ? 'YouTube' : 
-                 url.includes('discord.gg') ? 'Discord' : 
-                 url.includes('tiktok.com') ? 'TikTok' : 
-                 url.includes('linkedin.com') ? 'LinkedIn' : 
-                 url.includes('reddit.com') ? 'Reddit' : 
-                 'Visit Link'}
-                <LinkIcon className="w-3 h-3 ml-1" />
-              </a>
-            );
-            remainingText = parts[1] || '';
-          });
-          if (remainingText) {
-            elements.push(<span key={`text-end-${i}`}>{remainingText}</span>);
-          }
-        } else {
-          elements = [<span key={`text-only-${i}`}>{req}</span>];
-        }
-
-        return (
-          <li key={i} className="flex items-start space-x-2">
-            <div className="w-1 h-1 bg-gray-400 rounded-full mt-1.5"></div>
-            <div className="flex flex-wrap gap-1">
-              {elements}
-            </div>
-          </li>
-        );
-      })}
-    </ul>
-  </div>
-)}
-                                            </div>
-                                        </div>
-                                        <div className="text-green-400 font-bold">{task.reward}</div>
-                                    </div>
-                                    
-                                    {!isLocked && (
-                                        <div className="flex items-center space-x-3">
-                                            {(task.type === 'social-follow' || task.type === 'discord-join') && task.contentUrl && (
-                                                <a
-                                                    href={task.contentUrl}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="px-4 py-2 bg-blue-400/20 text-blue-400 border border-blue-400/30 rounded-lg text-sm font-medium hover:bg-blue-400/30 flex items-center space-x-2"
-                                                >
-                                                    <PlatformIcon className="w-4 h-4" />
-                                                    <span>{task.type === 'discord-join' ? 'Join Discord' : `Follow on ${task.platform}`}</span>
-                                                </a>
-                                            )}
-                                            
-{task.type === 'proof-upload' && (
-    <div className="mt-3">
-        <div className="text-xs text-gray-500 mb-1">
-            {task.status === 'pending' ? 'Proof submitted' : 'Upload proof'}
-        </div>
-        <input
-            type="file"
-            id={`file-${task.id}`}
-            className="hidden"
-            accept="image/*,video/*"
-            onChange={(e) => {
-                if (e.target.files[0]) {
-                    handleProofUpload(selectedCampaign.id, task.id, e.target.files[0]);
-                }
-            }}
-            disabled={task.status === 'pending' || task.status === 'completed'}
-        />
-        <label
-            htmlFor={`file-${task.id}`}
-            className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-all ${
-                uploadingTaskId === task.id
-                    ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                    : task.status === 'pending' || task.status === 'completed'
-                        ? 'bg-green-400/20 text-green-400 border border-green-400/30 cursor-not-allowed'
-                        : 'bg-blue-400/20 text-blue-400 border border-blue-400/30 hover:bg-blue-400/30 cursor-pointer'
-            } text-sm`}
-        >
-            <Upload className="w-4 h-4" />
-            <span>
-                {uploadingTaskId === task.id
-                    ? 'Uploading...'
-                    : task.status === 'pending'
-                        ? 'Proof Submitted'
-                        : task.status === 'completed'
-                            ? 'Completed'
-                            : 'Upload Proof'
-                }
-            </span>
-        </label>
-        {task.status === 'pending' && task.proof && (
-            <div className="mt-2">
-                <a 
-                    href={task.proof} 
-                    target="_blank" 
-                    rel="noopener noreferrer"
-                    className="text-blue-400 text-xs hover:underline"
-                >
-                    View Submitted Proof
-                </a>
-            </div>
-        )}
-    </div>
-)}
-                                            
-                                            {(task.type === 'video-watch' || task.type === 'article-read' || 
-                                              task.type === 'social-post' || task.type === 'social-follow') && (
-                                                <button
-                                                    onClick={() => handleCompleteTask(selectedCampaign.id, task.id)}
-                                                    disabled={completingTask === task.id}
-                                                    className={`px-4 py-2 bg-gradient-to-r ${colors.button} text-black font-medium rounded-lg text-sm hover:scale-105 transition-transform ${
-                                                        isLocked ? 'opacity-50 cursor-not-allowed' : ''
-                                                    }`}
-                                                >
-                                                    {completingTask === task.id ? (
-                                                        <span className="flex items-center">
-                                                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                                                            Completing...
-                                                        </span>
-                                                    ) : task.status === 'pending' ? (
-                                                        'Pending Review'
-                                                    ) : task.status === 'completed' ? (
-                                                        'Completed'
-                                                    ) : (
-                                                        'Complete Task'
-                                                    )}
-                                                </button>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                ) : (
-                    <div className="text-gray-400 text-center py-8">
-                        {currentDay > parseInt(selectedCampaign.duration) ? (
-                            "Campaign completed! Thanks for participating."
+                  <div className="space-y-4 max-h-96 overflow-y-auto">
+                    <div className="bg-gray-800 p-3 rounded-xl mb-4 text-center">
+                      <div className="text-sm text-gray-400 mb-1">
+                        {!isNaN(currentDay) && !isNaN(selectedCampaign?.duration) ? (
+                          `Day ${currentDay} of ${selectedCampaign.duration}`
                         ) : (
-                            `No tasks available for day ${currentDay}. Check back tomorrow.`
+                          "Day 1 of 7"
                         )}
+                      </div>
+                      <div className="text-lg font-bold text-white">
+                        {!isNaN(dayTimeLeft?.hours) && !isNaN(dayTimeLeft?.minutes) && !isNaN(dayTimeLeft?.seconds) ? (
+                          `${String(dayTimeLeft.hours).padStart(2, '0')}:${String(dayTimeLeft.minutes).padStart(2, '0')}:${String(dayTimeLeft.seconds).padStart(2, '0')}`
+                        ) : (
+                          "23:59:59"
+                        )}
+                      </div>
+                      <div className="text-xs text-gray-400">Time remaining to complete today's tasks</div>
                     </div>
+                    
+                    {dailyTasks.map((task) => {
+                      const colors = getColorClasses(selectedCampaign.category);
+                      const PlatformIcon = getPlatformIcon(task.platform);
+                      const isUploading = uploadingTaskId === task.id;
+                      const isLocked = task.status === 'completed' || task.status === 'pending' || task.status === 'completing';
+                      
+                      return (
+                        <div key={task.id} className="bg-gray-800/50 rounded-xl p-4 relative">
+                          {isLocked && (
+                            <div className="absolute inset-0 bg-black bg-opacity-70 rounded-xl flex items-center justify-center z-10">
+                              <div className="text-center p-4">
+                                {task.status === 'completed' ? (
+                                  <>
+                                    <CheckCircle className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                                    <p className="text-white font-medium">Task Completed</p>
+                                    <p className="text-gray-300 text-sm mt-1">You earned {task.reward}</p>
+                                    {task.proof && (
+                                      <a 
+                                        href={task.proof} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="text-blue-400 text-xs mt-2 inline-block hover:underline"
+                                      >
+                                        View Submitted Proof
+                                      </a>
+                                    )}
+                                  </>
+                                ) : task.status === 'completing' ? (
+                                  <>
+                                    <RefreshCw className="w-8 h-8 text-blue-400 mx-auto mb-2 animate-spin" />
+                                    <p className="text-white font-medium">Completing Task</p>
+                                    <p className="text-gray-300 text-sm mt-1">
+                                      Please wait while we process your completion
+                                    </p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Clock className="w-8 h-8 text-yellow-400 mx-auto mb-2" />
+                                    <p className="text-white font-medium">Pending Verification</p>
+                                    <p className="text-gray-300 text-sm mt-1">
+                                      Your proof is being reviewed
+                                    </p>
+                                    {task.proof && (
+                                      <a 
+                                        href={task.proof} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="text-blue-400 text-xs mt-2 inline-block hover:underline"
+                                      >
+                                        View Submitted Proof
+                                      </a>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Task header */}
+                          <div className="flex items-start justify-between mb-3">
+                            <div className="flex items-start space-x-3">
+                              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                                task.status === 'completed' ? 'bg-green-400 text-black' :
+                                task.status === 'pending' ? 'bg-yellow-400 text-black' :
+                                task.status === 'completing' ? 'bg-blue-400 text-black' :
+                                'bg-gray-600 text-white'
+                              }`}>
+                                {task.status === 'completed' ? <CheckCircle className="w-4 h-4" /> : 
+                                  task.status === 'completing' ? <RefreshCw className="w-4 h-4 animate-spin" /> : 
+                                  task.taskNumber}
+                              </div>
+                              <div className="flex-1">
+                                <h4 className="text-white font-semibold">{task.title}</h4>
+                                <p className="text-gray-400 text-sm">{task.description}</p>
+                                
+                                {/* Status indicator */}
+                                <div className="flex items-center mt-2">
+                                  <div className={`w-2 h-2 rounded-full mr-2 ${
+                                    task.status === 'completed' ? 'bg-green-400' :
+                                    task.status === 'pending' ? 'bg-yellow-400' :
+                                    task.status === 'completing' ? 'bg-blue-400 animate-pulse' :
+                                    'bg-gray-400'
+                                  }`}></div>
+                                  <span className={`text-xs ${
+                                    task.status === 'completed' ? 'text-green-400' :
+                                    task.status === 'pending' ? 'text-yellow-400' :
+                                    task.status === 'completing' ? 'text-blue-400' :
+                                    'text-gray-400'
+                                  }`}>
+                                    {task.status === 'completed' ? 'Completed' :
+                                      task.status === 'pending' ? 'Pending Review' :
+                                      task.status === 'completing' ? 'Processing...' : 
+                                      'Not Started'}
+                                  </span>
+                                </div>
+                                
+                                {(task.type === 'video-watch' || task.type === 'article-read') && task.contentUrl && (
+                                  <button
+                                    onClick={() => window.open(task.contentUrl, '_blank')}
+                                    className="text-blue-400 text-sm flex items-center hover:underline mt-2"
+                                    disabled={isLocked}
+                                  >
+                                    {task.type === 'video-watch' ? (
+                                      <><Play className="w-3 h-3 mr-1" /> Watch Video</>
+                                    ) : (
+                                      <><BookOpen className="w-3 h-3 mr-1" /> Read Article</>
+                                    )}
+                                  </button>
+                                )}
+                                
+                                {task.requirements && (
+                                  <div className="mt-2">
+                                    <div className="text-xs text-gray-500 mb-1">Requirements:</div>
+                                    <ul className="text-xs text-gray-400 space-y-1">
+                                      {task.requirements.map((req, i) => {
+                                        const urls = detectUrls(req);
+                                        let remainingText = req;
+                                        let elements = [];
+                                        
+                                        if (urls.length > 0) {
+                                          urls.forEach((url, urlIndex) => {
+                                            const parts = remainingText.split(url);
+                                            if (parts[0]) {
+                                              elements.push(<span key={`text-${i}-${urlIndex}`}>{parts[0]}</span>);
+                                            }
+                                            elements.push(
+                                              <a 
+                                                key={`link-${i}-${urlIndex}`}
+                                                href={url} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                className="text-blue-400 hover:underline inline-flex items-center"
+                                              >
+                                                {url.includes('twitter.com') ? 'Twitter' : 
+                                                  url.includes('facebook.com') ? 'Facebook' : 
+                                                  url.includes('instagram.com') ? 'Instagram' : 
+                                                  url.includes('youtube.com') ? 'YouTube' : 
+                                                  url.includes('discord.gg') ? 'Discord' : 
+                                                  url.includes('tiktok.com') ? 'TikTok' : 
+                                                  url.includes('linkedin.com') ? 'LinkedIn' : 
+                                                  url.includes('reddit.com') ? 'Reddit' : 
+                                                  'Visit Link'}
+                                                <LinkIcon className="w-3 h-3 ml-1" />
+                                              </a>
+                                            );
+                                            remainingText = parts[1] || '';
+                                          });
+                                          if (remainingText) {
+                                            elements.push(<span key={`text-end-${i}`}>{remainingText}</span>);
+                                          }
+                                        } else {
+                                          elements = [<span key={`text-only-${i}`}>{req}</span>];
+                                        }
+
+                                        return (
+                                          <li key={i} className="flex items-start space-x-2">
+                                            <div className="w-1 h-1 bg-gray-400 rounded-full mt-1.5"></div>
+                                            <div className="flex flex-wrap gap-1">
+                                              {elements}
+                                            </div>
+                                          </li>
+                                        );
+                                      })}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-green-400 font-bold">{task.reward}</div>
+                          </div>
+                          
+                          {!isLocked && (
+                            <div className="flex items-center space-x-3">
+                              {(task.type === 'social-follow' || task.type === 'discord-join') && task.contentUrl && (
+                                <a
+                                  href={task.contentUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-4 py-2 bg-blue-400/20 text-blue-400 border border-blue-400/30 rounded-lg text-sm font-medium hover:bg-blue-400/30 flex items-center space-x-2"
+                                >
+                                  <PlatformIcon className="w-4 h-4" />
+                                  <span>{task.type === 'discord-join' ? 'Join Discord' : `Follow on ${task.platform}`}</span>
+                                </a>
+                              )}
+                              
+                              {task.type === 'proof-upload' && (
+                                <div className="mt-3">
+                                  <div className="text-xs text-gray-500 mb-1">
+                                    {task.status === 'pending' ? 'Proof submitted' : 'Upload proof'}
+                                  </div>
+                                  <input
+                                    type="file"
+                                    id={`file-${task.id}`}
+                                    className="hidden"
+                                    accept="image/*,video/*"
+                                    onChange={(e) => {
+                                      if (e.target.files[0]) {
+                                        handleProofUpload(selectedCampaign.id, task.id, e.target.files[0]);
+                                      }
+                                    }}
+                                    disabled={task.status === 'pending' || task.status === 'completed'}
+                                  />
+                                  <label
+                                    htmlFor={`file-${task.id}`}
+                                    className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-all ${
+                                      uploadingTaskId === task.id
+                                        ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                                        : task.status === 'pending' || task.status === 'completed'
+                                          ? 'bg-green-400/20 text-green-400 border border-green-400/30 cursor-not-allowed'
+                                          : 'bg-blue-400/20 text-blue-400 border border-blue-400/30 hover:bg-blue-400/30 cursor-pointer'
+                                    } text-sm`}
+                                  >
+                                    <Upload className="w-4 h-4" />
+                                    <span>
+                                      {uploadingTaskId === task.id
+                                        ? 'Uploading...'
+                                        : task.status === 'pending'
+                                          ? 'Proof Submitted'
+                                          : task.status === 'completed'
+                                            ? 'Completed'
+                                            : 'Upload Proof'
+                                      }
+                                    </span>
+                                  </label>
+                                  {task.status === 'pending' && task.proof && (
+                                    <div className="mt-2">
+                                      <a 
+                                        href={task.proof} 
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="text-blue-400 text-xs hover:underline"
+                                      >
+                                        View Submitted Proof
+                                      </a>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {(task.type === 'video-watch' || task.type === 'article-read' || 
+                                task.type === 'social-post' || task.type === 'social-follow') && (
+                                <button
+                                  onClick={() => handleCompleteTask(selectedCampaign.id, task.id)}
+                                  disabled={completingTask === task.id}
+                                  className={`px-4 py-2 bg-gradient-to-r ${colors.button} text-black font-medium rounded-lg text-sm hover:scale-105 transition-transform ${
+                                    isLocked ? 'opacity-50 cursor-not-allowed' : ''
+                                  }`}
+                                >
+                                  {completingTask === task.id ? (
+                                    <span className="flex items-center">
+                                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                                      Completing...
+                                    </span>
+                                  ) : task.status === 'pending' ? (
+                                    'Pending Review'
+                                  ) : task.status === 'completed' ? (
+                                    'Completed'
+                                  ) : (
+                                    'Complete Task'
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-gray-400 text-center py-8">
+                    {currentDay > parseInt(selectedCampaign.duration) ? (
+                      "Campaign completed! Thanks for participating."
+                    ) : (
+                      `No tasks available for day ${currentDay}. Check back tomorrow.`
+                    )}
+                  </div>
                 )}
+              </div>
             </div>
-        </div>
-    ) : (
-        <div className="text-gray-400 text-center">Loading campaign details...</div>
-    )}
-</Modal>
+          ) : (
+            <div className="text-gray-400 text-center">Loading campaign details...</div>
+          )}
+        </Modal>
 
         {/* Bottom navigation */}
         <div className="fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-sm border-t border-gray-800 px-4 py-2 z-50">

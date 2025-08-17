@@ -19,7 +19,7 @@ const campaignSchema = new mongoose.Schema({
     category: {
         type: String,
         required: true,
-        enum: ['Ocean', 'Forest', 'Air', 'Community']
+        enum: ['Ocean', 'School', 'City', 'Community']
     },
     reward: {
         type: Number,
